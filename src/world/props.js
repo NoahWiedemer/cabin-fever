@@ -2078,7 +2078,9 @@ BUILDERS.barrel = (b, o) => {
 };
 
 // ---------------------------------------------------------------- generator (basement diesel set on skid)
-BUILDERS.generator = (b) => {
+// opts.live: THE generator (world/generator.js adds the animated pull-start, gauges and the cables to
+// the fuse panel), so the static pull handle and the loose floor cables are left out
+BUILDERS.generator = (b, o) => {
   const r = b.r;
   const paint = 'paintGreen', dk = 'metalDark', rust = 'rustyMetal', rub = 'rubber';
   for (const s of [-1, 1]) {
@@ -2099,8 +2101,10 @@ BUILDERS.generator = (b) => {
   b.cyl(paint, 0.135, 0.135, 0.07, 18, [-0.595, 0.36, 0], [0, 0, HP]);
   b.cyl(dk, 0.11, 0.11, 0.012, 18, [-0.634, 0.36, 0], [0, 0, HP]);
   for (let i = 0; i < 5; i++) b.box(paint, 0.004, 0.012, 0.2, [-0.642, 0.3 + i * 0.03, 0], null, { c: 0 });
-  b.box(rub, 0.02, 0.09, 0.02, [-0.66, 0.48, 0.05], [0, 0, 0.1], { c: 0.005 });
-  b.tube(rub, [[-0.64, 0.4, 0.03], [-0.655, 0.44, 0.045], [-0.66, 0.475, 0.05]], 0.003, 3);
+  if (!o.live) {
+    b.box(rub, 0.02, 0.09, 0.02, [-0.66, 0.48, 0.05], [0, 0, 0.1], { c: 0.005 });
+    b.tube(rub, [[-0.64, 0.4, 0.03], [-0.655, 0.44, 0.045], [-0.66, 0.475, 0.05]], 0.003, 3);
+  }
   b.cyl(dk, 0.07, 0.07, 0.13, 14, [-0.3, 0.44, 0.27], [HP, 0, 0]);
   b.cyl(dk, 0.02, 0.02, 0.03, 8, [-0.3, 0.44, 0.345], [HP, 0, 0]);
   b.box(dk, 0.07, 0.012, 0.01, [-0.3, 0.44, 0.36], null, { c: 0 });
@@ -2143,7 +2147,7 @@ BUILDERS.generator = (b) => {
   for (const x of [-0.62, 0.62]) b.cyl(rust, 0.018, 0.018, 0.6, 7, [x, 0.72, 0], [HP, 0, 0]);
   for (const x of [-0.4, 0.3]) b.box(rust, 0.05, 0.01, 0.62, [x, 0.765, 0], null, { c: 0 });
   // power cables snaking over the floor
-  for (let k = 0; k < 2; k++) {
+  for (let k = 0; k < (o.live ? 0 : 2); k++) {
     const z0 = k ? 0.16 : 0.1;
     const pts = [[0.64, 0.36, z0], [0.7, 0.34, z0 + 0.02], [0.76, 0.18, z0 + 0.06], [0.82, 0.018, z0 + 0.12]];
     let cx = 0.82, cz = z0 + 0.12;
@@ -2364,7 +2368,8 @@ BUILDERS.lantern = (b, o) => {
     bail.push([Math.cos(a) * 0.088, 0.2 + Math.sin(a) * 0.12 * Math.cos(fold), Math.sin(a) * 0.12 * Math.sin(fold)]);
   }
   b.tube(dk, bail, 0.0022, 3, { capEnd: false });
-  if (o.lit !== false) b.lathe('bulb', [[0, 0.086], [0.007, 0.095], [0.009, 0.108], [0.005, 0.125], [0, 0.138]], 6);
+  // the flame: its own variant of the bulb material, so kerosene keeps burning when the generator dies
+  if (o.lit !== false) b.lathe(M('bulb', { emissive: 0xffa84e }), [[0, 0.086], [0.007, 0.095], [0.009, 0.108], [0.005, 0.125], [0, 0.138]], 6);
   b.anchor('flame', [0, 0.115, 0]);
 };
 
@@ -3310,11 +3315,12 @@ BUILDERS.woodPile = (b) => {
 };
 
 // ---------------------------------------------------------------- hayBale (square bale, straw)
-BUILDERS.hayBale = (b) => {
+BUILDERS.hayBale = (b, o) => {
   const r = b.r;
-  const straw = M('crateWood', { color: 0xc8ac66 }), twine = M('cloth', { color: 0x6e6040 });
+  const lite = !!o?.lite; // stacked bales (barn.js): fewer loose stalks, coarser mesh
+  const straw = o?.straw ?? 'straw', twine = M('cloth', { color: 0x6e6040 }); // straw texture (textures.js genStraw)
   const L = 1.0, H = 0.4, D = 0.48, sd = r.range(0, 40);
-  b.soft(straw, L, H, D, 0.06, [8, 4, 4], [0, H / 2, 0], [0, 0, 0], {
+  b.soft(straw, L, H, D, 0.06, lite ? [5, 3, 3] : [8, 4, 4], [0, H / 2, 0], [0, 0, 0], {
     deform: (v) => {
       const n = 0.012 * fbm(v.x * 9 + sd, v.y * 9, v.z * 9);
       v.x += n;
@@ -3328,7 +3334,7 @@ BUILDERS.hayBale = (b) => {
     ring.push(ring[0]);
     b.tube(twine, ring, 0.0045, 4, { capEnd: false });
   }
-  for (let i = 0; i < 26; i++) {
+  for (let i = 0, n = lite ? 8 : 26; i < n; i++) {
     const face = r.int(0, 2);
     const p = face === 0 ? [r.jit(L / 2 - 0.05), H + 0.005, r.jit(D / 2 - 0.03)] : face === 1 ? [r.jit(L / 2 - 0.05), r.range(0.05, H - 0.03), (r.chance(0.5) ? 1 : -1) * (D / 2 + 0.005)] : [(r.chance(0.5) ? 1 : -1) * (L / 2 + 0.005), r.range(0.05, H - 0.03), r.jit(D / 2 - 0.05)];
     b.cyl(straw, 0.0015, 0.0025, r.range(0.06, 0.16), 3, p, [r.range(0.5, 1.4) * (r.chance(0.5) ? 1 : -1), r.range(0, TAU), r.jit(1.2)]);
@@ -3691,4 +3697,12 @@ export function buildProp(type, opts = {}) {
 export function clearPropCache(dispose = false) {
   if (dispose) for (const rec of PROP_CACHE.values()) for (const m of rec.meshes) m.geo.dispose();
   PROP_CACHE.clear();
+}
+
+// ---------------------------------------------------------------- extension API
+// Other modules (src/world/ranchProps.js) register their own builders with the same PB toolkit.
+export const PropKit = { PB, M, RNG, V3, PI, TAU, HP, lerp, clamp, smooth, fbm, vnoise, plank, plankGeo, boxBetween, tireProfile, drumProfile, dentDeform, bucketProfile, smoothPts, rrRing, loftGeo, nailZ, nailY, paintTint };
+export function registerProp(type, fn) {
+  BUILDERS[type] = fn;
+  if (!PROP_TYPES.includes(type)) PROP_TYPES.push(type);
 }

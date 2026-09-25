@@ -9,7 +9,8 @@
 //   * is clawed at by every infected that runs into it (Zombie.update → engage, _updateAttack → hit),
 //     blown in by Boomers (and, less, by explosives), hacked apart by the knife. Every 1/6 of its HP
 //     a plank tears off and clatters to the floor; at 0 the doorway is open again.
-// Barricades persist between rounds (Endless too); a new game starts with bare doorways.
+// Barricades persist between rounds (Endless too); a new game starts with bare doorways. A wall breach
+// (world/breach.js) adds its hole as a spot for the rest of that game (addSpot / removeSpot).
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { SURF, FLAG_NOBULLET, FLAG_NAVIGNORE } from './collision.js';
@@ -717,7 +718,7 @@ export class Barricades {
       }
     }
     g.navT = 0; // the infected re-flow next frame
-    this.fieldQueue = [...(g.postFields?.values() ?? [])]; // bots' post fields, one per frame
+    this.fieldQueue = [...(g.postFields?.values() ?? []), ...(g.horde?.fields.values() ?? [])]; // bots' post fields + the infected's entrance routes, one per frame
   }
 
   // ------------------------------------------------------------------ session
@@ -745,6 +746,37 @@ export class Barricades {
 
   spot(id) {
     return this.spots.find((s) => s.id === id) ?? null;
+  }
+
+  /** A doorway that appeared mid-game (a wall breach, world/breach.js): boardable from now on. */
+  addSpot(def) {
+    if (this.spot(def.id)) return this.spot(def.id);
+    let s = this._spare?.get(def.id);
+    if (s) {
+      s.cells = this._cells(s); // the nav round it changed
+    } else s = this._initSpot(def, this.spots.length);
+    this.spots.push(s);
+    return s;
+  }
+
+  /** ...and gone again (a new game): planks off, collider off, kept aside for reuse */
+  removeSpot(id) {
+    const i = this.spots.findIndex((s) => s.id === id);
+    if (i < 0) return;
+    const s = this.spots[i];
+    s.hp = 0;
+    s.left = 0;
+    s.side = 0;
+    s.collider.enabled = false;
+    for (const k in s.sides) {
+      s.sides[k].group.visible = false;
+      s.sides[k].ghost.visible = false;
+      for (const pl of s.sides[k].planks) pl.visible = false;
+    }
+    if (this.building?.spot === s) this.building = null;
+    this.spots.splice(i, 1);
+    (this._spare ??= new Map()).set(id, s);
+    this._syncNav();
   }
 
   /** Debug / tests: nail up (or repair) a doorway without a kit. */

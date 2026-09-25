@@ -3455,6 +3455,251 @@ function genAcidPuff(size) {
 // Registry / API
 // ===========================================================================
 
+// ---------------------------------------------------------------------------
+// Ranch (src/world/barn.js): barn siding, bare interior boards, corrugated tin roof
+// ---------------------------------------------------------------------------
+
+function transposeField(a, size) {
+  for (let y = 0; y < size; y++) {
+    for (let x = y + 1; x < size; x++) {
+      const i = y * size + x, j = x * size + y;
+      const t = a[i];
+      a[i] = a[j];
+      a[j] = t;
+    }
+  }
+  return a;
+}
+
+/** Vertical barn boards (grain along V). painted: weathered red board-and-batten siding, else bare grey planks. */
+function genBarnBoards(size, mpr, painted) {
+  const n = size * size;
+  const s = size / 512;
+  const seed = painted ? 15001 : 15501;
+  const rng = makeRng(seed);
+  const boards = 8;
+  // synthesized with boards along U, transposed at the end so they stand upright
+  const P = plankSurface(size, rng, {
+    boards,
+    pieces: [1, 1],
+    noJoints: true,
+    gapPx: (painted ? 1.6 : 3.2) * s,
+    bevelPx: 2.2 * s,
+    chip: 1.4 * s,
+    gapDepth: painted ? 3 : 6,
+    cup: 0.4,
+    h0: 0.3,
+    tilt: 0.25,
+    ringPx: [4 * s, 9 * s],
+    arch: [0.1, 0.9],
+    colA: painted ? [0.34, 0.32, 0.29] : [0.3, 0.26, 0.21],
+    colB: painted ? [0.29, 0.285, 0.27] : [0.27, 0.25, 0.22],
+    valueVar: 0.16,
+    knots: 7,
+    seed: seed + 10,
+    lateDark: 0.62,
+    lateRelief: 0.7,
+    fineAmp: 0.35,
+    poreAmp: 0.14,
+    fineColor: 0.32,
+    poreColor: 0.16,
+    gapColor: painted ? [0.05, 0.03, 0.025] : [0.012, 0.011, 0.01],
+    baseRough: 0.84,
+  });
+  const { R, G, B, H, Ro, bw } = P;
+  const fine = fbm(size, 128, 16, 2, seed + 20);
+  const stain = fbm(size, 3, 6, 4, seed + 21, 0.5, size >> 1);
+  if (painted) {
+    // paint: peels in long strips along the grain; chalky fade; battens over every joint
+    const peel = fbm(size, 5, 36, 5, seed + 22, 0.55);
+    const flecks = fbm(size, 40, 160, 2, seed + 23);
+    for (let i = 0; i < n; i++) peel[i] += flecks[i] * 0.18;
+    equalize(peel);
+    const fade = fbm(size, 3, 3, 4, seed + 24, 0.5, size >> 1);
+    const tone = fbm(size, 2, 10, 3, seed + 25, 0.5, size >> 2);
+    const bh = 5.5 * s;
+    for (let y = 0; y < size; y++) {
+      const ty = (y + 0.5) % bw;
+      const ed = Math.min(ty, bw - ty);
+      const bat = sstep(bh + 1.2 * s, bh - 0.4 * s, ed);
+      for (let x = 0; x < size; x++) {
+        const i = y * size + x;
+        const fn = fine[i];
+        if (bat > 0) {
+          // batten: a narrow raised strip, same weathered wood underneath
+          const bwood = 0.31 * (1 + fn * 0.25);
+          R[i] = lerp(R[i], bwood, bat);
+          G[i] = lerp(G[i], bwood * 0.95, bat);
+          B[i] = lerp(B[i], bwood * 0.88, bat);
+          H[i] = lerp(H[i], 2.6 + fn * 0.3 - (1 - sstep(0, bh, bh - ed)) * 0.4, bat);
+          Ro[i] = lerp(Ro[i], 0.84, bat);
+        }
+        const v = peel[i] - bat * 0.12; // battens keep their paint a little better
+        const cover = sstep(0.24, 0.265, v);
+        const edge = Math.exp(-(((v - 0.255) / 0.012) ** 2));
+        const fd = sstep(-0.3, 0.6, fade[i]);
+        const tn = 1 + tone[i] * 0.16 + fn * 0.05;
+        let pr = lerp(0.39, 0.5, fd) * tn, pg = lerp(0.075, 0.17, fd) * tn, pb = lerp(0.055, 0.14, fd) * tn;
+        const st = sstep(0.1, 0.7, stain[i]) * 0.25;
+        pr *= 1 - st;
+        pg *= 1 - st;
+        pb *= 1 - st;
+        R[i] = lerp(R[i], pr, cover) * (1 - edge * 0.35);
+        G[i] = lerp(G[i], pg, cover) * (1 - edge * 0.35);
+        B[i] = lerp(B[i], pb, cover) * (1 - edge * 0.35);
+        H[i] += cover * 0.35 + edge * 0.12;
+        Ro[i] = clamp(lerp(Ro[i], 0.7 + fd * 0.15, cover), 0.3, 1);
+      }
+    }
+  } else {
+    for (let i = 0; i < n; i++) {
+      const st = sstep(0.0, 0.7, stain[i]) * 0.3;
+      R[i] *= 1 - st;
+      G[i] *= 1 - st * 1.05;
+      B[i] *= 1 - st * 1.1;
+      H[i] += fine[i] * 0.15;
+    }
+  }
+  for (const f of [R, G, B, H, Ro]) transposeField(f, size);
+  return finishSurface(size, mpr, { R, G, B, H, Ro }, { bump: 1.8, aoStrength: 0.16, aoRadius: 3 * s });
+}
+const genBarnSiding = (size, mpr) => genBarnBoards(size, mpr, true);
+const genBarnPlanks = (size, mpr) => genBarnBoards(size, mpr, false);
+
+/** Corrugated galvanised tin, ridges along V (down the slope), rust bleeding downhill (toward -V). */
+function genTinRoof(size, mpr) {
+  const n = size * size;
+  const s = size / 512;
+  const R = F(n);
+  const G = F(n);
+  const B = F(n);
+  const H = F(n);
+  const Ro = F(n);
+  const M = F(n);
+  const ridges = 26;
+  const rustN = fbm(size, 4, 6, 6, 16101, 0.55);
+  const streak = fbm(size, 48, 3, 3, 16102);
+  for (let i = 0; i < n; i++) rustN[i] += streak[i] * 0.22;
+  equalize(rustN);
+  const RM = F(n);
+  for (let i = 0; i < n; i++) RM[i] = sstep(0.52, 0.6, rustN[i]);
+  const smear = smearDown(RM, size, 0.992);
+  const rd = fbm(size, 24, 24, 4, 16103);
+  const fine = fbm(size, 128, 128, 2, 16104);
+  const zinc = fbm(size, 6, 6, 4, 16105, 0.5, size >> 1);
+  const moss = fbm(size, 8, 5, 4, 16106, 0.5, size >> 1);
+  const sheet = size / 4; // sheet overlaps every quarter tile (lapped seam across the slope)
+  for (let y = 0; y < size; y++) {
+    const sy = (y % sheet) / sheet;
+    const lap = sstep(0.0, 0.02, sy) * (1 - sstep(0.985, 1.0, sy));
+    for (let x = 0; x < size; x++) {
+      const i = y * size + x;
+      const ph = (x / size) * ridges * TAU;
+      const cor = Math.sin(ph);
+      const rust = Math.max(RM[i], smear[i] * sstep(-0.2, 0.5, streak[i]) * 0.85);
+      const zk = sstep(-0.4, 0.5, zinc[i]);
+      let r = lerp(0.36, 0.5, zk), g = lerp(0.37, 0.5, zk), b = lerp(0.38, 0.5, zk);
+      const rv = rd[i];
+      const rr = lerp(0.2, 0.42, sstep(-0.2, 0.4, rv)), rg = lerp(0.1, 0.2, sstep(-0.2, 0.4, rv)), rb = lerp(0.06, 0.1, sstep(-0.2, 0.4, rv));
+      r = lerp(r, rr, rust);
+      g = lerp(g, rg, rust);
+      b = lerp(b, rb, rust);
+      // dark grime settles in the valleys, a little moss near the laps
+      const valley = sstep(0.2, -0.9, cor);
+      const dk = 1 - valley * 0.22 - (1 - lap) * 0.35;
+      const ms = sstep(0.35, 0.7, moss[i]) * 0.5;
+      r = lerp(r * dk, 0.1, ms);
+      g = lerp(g * dk, 0.13, ms);
+      b = lerp(b * dk, 0.07, ms);
+      R[i] = r * (1 + fine[i] * 0.06);
+      G[i] = g * (1 + fine[i] * 0.06);
+      B[i] = b * (1 + fine[i] * 0.06);
+      H[i] = cor * 7 + (1 - lap) * -1.5 + rust * (rv * 0.8 + fine[i] * 0.4);
+      M[i] = clamp01((1 - rust) * (0.75 - ms));
+      Ro[i] = clamp(lerp(0.42 + zk * 0.15, 0.9, rust) + ms * 0.3 + valley * 0.08, 0.2, 1);
+    }
+  }
+  return finishSurface(size, mpr, { R, G, B, H, Ro, M }, { bump: 1.3, aoStrength: 0.05, aoRadius: 2 * s });
+}
+
+/** Baled straw / hay: dense golden stalks along U, pale and dusty ones on top, dark gaps between. */
+function genStraw(size, mpr) {
+  const n = size * size;
+  const s = size / 512;
+  const rng = makeRng(18001);
+  const R = F(n);
+  const G = F(n);
+  const B = F(n);
+  const H = F(n);
+  const Ro = F(n);
+  const stalks = fbm(size, 3, 150, 3, 18101, 0.5);
+  const stalks2 = fbm(size, 6, 260, 2, 18102, 0.5);
+  const tone = fbm(size, 4, 10, 4, 18103, 0.55, size >> 1);
+  const mold = fbm(size, 5, 5, 4, 18104, 0.5, size >> 1);
+  const SC = F(n);
+  // loose stalks lying across the grain
+  drawScratches(size, SC, rng, 420, { alongProb: 0.55, angle: 0, spread: 0.9, lenMin: 12 * s, lenMax: 70 * s, wMin: 0.6 * s, wMax: 1.3 * s, iMin: 0.5, iMax: 1 });
+  for (let i = 0; i < n; i++) {
+    const st = stalks[i] * 0.7 + stalks2[i] * 0.45;
+    const ridge = sstep(-0.35, 0.45, st);
+    const tn = sstep(-0.4, 0.5, tone[i]);
+    let r = lerp(0.46, 0.66, tn), g = lerp(0.35, 0.53, tn), b = lerp(0.16, 0.28, tn);
+    const k = 0.45 + 0.75 * ridge;
+    r *= k;
+    g *= k;
+    b *= k;
+    const sc = SC[i];
+    r = lerp(r, 0.74, sc * 0.7);
+    g = lerp(g, 0.62, sc * 0.7);
+    b = lerp(b, 0.36, sc * 0.7);
+    const md = sstep(0.35, 0.75, mold[i]) * 0.45;
+    r = lerp(r, r * 0.55, md);
+    g = lerp(g, g * 0.55, md);
+    b = lerp(b, b * 0.5, md);
+    R[i] = r;
+    G[i] = g;
+    B[i] = b;
+    H[i] = ridge * 1.6 + sc * 0.9 + stalks2[i] * 0.3;
+    Ro[i] = clamp(0.78 - sc * 0.12 + md * 0.1, 0.3, 1);
+  }
+  return finishSurface(size, mpr, { R, G, B, H, Ro }, { bump: 1.6, aoStrength: 0.35, aoRadius: 2 * s });
+}
+
+/** Wet farm-track gravel: small and medium stones pressed into dark mud. */
+function genGravel(size, mpr) {
+  const n = size * size;
+  const R = F(n);
+  const G = F(n);
+  const B = F(n);
+  const H = F(n);
+  const Ro = F(n);
+  const small = worley(size, 56, 56, 17101, { jitter: 0.95 });
+  const big = worley(size, 18, 18, 17102, { jitter: 0.9 });
+  const mud = fbm(size, 6, 6, 5, 17103, 0.55, size >> 1);
+  const fine = fbm(size, 128, 128, 2, 17104);
+  const wet = fbm(size, 3, 3, 4, 17105, 0.5, size >> 2);
+  for (let i = 0; i < n; i++) {
+    const sd = sstep(0.62, 0.18, small.f1[i]);
+    const bd = sstep(0.55, 0.12, big.f1[i]) * (big.id[i] < 0.45 ? 1 : 0);
+    const stone = Math.max(sd * 0.9, bd);
+    const id = bd > sd * 0.9 ? big.id[i] : small.id[i];
+    const t = hash01((id * 9973) | 0, 17);
+    // stone tones: grey, buff, rusty brown
+    let r = lerp(0.36, 0.5, t), g = lerp(0.34, 0.44, t), b = lerp(0.31, 0.37, t);
+    if (t > 0.8) (r *= 1.08), (g *= 0.92), (b *= 0.8);
+    const md = sstep(-0.3, 0.5, mud[i]);
+    const mr = lerp(0.1, 0.15, md), mg = lerp(0.085, 0.12, md), mb = lerp(0.065, 0.09, md);
+    const k = 1 + fine[i] * 0.12;
+    const w = sstep(0.1, 0.6, wet[i]) * 0.35;
+    R[i] = lerp(mr, r * k, stone) * (1 - w * 0.4);
+    G[i] = lerp(mg, g * k, stone) * (1 - w * 0.4);
+    B[i] = lerp(mb, b * k, stone) * (1 - w * 0.35);
+    H[i] = stone * 2.2 + bd * 1.2 + fine[i] * 0.15;
+    Ro[i] = clamp(lerp(0.9, 0.62, stone) - w * 0.45, 0.15, 1);
+  }
+  return finishSurface(size, mpr, { R, G, B, H, Ro }, { bump: 1.4, aoStrength: 0.3, aoRadius: 2 });
+}
+
 // [name, size, metersPerRepeat, generator, tiling]
 const GENERATORS = [
   ['woodFloor', 1024, 2.0, genWoodFloor, true],
@@ -3478,6 +3723,11 @@ const GENERATORS = [
   ['foliage', 512, 1.0, genFoliage, false],
   ['porcelain', 512, 1.0, genPorcelain, true],
   ['gunMetal', 512, 0.3, genGunMetal, true],
+  ['barnSiding', 512, 2.4, genBarnSiding, true],
+  ['barnPlanks', 512, 2.4, genBarnPlanks, true],
+  ['tinRoof', 512, 2.0, genTinRoof, true],
+  ['gravel', 512, 1.4, genGravel, true],
+  ['straw', 512, 0.9, genStraw, true],
   ['bloodDecals', 1024, 1, genBloodDecals, false],
   ['bloodPool', 512, 1, genBloodPool, false],
   ['bulletHole', 256, 1, genBulletHole, false],

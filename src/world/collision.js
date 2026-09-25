@@ -59,6 +59,33 @@ export class CollisionWorld {
     return b;
   }
 
+  /**
+   * Oriented box (rotated about Y by `yaw`, three.js rotation.y convention: local +X -> world (cos, -sin),
+   * local +Z -> world (sin, cos)), centre (cx, cz), half extents (hx, hz) along its local axes, y0..y1.
+   * Stored as a chain of AABB pieces (the grid index, nav rasterization and ragdolls see those); the
+   * movement / ground / ceiling / ray queries test the exact oriented box through `piece.obb`.
+   * opts.step: piece length along each local axis. Returns the obb (its `pieces` toggle `enabled`).
+   */
+  addOBB(cx, cz, hx, hz, yaw, y0, y1, surface = SURF.wood, flags = 0, tag = null, opts = {}) {
+    const c = Math.cos(yaw), s = Math.sin(yaw);
+    const obb = { cx, cz, ux: c, uz: -s, vx: s, vz: c, hx, hz, minY: Math.min(y0, y1), maxY: Math.max(y0, y1), mark: 0, pieces: [] };
+    const big = Math.min(hx, hz) > 0.3;
+    const step = opts.step ?? (big ? (Math.min(hx, hz) > 3 ? 2.5 : 0.8) : 0.4);
+    const nx = Math.max(1, Math.ceil((2 * hx) / step - 1e-6)), nz = Math.max(1, Math.ceil((2 * hz) / step - 1e-6));
+    const px = hx / nx, pz = hz / nz;
+    const ex = px * Math.abs(c) + pz * Math.abs(s), ez = px * Math.abs(s) + pz * Math.abs(c);
+    for (let i = 0; i < nx; i++) {
+      for (let k = 0; k < nz; k++) {
+        const lx = -hx + px * (2 * i + 1), lz = -hz + pz * (2 * k + 1);
+        const wx = cx + lx * c + lz * s, wz = cz - lx * s + lz * c;
+        const b = this.add(wx - ex, obb.minY, wz - ez, wx + ex, obb.maxY, wz + ez, surface, flags, tag);
+        b.obb = obb;
+        obb.pieces.push(b);
+      }
+    }
+    return obb;
+  }
+
   _cx(x) {
     return Math.max(0, Math.min(this.nx - 1, Math.floor((x - this.minX) / this.cell)));
   }
@@ -93,6 +120,10 @@ export class CollisionWorld {
     this.query(x - r, z - r, x + r, z + r, (b) => {
       if (b.maxY <= maxY && b.maxY > best) {
         // circle vs rect overlap
+        if (b.obb) {
+          if (obbDist2(b.obb, x, z) <= r * r) best = b.maxY;
+          return;
+        }
         const cx = x < b.minX ? b.minX : x > b.maxX ? b.maxX : x;
         const cz = z < b.minZ ? b.minZ : z > b.maxZ ? b.maxZ : z;
         const dx = x - cx, dz = z - cz;
@@ -107,6 +138,10 @@ export class CollisionWorld {
     let best = Infinity;
     this.query(x - r, z - r, x + r, z + r, (b) => {
       if (b.minY >= y && b.minY < best) {
+        if (b.obb) {
+          if (obbDist2(b.obb, x, z) <= r * r) best = b.minY;
+          return;
+        }
         const cx = x < b.minX ? b.minX : x > b.maxX ? b.maxX : x;
         const cz = z < b.minZ ? b.minZ : z > b.maxZ ? b.maxZ : z;
         const dx = x - cx, dz = z - cz;
@@ -126,6 +161,13 @@ export class CollisionWorld {
       const head = pos.y + h;
       this.query(pos.x - r, pos.z - r, pos.x + r, pos.z + r, (b) => {
         if (b.maxY <= feet || b.minY >= head) return;
+        if (b.obb) {
+          const o = b.obb;
+          if (o.mark === this.stamp) return; // one test per oriented box, not per piece
+          o.mark = this.stamp;
+          if (pushOutOBB(o, pos, r)) (moved = true), (hit = true);
+          return;
+        }
         const cx = pos.x < b.minX ? b.minX : pos.x > b.maxX ? b.maxX : pos.x;
         const cz = pos.z < b.minZ ? b.minZ : pos.z > b.maxZ ? b.maxZ : pos.z;
         let dx = pos.x - cx, dz = pos.z - cz;
@@ -236,6 +278,19 @@ export class CollisionWorld {
         marks[b.id] = s;
         if (!b.enabled) continue;
         if (filter && !filter(b)) continue;
+        if (b.obb) {
+          // oriented box: the exact test, once per ray (any of its pieces may be the first one met)
+          const o = b.obb;
+          if (o.mark === s) continue;
+          o.mark = s;
+          if (!rayOBB(o, ox, oy, oz, dx, dy, dz, bestT, _ob)) continue;
+          bestT = _ob.t;
+          best = b;
+          bnx = _ob.nx;
+          bny = _ob.ny;
+          bnz = _ob.nz;
+          continue;
+        }
         // slab test
         let t0 = 0, t1 = bestT;
         let nx = 0, ny = 0, nz = 0;
@@ -301,6 +356,75 @@ export class CollisionWorld {
 }
 
 const _losOut = {};
+const _ob = { t: 0, nx: 0, ny: 0, nz: 0 };
+
+/** squared xz distance from (x, z) to an oriented box */
+function obbDist2(o, x, z) {
+  const dx = x - o.cx, dz = z - o.cz;
+  const u = dx * o.ux + dz * o.uz, v = dx * o.vx + dz * o.vz;
+  const eu = Math.abs(u) - o.hx, ev = Math.abs(v) - o.hz;
+  const a = eu > 0 ? eu : 0, c = ev > 0 ? ev : 0;
+  return a * a + c * c;
+}
+
+/** push a circle (pos.xz, r) out of an oriented box; true if it moved */
+function pushOutOBB(o, pos, r) {
+  const dx = pos.x - o.cx, dz = pos.z - o.cz;
+  const u = dx * o.ux + dz * o.uz, v = dx * o.vx + dz * o.vz;
+  const cu = u < -o.hx ? -o.hx : u > o.hx ? o.hx : u;
+  const cv = v < -o.hz ? -o.hz : v > o.hz ? o.hz : v;
+  let pu = u - cu, pv = v - cv;
+  const d2 = pu * pu + pv * pv;
+  if (d2 >= r * r) return false;
+  let mu, mv;
+  if (d2 > 1e-10) {
+    const d = Math.sqrt(d2);
+    const k = (r - d) / d;
+    mu = pu * k;
+    mv = pv * k;
+  } else {
+    // centre inside: out through the nearest side
+    const su = o.hx - Math.abs(u) + r, sv = o.hz - Math.abs(v) + r;
+    if (su < sv) (mu = (u < 0 ? -1 : 1) * su), (mv = 0);
+    else (mu = 0), (mv = (v < 0 ? -1 : 1) * sv);
+  }
+  pos.x += mu * o.ux + mv * o.vx;
+  pos.z += mu * o.uz + mv * o.vz;
+  return true;
+}
+
+/** ray vs oriented box (slabs in its frame); fills out {t, nx, ny, nz}; ignores rays starting inside */
+function rayOBB(o, ox, oy, oz, dx, dy, dz, maxT, out) {
+  const rx = ox - o.cx, rz = oz - o.cz;
+  const ou = rx * o.ux + rz * o.uz, ov = rx * o.vx + rz * o.vz;
+  const du = dx * o.ux + dz * o.uz, dv = dx * o.vx + dz * o.vz;
+  _sl.t0 = -Infinity;
+  _sl.t1 = maxT;
+  _sl.ax = -1;
+  if (!slab(ou, du, -o.hx, o.hx, 0) || !slab(oy, dy, o.minY, o.maxY, 1) || !slab(ov, dv, -o.hz, o.hz, 2)) return false;
+  const t0 = _sl.t0;
+  if (t0 <= 0 || _sl.ax < 0 || t0 >= maxT) return false;
+  const sg = _sl.sg;
+  out.t = t0;
+  if (_sl.ax === 1) (out.nx = 0), (out.ny = sg), (out.nz = 0);
+  else if (_sl.ax === 0) (out.nx = sg * o.ux), (out.ny = 0), (out.nz = sg * o.uz);
+  else (out.nx = sg * o.vx), (out.ny = 0), (out.nz = sg * o.vz);
+  return true;
+}
+const _sl = { t0: 0, t1: 0, ax: -1, sg: 0 };
+function slab(o, d, lo, hi, axis) {
+  if (Math.abs(d) < 1e-12) return o >= lo && o <= hi;
+  const inv = 1 / d;
+  let ta = (lo - o) * inv, tb = (hi - o) * inv;
+  if (ta > tb) {
+    const t = ta;
+    ta = tb;
+    tb = t;
+  }
+  if (ta > _sl.t0) (_sl.t0 = ta), (_sl.ax = axis), (_sl.sg = d > 0 ? -1 : 1);
+  if (tb < _sl.t1) _sl.t1 = tb;
+  return _sl.t0 <= _sl.t1;
+}
 const losFilter = (b) => (b.flags & FLAG_NOBULLET) === 0;
 
 export const _v = new THREE.Vector3();

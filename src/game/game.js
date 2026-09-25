@@ -5,6 +5,7 @@ import { buildLevel, levelOf } from '../world/level.js';
 import { Lighting } from '../world/lighting.js';
 import { Weather } from '../world/weather.js';
 import { NavGrid } from '../nav/navgrid.js';
+import { Horde } from '../nav/horde.js';
 import { ZombieManager, ZOMBIE_TYPES, PART_MULT } from '../actors/zombie.js';
 import '../actors/biter.js'; // registers the Biter class with the zombie manager
 import { LatchView } from '../fx/latchView.js';
@@ -21,6 +22,7 @@ import { Pickups } from './pickups.js';
 import { Economy, killReward, roundBonus } from './economy.js';
 import { MODES, UPSTAIRS_ROUND } from './modes.js';
 import { GAS_MASK, maskCapacity } from './shop.js';
+import { Gear } from './gear.js';
 import { FLAG_NOBULLET, SURF } from '../world/collision.js';
 import { Shake, clamp, rand, pick, damp } from '../core/utils.js';
 import { QUALITY } from '../core/renderer.js';
@@ -28,7 +30,13 @@ import { preloadGLBs } from '../core/assets.js';
 import { GLB_URLS } from '../core/assetList.js';
 import { addLandmarks } from '../world/landmarks.js';
 import { buildGunShop } from '../world/gunshop.js';
+import { createLabTech } from '../actors/labTech.js';
 import { Barricades } from '../world/barricades.js';
+import { Breach } from '../world/breach.js';
+import { Ladders } from '../actors/ladders.js';
+import { BarnFire } from '../world/barnFire.js';
+import { Power } from '../world/power.js';
+import { Revives } from './revive.js';
 
 const DIFF = {
   // biters: share of Biter packs in a wave, pack: largest Biter pack
@@ -75,7 +83,7 @@ export class Game {
     this.economy.onPay = (amount) => this.hud?.popCash?.(amount);
     this.shopOpen = false;
     this.onShopOpen = null; // set by main.js: show the store, release the pointer
-    this.gear = { mask: { owned: false, level: 0, filter: 0 } }; // store gear that isn't a weapon
+    this.gear = new Gear(this); // store gear worn on body slots (game/gear.js), incl. the gas mask
     this.fHold = null; // seconds F has been held in the buy phase
   }
 
@@ -94,10 +102,12 @@ export class Game {
     this.level = buildLevel();
     this.world = this.level.world;
     scene.add(this.level.group);
+    this.breach = new Breach(this, scene); // the rare wall breach (world/breach.js): its wall patches collide from the start
 
     await step(0.64, 'Wiring the lights');
     this.quality = QUALITY[this.settings.quality] || QUALITY.high;
     this.lighting = new Lighting(scene, this.level.lamps, this.quality);
+    this.lighting.world = this.world; // flashlight auto-dim raycast
     this.lighting.onThunder = (intensity, delay) => {
       this.audio.thunder(intensity, delay);
       if (intensity > 0.8) this.weather?.strike();
@@ -111,18 +121,25 @@ export class Game {
     await step(0.76, 'Computing navigation');
     this.nav = new NavGrid(this.world, this.level.portals, this.level.navBlocks);
     this.postFields = new Map();
+    this.horde = new Horde(this); // entrance routes + crowd bookkeeping for the infected (nav/horde.js)
 
     await step(0.78, 'Loading models');
     await preloadGLBs(GLB_URLS, (f) => progress?.(0.78 + f * 0.04, 'Loading models'));
     addLandmarks(scene);
     this.gunshop = buildGunShop(scene, this.level, this.world);
+    this.lab = this.level.lab; // behind the basement's armored glass (world/lab.js): Nadja at her counter
+    this.lab?.spawnTech(createLabTech);
     this.barricades = new Barricades(this, scene);
+    this.power = new Power(this, scene); // the basement generator: fuel, faults, the lights (world/power.js)
+    this.revives = new Revives(this, scene); // downed teammates, revive channels, bots running to the rescue (game/revive.js)
 
     await step(0.82, 'Infecting soldiers');
     prebuildCharacters();
     this.fx = new Effects(scene, this.world, this.lighting, this.audio);
     this.zombies = new ZombieManager(this, scene);
     this.zombies.prewarm();
+    this.ladders = new Ladders(this); // the barn's hayloft ladder: player + infected climbing
+    this.barnFire = new BarnFire(this); // the rare lightning strike that burns the barn (world/barnFire.js)
     this.latchView = new LatchView(this); // first person with a Biter on your back
     this.weather.onDripSplash = (p) => this.fx.dripSplash(p);
 
@@ -209,7 +226,7 @@ export class Game {
         const o = _p.set(rand(x0, x1), y + rand(0.25, 1.9), rand(z0, z1));
         const a = Math.random() * Math.PI * 2;
         const hit = this.world.raycast(o.x, o.y, o.z, Math.cos(a), 0, Math.sin(a), 8, bulletFilter, _hit);
-        if (!hit) continue;
+        if (!hit || hit.box.tag?.startsWith('lab') || hit.box.tag === 'generator') continue; // the lab's door, window frame and glass stay clean; the generator's bounding box would float smears in mid-air
         const pt = new THREE.Vector3(o.x + Math.cos(a) * hit.t, o.y, o.z + Math.sin(a) * hit.t);
         _n.set(hit.nx, hit.ny, hit.nz);
         if (Math.random() < 0.45) decals.bloodSplat(pt, _n, rand(0.4, 1.0), rand(1, 2.2));
@@ -278,8 +295,9 @@ export class Game {
     this.unlocked = { basement: false, upstairs: false };
     this.dawn = 0;
     this.lighting.moonBase = 0.55;
-    for (const p of this.level.portals) p.enabled = false;
+    for (const p of this.level.portals) p.enabled = !!p.always; // `always`: open from round 1 (e.g. a ladder)
     this.postFields.clear();
+    this.horde?.reset();
 
     this.zombies.clear();
     this.projectiles.clear();
@@ -314,16 +332,20 @@ export class Game {
     this.economy.reset(this.team);
     this.shopOpen = false;
     this.botBuys = [];
-    this.gear = { mask: { owned: false, level: 0, filter: 0 } };
+    this.gear.reset();
     this.fHold = null;
     this.maskActive = false;
     this.maskBreathT = 0;
     this.gunshop?.setOpen(false);
+    this.breach?.reset(); // whole walls again (before the barricades: it drops its barricade spot)
+    this.barnFire?.reset(); // an unburnt barn
     this.barricades?.reset();
+    this.power?.start();
+    this.revives?.reset();
     if (this.endless) this.hud.banner('ENDLESS · CABIN FEVER', 'No extraction is coming. Hold out as long as you can', 3.2, 'normal');
     else this.hud.banner('FIRETEAM · CABIN FEVER', 'Hold the farmhouse until extraction arrives', 3.2, 'normal');
     this.audio.startAmbience();
-    this._updateNav(true);
+    this._updateNav();
   }
 
   /** k-th bot's start spot: the defense posts after the player's; past those, a clear spot next to one */
@@ -362,13 +384,14 @@ export class Game {
       headshots: ps.headshots,
       shots,
       hits: ps.hits ?? 0,
+      revives: ps.revives ?? 0, // teammates you got back up (game/revive.js)
       accuracy: shots > 0 ? Math.min(1, (ps.hits ?? 0) / shots) : null,
       rounds: outcome === 'victory' ? this.round : Math.max(0, this.round - 1),
       roundReached: this.round,
       maxRounds: this.endless ? null : this.maxRounds,
       timeSeconds: Math.round(this.elapsed),
       fireteam: this.team.filter((m) => !m.isPlayer).map((m) => m.id),
-      team: this.team.filter((m) => !m.isPlayer).map((m) => ({ id: m.id, name: m.name, kills: m.stats.kills, deaths: m.stats.deaths })),
+      team: this.team.filter((m) => !m.isPlayer).map((m) => ({ id: m.id, name: m.name, kills: m.stats.kills, deaths: m.stats.deaths, revives: m.stats.revives ?? 0 })),
     };
   }
 
@@ -380,6 +403,8 @@ export class Game {
     this.pickups.clear();
     for (const b of this.bots) b.hide();
     this.weapons._stopLoops?.();
+    this.power?.stop();
+    this.revives?.onRoundEnd();
   }
 
   // ------------------------------------------------------------------ rounds
@@ -438,6 +463,8 @@ export class Game {
     this.gunshop?.evacuate(this.player);
     this.roundTime = 0;
     this.toSpawn = this._composition(this.round);
+    this.breach?.onRoundStart(this.toSpawn); // rarely: a Boomer blows a hole in the wall this round
+    this.barnFire?.onRoundStart(); // rarely: lightning sets the barn on fire this round
     this.roundTotal = this.toSpawn.length;
     this.spawnT = 1.5;
     this.hud.setCountdown(null);
@@ -446,6 +473,8 @@ export class Game {
     if (milestone) sub = 'The horde grows stronger';
     this.hud.banner(`ROUND ${this.round}`, sub, 3, this.round === this.maxRounds || milestone ? 'danger' : 'normal');
     this.audio.play('round_start', { volume: 0.9 });
+    this.power?.onRoundStart(this.round); // used gas cans come back upstairs
+    this.revives?.onRoundStart(); // everyone can be revived once again
     // special weapons
     for (const s of SPECIAL_SPAWNS) {
       if (s.round === this.round && this.round <= this.maxRounds) {
@@ -460,6 +489,8 @@ export class Game {
 
   _endRound() {
     this.state = this.round >= this.maxRounds ? 'victory' : 'shop';
+    this.breach?.onRoundEnd();
+    this.revives?.onRoundEnd(); // the fallen get up anyway (below)
     if (this.state === 'victory') {
       this._finish(true);
       return;
@@ -504,17 +535,21 @@ export class Game {
       this.level.unlock('cellarBarricade');
       for (const p of this.level.portals) if (p.id !== 'upstairs') p.enabled = true;
       this.postFields.clear();
+      this.horde?.reset();
       this.shopNews.push('THE BASEMENT IS OPEN');
+      this.power?.activate(); // from now on the generator burns fuel and can fail; gas cans upstairs
       setTimeout(() => {
         this.hud.banner('THE BASEMENT IS OPEN', 'The infected can now come through the cellar', 3, 'danger');
         this.audio.play('wood_creak', { volume: 1 });
       }, 3300);
+      setTimeout(() => this.hud.banner('THE GENERATOR BURNS FUEL', 'Keep it running · gas cans are upstairs', 3, 'normal'), 6800);
     }
     if (next >= UPSTAIRS_ROUND && !this.unlocked.upstairs) {
       this.unlocked.upstairs = true;
       this.level.unlock('upstairsBarricade');
       for (const p of this.level.portals) if (p.id === 'upstairs') p.enabled = true;
       this.postFields.clear();
+      this.horde?.reset();
       this.shopNews.push('THE UPSTAIRS IS OPEN');
       setTimeout(() => this.hud.banner('THE UPSTAIRS IS OPEN', 'A special weapon waits upstairs · the balcony overlooks the yard · watch the stairs', 3.5, 'danger'), 3300);
     }
@@ -551,6 +586,12 @@ export class Game {
   // F is the flashlight. In the buy phase it is read on release: a tap opens the gun shop at the
   // counter (the flashlight anywhere else) and holding it READY_HOLD s readies up.
   _updateF(dt, input) {
+    // at a downed teammate F is the revive (game/revive.js), at the broken generator the repair
+    // (world/power.js): both held, never the flashlight
+    if (this.revives?.fOwned(this.player) || this.power?.fOwned(this.player)) {
+      this.fHold = null;
+      return;
+    }
     if (this.state !== 'shop' || this.shopOpen) {
       this.fHold = null;
       if (input.hit('KeyF')) this._toggleFlashlight();
@@ -599,11 +640,12 @@ export class Game {
         best = p;
       }
     }
+    best = this.breach?.spawnPoint(pts) ?? best; // a breached wall: part of the horde comes from that side
     const pos = best.clone().add(new THREE.Vector3(rand(-2.5, 2.5), 0.05, rand(-2.5, 2.5)));
     const r = this.round;
     const hpMult = this.diff.hp * (1 + 0.065 * (r - 1));
     const spd = this.diff.speed * (1 + 0.01 * Math.min(r - 1, 30));
-    this.zombies.spawn(type, pos, r, hpMult, spd);
+    this.breach?.onSpawn(this.zombies.spawn(type, pos, r, hpMult, spd)); // (the round's wall-breaching Boomer)
     // the rest of a dog / Biter pack queued right behind comes in with its leader
     while ((type === 'dog' || type === 'biter') && this.toSpawn[0] === type && this.zombies.aliveCount < this.maxAlive) {
       this.toSpawn.shift();
@@ -662,6 +704,7 @@ export class Game {
       this.audio.play('impact_flesh', { position: end, volume: 0.55 });
     } else if (!stoppedByZombie && wall) {
       this.fx.impact(end, wn, wallBox.surface, { silent: opts.pellet > 1 || opts.bot && Math.random() < 0.6 });
+      if (wallBox.tag === 'labGlass') this.lab?.onGlassHit(end);
     }
     if (opts.tracerFrom) {
       this.fx.tracer(opts.tracerFrom, end, { speed: def.id === 'l96a1' ? 600 : 360, length: def.id === 'l96a1' ? 8 : 3.5, width: def.id === 'l96a1' ? 0.03 : 0.016 });
@@ -676,7 +719,8 @@ export class Game {
     this.audio.play('hitmarker', { volume: 0.5, pitch: head ? 1.2 : 1 });
   }
 
-  meleeAttack(player, damage, range, heavy) {
+  /** `def`: the melee weapon (knife / machete: its hit sound, `oneHit` infected types). */
+  meleeAttack(player, damage, range, heavy, def = null) {
     const cam = player.camera;
     const fwd = cam.getWorldDirection(new THREE.Vector3());
     const eye = cam.position;
@@ -696,12 +740,13 @@ export class Game {
     if (best) {
       const back = new THREE.Vector3(Math.sin(best.yaw), 0, Math.cos(best.yaw));
       const fromBehind = back.dot(fwd) > 0.5;
-      const dmg = damage * (fromBehind ? 2 : 1);
+      let dmg = damage * (fromBehind ? 2 : 1);
+      if (def?.oneHit?.includes(best.typeName)) dmg = Math.max(dmg, best.hp + 1); // the machete vs a Biter
       const res = best.damage(dmg, 'torso', fwd, player, { weapon: 'knife' });
       this.hitAccum += res.dealt ?? dmg;
       const pt = best.hipsWorld.clone().addScaledVector(fwd, -0.2);
       this.fx.bloodHit(pt, fwd, { amount: heavy ? 1.3 : 0.8 });
-      this.audio.play('knife_hit', { position: pt, volume: 0.9 });
+      this.audio.play(def?.hitSound ?? 'knife_hit', { position: pt, volume: 0.9 });
       this.hud.hitMarker(res.killed, false);
       this.shake.add(0.12);
       return;
@@ -784,6 +829,7 @@ export class Game {
   explode(pos, radius, damage, source, opts = {}) {
     this.fx.explosion(pos, opts.scale ?? 1);
     this.barricades?.explosion(pos, radius, damage, source, opts);
+    this.breach?.explosion(pos, radius, damage, source, opts);
     // camera shake by distance
     const dp = this.player.pos.distanceTo(pos);
     this.shake.add(clamp(1.2 - dp / 22, 0, 1) * (opts.scale ?? 1));
@@ -901,23 +947,40 @@ export class Game {
   }
 
   onPlayerDied(player, source) {
+    const revivable = this.revives?.onDeath(player);
     this.weapons._stopLoops?.();
-    this.hud.banner('YOU ARE DOWN', this.team.some((m) => m !== player && m.alive) ? 'You will respawn at the end of the round' : '', 3, 'danger');
+    const others = this.team.some((m) => m !== player && m.alive);
+    this.hud.banner('YOU ARE DOWN', others ? (revivable ? 'A teammate can revive you for 15 s' : 'You will respawn at the end of the round') : '', 3, 'danger');
     this.hud.addKill({ killer: source?.type?.name ? 'Infected ' + source.type.name : 'Toxic Gas', victim: 'You', weapon: '', headshot: false });
   }
 
   onTeammateDied(bot, source) {
+    this.revives?.onDeath(bot);
     this.hud.addKill({ killer: source?.type?.name ? 'Infected ' + source.type.name : '—', victim: bot.name, weapon: '', headshot: false });
     this.audio.play('player_hurt', { position: bot.pos, volume: 0.8, pitch: 0.8 });
   }
 
   // ------------------------------------------------------------------ update
-  _updateNav(force = false) {
-    this.navT -= 1;
+  /** The infected's flow field toward every living team member (labels each cell with the nearest one). */
+  _updateNav() {
     const sources = [];
-    for (const m of this.team) if (m.alive) sources.push({ level: levelOf(m.pos.y + 0.3), x: m.pos.x, z: m.pos.z });
-    if (!sources.length) sources.push({ level: 1, x: 0, z: 0 });
+    let sig = '';
+    for (const m of this.team) {
+      if (!m.alive) continue;
+      const level = levelOf(m.pos.y + 0.3);
+      sources.push({ level, x: m.pos.x, z: m.pos.z, ref: m });
+      sig += level;
+    }
+    if (!sources.length) sources.push({ level: 1, x: 0, z: 0, ref: null });
+    this._navSig = sig;
     this.nav.compute(sources);
+  }
+
+  /** re-flow early when someone changes floor, dies or respawns (else every 0.2 s) */
+  _navStale() {
+    let sig = '';
+    for (const m of this.team) if (m.alive) sig += levelOf(m.pos.y + 0.3);
+    return sig !== this._navSig;
   }
 
   update(dt) {
@@ -937,6 +1000,7 @@ export class Game {
       this.audio.setIndoor?.(1);
       this.viewmodel.setVisible(false);
       this.fx.update(dt);
+      this.lab?.update(dt, this); // hides the lab while the menu camera is above ground
       return;
     }
 
@@ -1007,13 +1071,13 @@ export class Game {
 
     // nav field
     this.navT -= dt;
-    if (this.navT <= 0) {
-      this.navT = 0.25;
+    if (this.navT <= 0 || this._navStale()) {
+      this.navT = 0.2;
       this._updateNav();
     }
 
     // zombies
-    this.zombies.update(dt, { team: this.team, world: this.world, nav: this.nav, time: this.time, roundTime: this.roundTime });
+    this.zombies.update(dt, { team: this.team, world: this.world, nav: this.nav, horde: this.horde, time: this.time, roundTime: this.roundTime });
     for (let i = this.pendingExplosions.length - 1; i >= 0; i--) {
       const e = this.pendingExplosions[i];
       e.t -= dt;
@@ -1025,8 +1089,12 @@ export class Game {
     this.projectiles.update(dt);
     this.pickups.update(dt, player, input.locked ? input : null);
     this.level.update(dt);
+    this.barnFire?.update(dt);
     this.barricades?.update(dt, player.alive && input.locked ? input : null);
+    this.power?.update(dt, player.alive && input.locked ? input : null);
+    this.revives?.update(dt, input.locked ? input : null);
     this.gunshop?.update(dt, this);
+    this.lab?.update(dt, this);
 
     // defeat check: entire team down
     if (!gameOver && this.state !== 'menu' && !this.team.some((m) => m.alive)) {
@@ -1154,17 +1222,21 @@ export class Game {
         inGas: player.inGas * (1 - 0.7 * (this.maskFx ?? 0)),
         lowHealth: clamp(1 - player.hp / 30, 0, 1),
         weaponName: info.name,
+        altPrimary: w.altPrimary?.() ?? null, // weapon backpack: the other primary (key 1)
         ammo: w.def.mode === 'grenade' ? w.grenades : info.ammo,
         magSize: info.magSize,
         reserve: info.reserve,
+        dual: info.dual, // akimbo pistols: both mags
         grenades: w.grenades,
         molotovs: w.molotovs,
         barricades: w.barricades,
+        gascans: w.gascans,
+        generator: this.power?.hudInfo() ?? null,
         cash: this.economy.cash(player),
         showAmmo: info.showAmmo && w.def.mode !== 'grenade',
         reloading: info.reloading,
         crosshair: w.crosshair(this.camera),
-        radar: { x: player.pos.x, z: player.pos.z, yaw: player.yaw, enemies, allies, pickups: this.pickups.radarList(), level: player.level },
+        radar: { x: player.pos.x, z: player.pos.z, yaw: player.yaw, enemies, allies, pickups: this.pickups.radarList().concat(this.power?.radarList() ?? [], this.revives?.radarList() ?? []), level: player.level },
       },
       dt
     );
@@ -1185,12 +1257,21 @@ export class Game {
     const buy = this.state === 'shop';
     hud.setBuyPhase?.(buy && !this.shopOpen ? { next: this.round + 1, gunshop: !!this.gunshop } : null);
     const readyHold = buy && this.fHold != null && this.fHold > 0.15;
-    hud.setHold?.(readyHold ? this.fHold / READY_HOLD : this.barricades?.hold ?? null, readyHold ? null : this.barricades?.holdLabel);
+    const pw = this.power, rv = this.revives;
+    const hold = rv?.hold != null ? rv : pw?.hold != null ? pw : this.barricades;
+    hud.setHold?.(readyHold ? this.fHold / READY_HOLD : hold?.hold ?? null, readyHold ? null : hold?.holdLabel);
     const canShop = this.canShop();
-    hud.setInteract?.(canShop && this.gunshop ? 'Press [F] to open the GUN SHOP' : this.barricades?.prompt ?? null);
+    hud.setInteract?.(canShop && this.gunshop ? 'Press [F] to open the GUN SHOP' : rv?.prompt ?? pw?.prompt ?? this.barricades?.prompt ?? null);
+    hud.setRevive?.(rv?.hudInfo() ?? null);
     let wp = null;
-    const ent = this.gunshop?.entrance;
-    if (buy && !this.shopOpen && ent && player.alive && !canShop && ent.distanceTo(player.pos) > 2.5) {
+    // the gun shop in the buy phase, else a downed teammate, else the generator / a gas can while the power is out
+    let ent = this.gunshop?.entrance, wpLabel = 'GUN SHOP';
+    if (!(buy && !this.shopOpen && ent && !canShop && ent.distanceTo(player.pos) > 2.5)) {
+      const g = rv?.waypoint(player) ?? pw?.waypoint(player);
+      ent = g?.pos ?? null;
+      wpLabel = g?.label;
+    }
+    if (ent && player.alive && !this.shopOpen) {
       _wp.copy(ent).setY(ent.y + 0.8).project(this.camera);
       let x = _wp.x, y = _wp.y;
       const behind = _wp.z > 1;
@@ -1204,7 +1285,7 @@ export class Game {
         x *= 0.9 / m;
         y *= 0.9 / m;
       }
-      wp = { x: (x * 0.5 + 0.5) * window.innerWidth, y: (-y * 0.5 + 0.5) * window.innerHeight, dist: Math.round(ent.distanceTo(player.pos)), label: 'GUN SHOP', edge, angle: Math.atan2(-y, x) };
+      wp = { x: (x * 0.5 + 0.5) * window.innerWidth, y: (-y * 0.5 + 0.5) * window.innerHeight, dist: Math.round(ent.distanceTo(player.pos)), label: wpLabel, edge, angle: Math.atan2(-y, x) };
     }
     hud.setWaypoint?.(wp);
 

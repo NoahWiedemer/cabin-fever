@@ -887,6 +887,32 @@ def('knife_hit', { d: 0.4, v: 4, gain: 0.5, rev: 0.12, max: 4 }, (b) => {
   b.scrape(t + 0.02, 0.08, { f0: 3000, f1: 1800, q: 1.2, g: 0.2 });
 });
 
+// machete (store gear, game/gear.js): a long blade cutting air, deeper than the knife, with a thin
+// steel ring as it comes round; the hit is a heavy wet chop with a bone crack and the blade ringing
+def('machete_swing', { d: 0.5, v: 4, gain: 0.42, rev: 0.1, max: 3, jit: 0.05 }, (b) => {
+  const t = 0.004;
+  const dur = rnd(0.26, 0.33);
+  b.whoosh(t, dur, { f0: rnd(280, 360), fm: rnd(1500, 1900), f1: 520, q: 1.6, g: 1, kind: 'pink', peak: 0.5 });
+  b.whoosh(t + 0.02, dur * 0.85, { f0: 700, fm: rnd(3200, 3800), f1: 1100, q: 5, g: 0.45, peak: 0.55 });
+  b.modal(t + dur * 0.35, [[rnd(2350, 2550), 0.05, 0.22], [rnd(3900, 4200), 0.035, 0.16], [rnd(6100, 6500), 0.02, 0.1]], 1);
+  b.cloth(t, 0.12, { g: 0.3, f: 1200 });
+});
+
+def('machete_hit', { d: 0.55, v: 4, gain: 0.6, rev: 0.14, max: 4 }, (b) => {
+  const t = 0.003;
+  b.click(t, 0.7, 0.0012);
+  b.thump(t, { f0: 170, f1: 60, sweep: 0.05, d: 0.12, g: 1.1, drive: 2 });
+  b.nb(t, { kind: 'pink', type: 'bandpass', f: 750, f2: 380, ft: 0.14, q: 1.1, a: 0.001, d: 0.16, g: 0.9, drive: 2.5 });
+  b.nb(t, { type: 'bandpass', f: 2200, q: 0.8, a: 0.0004, d: 0.035, g: 0.55, drive: 4 });
+  b.crackle(t + 0.004, 0.05, 0.0025, 0.5, b.out, { w: 3 }); // bone
+  const w = b.fbus('lowpass', 1800, 0, 0.55);
+  for (let k = 0; k < 4; k++) {
+    const f = rnd(250, 700);
+    b.chirp(t + rnd(0.01, 0.1), f, f * rnd(1.3, 2), rnd(0.015, 0.035), rnd(0.4, 1), w);
+  }
+  b.modal(t + 0.01, [[rnd(1750, 1900), 0.06, 0.2], [rnd(2900, 3100), 0.045, 0.14], [rnd(4700, 5000), 0.025, 0.08]], 1); // the blade rings
+});
+
 def('dryfire', { d: 0.15, v: 3, gain: 0.45, rev: 0.05, max: 3 }, (b) => {
   const t = 0.002;
   b.click(t, 0.5, 0.0008);
@@ -1121,6 +1147,28 @@ def('shotgun_shell_drop', { d: 0.45, v: 4, gain: 0.22, rev: 0.1, max: 6, jit: 0.
   }
 });
 
+// an empty magazine hitting the floor (fx/magDrops.js): a hollow steel-and-polymer clack, a skip, a rattle
+def('mag_drop', { d: 0.5, v: 4, gain: 0.3, rev: 0.12, max: 4, jit: 0.06 }, (b) => {
+  let t = 0.003;
+  let a = 1;
+  for (let k = 0; k < 3; k++) {
+    b.thump(t, { f0: 250, f1: 140, sweep: 0.02, d: 0.05, g: 0.9 * a });
+    clack(b, t, { g: 0.7 * a, f: rnd(0.72, 0.86), dec: 0.035, low: false });
+    b.modal(t, [[1500 * rnd(0.94, 1.06), 0.22, 0.06], [3700 * rnd(0.95, 1.05), 0.12, 0.035]], a);
+    t += rnd(0.07, 0.11) * (k === 0 ? 1 : 0.55);
+    a *= rnd(0.3, 0.45);
+  }
+});
+
+// pistol slide slamming home off the slide stop (akimbo reloads, player/akimbo.js)
+def('pistol_slide', { d: 0.3, v: 3, gain: 0.45, rev: 0.1, max: 3 }, (b) => {
+  const r = 0.02;
+  b.modal(r - 0.012, [[3000, 0.2, 0.015]], 1);
+  clack(b, r, { g: 1.2, f: rnd(1.02, 1.08), dec: 0.08 });
+  b.thump(r, { f0: 270, f1: 150, sweep: 0.03, d: 0.06, g: 0.55 });
+  b.modal(r, [[2100, 0.2, 0.1], [5200, 0.12, 0.06]], 1);
+});
+
 // ===== Impacts ==============================================================
 
 def('impact_wood', { d: 0.4, v: 4, gain: 0.5, rev: 0.2, max: 8, jit: 0.06 }, (b) => {
@@ -1166,6 +1214,22 @@ def('impact_metal', { d: 0.8, v: 4, gain: 0.45, rev: 0.22, max: 6, jit: 0.05 }, 
     env.gain.linearRampToValueAtTime(0.45, t2 + 0.012);
     env.gain.setTargetAtTime(0, t2 + 0.03, dur / 3.5);
     b.nb(t2, { type: 'bandpass', f: f0, f2: f1, ft: dur, q: 8, a: 0.01, d: dur, g: 0.35 });
+  }
+});
+
+// armored glass taking a round: a hard tick, a short high ring, glittering splinters (it doesn't shatter)
+def('impact_glass', { d: 0.6, v: 4, gain: 0.5, rev: 0.25, max: 6, jit: 0.05 }, (b) => {
+  const t = 0.002;
+  b.click(t, 1, 0.001);
+  b.nb(t, { type: 'highpass', f: 3000, a: 0.0004, d: 0.03, g: 0.8 });
+  b.thump(t, { f0: 420, f1: 260, sweep: 0.015, d: 0.05, g: 0.35 });
+  const f = rnd(2300, 2900);
+  b.modal(t, [[f, 0.35, 0.22], [f * 1.63, 0.3, 0.16], [f * 2.71, 0.22, 0.1], [f * 4.1, 0.14, 0.06]], 1);
+  let tt = t + 0.01;
+  while (tt < 0.32) {
+    const fr = rnd(4500, 9500);
+    b.modal(tt, [[fr, 0.5, rnd(0.02, 0.06)]], rnd(0.1, 0.35) * (1 - tt / 0.35));
+    tt += expRand(45);
   }
 });
 
@@ -1288,6 +1352,16 @@ def('land', { d: 0.45, v: 3, gain: 0.35, rev: 0.1, max: 2 }, (b) => {
   b.nb(t, { kind: 'pink', type: 'bandpass', f: 1300, q: 0.9, a: 0.002, d: 0.08, g: 0.35 });
   b.rattle(t + 0.01, 0.12, 6, { f: 2800, g: 0.2 });
   b.cloth(t, 0.15, { g: 0.35, f: 1100 });
+});
+
+// a hand / boot on a wooden ladder rung (src/actors/ladders.js): dull knock, a creak now and then, cloth
+def('ladder_step', { d: 0.45, v: 6, gain: 0.3, rev: 0.12, max: 4, jit: 0.06 }, (b, i) => {
+  const t = 0.004;
+  b.thump(t, { f0: rnd(170, 230), f1: 105, sweep: 0.03, a: 0.001, d: 0.06, g: 0.75 });
+  b.nb(t, { type: 'bandpass', f: rnd(650, 950), q: 5, a: 0.0008, d: 0.05, g: 0.5 });
+  b.nb(t, { kind: 'pink', type: 'bandpass', f: 2200, q: 1, a: 0.001, d: 0.02, g: 0.25 });
+  if (i % 2 === 0 || chance(0.4)) b.creak(t + rnd(0.02, 0.06), rnd(0.12, 0.25), { f: rnd(500, 900), g: rnd(0.2, 0.35), r0: rnd(30, 50), r1: rnd(50, 90) });
+  b.cloth(t + 0.01, 0.12, { g: 0.25, f: 1200 });
 });
 
 def('player_hurt', { d: 0.65, v: 4, gain: 0.5, rev: 0.08, max: 2 }, (b) => {
@@ -1777,6 +1851,17 @@ def('ui_hover', { d: 0.06, v: 1, gain: 0.22, rev: 0, max: 3, jit: 0.02 }, (b) =>
   b.modal(t, [[6200, 0.1, 0.01]], 1);
 });
 
+// a burning barn (world/barnFire.js): low roar, flapping flame noise, dense crackle and the odd sharp pop
+def('fire_roar', { d: 4, xf: 0.4, loop: true, v: 1, gain: 0.7, rev: 0.25, max: 2, jit: 0, ref: 7 }, (b) => {
+  const T = b.dur;
+  b.noise('brown', 0, T).connect(b.f('lowpass', 320)).connect(b.g(0.9, b.out));
+  const flutter = b.g(0, b.out);
+  b.noise('pink', 0, T).connect(b.f('bandpass', 650, 0.6)).connect(flutter);
+  for (let t = 0; t < T; t += rnd(0.04, 0.14)) flutter.gain.setValueAtTime(rnd(0.08, 0.45), t);
+  b.crackle(0, T, 120, 0.7, b.fbus('bandpass', 2600, 0.8, 0.9), { flat: true, skew: 2.5, w: 3 });
+  b.crackle(0, T, 10, 1, b.fbus('highpass', 1100, 0, 0.9), { flat: true, skew: 1.4, w: 5 });
+});
+
 def('lightning_crack', { d: 2.3, v: 3, gain: 1.0, rev: 0.4, max: 2, jit: 0.04, ref: 12 }, (b) => {
   const t = 0.003;
   const bus = b.g(1, b.out);
@@ -1863,6 +1948,200 @@ def('glass_break', { d: 1.3, v: 3, gain: 0.65, rev: 0.25, max: 3, jit: 0.04, ref
     tt += expRand(90 * (1 - x) + 6);
   }
   b.crackle(t + 0.1, 0.8, 90, 0.4, b.fbus('highpass', 3000, 0, 0.5), { pow: 1.5 });
+});
+
+// ===== Generator (world/power.js) =============================================
+
+// single-cylinder gasoline engine at ~3600 rpm: 30 firings a second into a driven low end, exhaust
+// bark pulsing with them, valve-train ticks and a faint alternator whine
+def('gen_run', { d: 1.0, xf: 0.12, loop: true, v: 1, gain: 0.5, rev: 0.25, max: 2, jit: 0, ref: 1.6 }, (b) => {
+  const T = b.dur;
+  const L = b.L;
+  const per = L / 30;
+  const low = b.g(1);
+  low.connect(b.f('lowpass', 420, 0.7)).connect(b.shaper(2.5, b.g(0.7, b.out)));
+  const ex = b.fbus('bandpass', 280, 1.1, 0.9);
+  for (let k = 0; ; k++) {
+    const t = 0.002 + k * per + rnd(-0.0012, 0.0012);
+    if (t >= T - 0.02) break;
+    const a = rnd(0.8, 1);
+    b.chirp(t, 95, 42, 0.03, a, low);
+    b.click(t, 0.25 * a, 0.004, ex);
+  }
+  const am = b.g(0.4);
+  b.noise('brown', 0, T).connect(b.f('bandpass', 220, 0.9)).connect(am);
+  am.connect(b.g(0.9, b.out));
+  b.osc('sine', Math.round(30 * L) / L, 0, T).connect(b.g(0.35)).connect(am.gain);
+  b.crackle(0, T, 240, 0.12, b.fbus('highpass', 3500, 0, 0.5), { flat: true, skew: 2.5 });
+  b.osc('sine', Math.round(180 * L) / L, 0, T, b.g(0.035, b.out));
+  b.osc('triangle', Math.round(360 * L) / L, 0, T, b.g(0.012, b.out));
+});
+
+// a misfire: backfire bang through the muffler, then a few ragged half-firings
+def('gen_cough', { d: 0.8, v: 4, gain: 0.7, rev: 0.3, max: 3, jit: 0.05, ref: 2.5 }, (b) => {
+  const t = 0.003;
+  b.click(t, 0.8, 0.003);
+  b.thump(t, { f0: 120, f1: 40, sweep: 0.06, d: 0.18, g: 1, drive: 2.5 });
+  b.nb(t, { kind: 'brown', type: 'bandpass', f: 300, q: 0.9, a: 0.002, d: 0.16, g: 1.2, drive: 3 });
+  b.nb(t, { type: 'bandpass', f: 1500, q: 0.7, a: 0.001, d: 0.05, g: 0.5 });
+  let tt = t + rnd(0.08, 0.14);
+  for (let i = 0; i < 3 && tt < 0.7; i++) {
+    b.thump(tt, { f0: 95, f1: 45, sweep: 0.03, d: 0.06, g: rnd(0.3, 0.6), drive: 1.5 });
+    b.nb(tt, { kind: 'brown', type: 'bandpass', f: 260, q: 1, a: 0.002, d: 0.05, g: rnd(0.3, 0.5) });
+    tt += rnd(0.05, 0.13);
+  }
+  b.rattle(t + 0.02, 0.2, 4, { f: 2600, g: 0.2 });
+});
+
+// running down: the firings slow and weaken, a last shudder, the hot metal ticks
+def('gen_die', { d: 2.6, v: 2, gain: 0.7, rev: 0.3, max: 2, jit: 0.03, ref: 2.5 }, (b) => {
+  const low = b.g(1);
+  low.connect(b.f('lowpass', 380, 0.7)).connect(b.shaper(2, b.g(0.8, b.out)));
+  let t = 0.002, per = 1 / 30, a = 1;
+  while (per < 0.3 && t < 1.8) {
+    b.chirp(t, 90, 40, 0.035, a, low);
+    b.nb(t, { kind: 'brown', type: 'bandpass', f: 240, q: 1, a: 0.002, d: 0.04 + per * 0.3, g: 0.6 * a });
+    t += per * rnd(0.9, 1.15);
+    per *= 1.14;
+    a *= 0.97;
+  }
+  b.thump(t, { f0: 70, f1: 35, sweep: 0.08, d: 0.25, g: 0.9, drive: 1.5 });
+  clack(b, t + 0.02, { g: 0.5, f: 0.45, dec: 0.1 });
+  b.rattle(t + 0.03, 0.35, 5, { f: 2200, g: 0.2 });
+  for (let i = 0; i < 3; i++) b.modal(t + 0.35 + i * rnd(0.12, 0.2), [[rnd(3000, 4200), 0.15, 0.05]], 0.4);
+});
+
+// the recoil starter: the cord rips off its drum, the engine turns over, the cord rewinds
+def('gen_pull', { d: 1.1, v: 3, gain: 0.65, rev: 0.2, max: 2, jit: 0.04, ref: 2 }, (b) => {
+  const t = 0.004;
+  b.scrape(t, 0.26, { f0: 700, f1: 2400, q: 1.6, g: 0.9 });
+  b.crackle(t, 0.26, 260, 0.35, b.fbus('bandpass', 3200, 1, 0.8), { flat: true });
+  let tt = t + 0.05, per = 0.09;
+  for (let i = 0; i < 6; i++) {
+    b.thump(tt, { f0: 85, f1: 45, sweep: 0.03, d: 0.07, g: 0.7 - i * 0.05, drive: 1.2 });
+    b.nb(tt, { kind: 'brown', type: 'bandpass', f: 220, q: 1, a: 0.003, d: 0.06, g: 0.35 });
+    tt += per;
+    per *= 0.85;
+  }
+  b.scrape(t + 0.34, 0.3, { f0: 1800, f1: 900, q: 2, g: 0.35 });
+  clack(b, t + 0.66, { g: 0.5, f: 0.7, dec: 0.05 });
+});
+
+// it catches: a bang, ragged firings gathering speed (the gen_run loop takes over)
+def('gen_catch', { d: 1.2, v: 2, gain: 0.7, rev: 0.25, max: 2, jit: 0.03, ref: 2.5 }, (b) => {
+  const low = b.g(1);
+  low.connect(b.f('lowpass', 450, 0.7)).connect(b.shaper(2.5, b.g(0.8, b.out)));
+  b.thump(0.004, { f0: 130, f1: 40, sweep: 0.06, d: 0.2, g: 1, drive: 2.5 });
+  b.nb(0.004, { kind: 'brown', type: 'bandpass', f: 320, q: 0.9, a: 0.002, d: 0.18, g: 1.1, drive: 3 });
+  let t = 0.12, per = 0.11;
+  while (t < 1.1) {
+    const a = rnd(0.7, 1) * (1 - (t / 1.1) * 0.6);
+    b.chirp(t, 95, 42, 0.03, a, low);
+    b.nb(t, { kind: 'brown', type: 'bandpass', f: 280, q: 1, a: 0.002, d: 0.03, g: 0.5 * a });
+    t += per * rnd(0.85, 1.2);
+    per = Math.max(1 / 30, per * 0.82);
+  }
+});
+
+// the house goes dead: a relay drops out with a clunk and the mains hum sinks away
+def('power_out', { d: 1.3, v: 2, gain: 0.5, rev: 0.25, max: 1, jit: 0.02 }, (b) => {
+  const t = 0.004;
+  b.click(t, 0.6, 0.002);
+  b.thump(t, { f0: 160, f1: 60, sweep: 0.04, d: 0.12, g: 0.8 });
+  clack(b, t, { g: 0.5, f: 0.6, dec: 0.05 });
+  b.tone(t, 120, { type: 'sawtooth', a: 0.002, h: 0.05, d: 0.9, g: 0.12, f2: 38, ft: 0.9, dest: b.fbus('lowpass', 600, 0, 1) });
+  b.tone(t, 60, { type: 'sine', a: 0.002, h: 0.05, d: 0.9, g: 0.35, f2: 25, ft: 0.9 });
+});
+
+// the lights come back: relay clack, the hum rises, filaments tick
+def('power_on', { d: 0.9, v: 2, gain: 0.45, rev: 0.25, max: 1, jit: 0.02 }, (b) => {
+  const t = 0.004;
+  clack(b, t, { g: 0.7, f: 0.7, dec: 0.05 });
+  b.thump(t, { f0: 180, f1: 90, sweep: 0.03, d: 0.08, g: 0.5 });
+  b.tone(t + 0.02, 40, { type: 'sawtooth', a: 0.15, h: 0.2, d: 0.4, g: 0.1, f2: 120, ft: 0.3, dest: b.fbus('lowpass', 700, 0, 1) });
+  b.tone(t + 0.02, 30, { type: 'sine', a: 0.15, h: 0.2, d: 0.4, g: 0.25, f2: 60, ft: 0.3 });
+  for (let i = 0; i < 3; i++) b.modal(t + 0.05 + i * rnd(0.04, 0.1), [[rnd(5000, 7000), 0.1, 0.03]], 0.3);
+});
+
+// pipe wrench on a seized nut: a burst of ratchet teeth, the nut gives with a dull clank
+def('wrench_ratchet', { d: 0.4, v: 4, gain: 0.45, rev: 0.15, max: 3, jit: 0.05 }, (b) => {
+  let t = 0.004;
+  const n = 5 + Math.floor(rnd(0, 3));
+  for (let i = 0; i < n; i++) {
+    const f = rnd(3800, 4600);
+    b.click(t, 0.4, 0.0008);
+    b.modal(t, [[f, 0.4, 0.025], [f * 1.7, 0.2, 0.015], [rnd(1800, 2200), 0.2, 0.03]], 0.6);
+    t += rnd(0.018, 0.028);
+  }
+  b.thump(t + 0.02, { f0: 240, f1: 130, sweep: 0.03, d: 0.08, g: 0.5 });
+  clack(b, t + 0.02, { g: 0.6, f: 0.55, dec: 0.08 });
+});
+
+// one can's worth (POWER.refuelTime): fuel running into the filler neck, glugging as air bubbles back
+// into the can (a one-shot, stopped early when you let go)
+def('fuel_pour', { d: 2.2, v: 2, gain: 0.45, rev: 0.12, max: 1, jit: 0.02 }, (b) => {
+  const T = 2.1;
+  const bus = b.g(0, b.out);
+  bus.gain.setValueAtTime(0, 0);
+  bus.gain.linearRampToValueAtTime(1, 0.25);
+  bus.gain.setValueAtTime(1, T - 0.25);
+  bus.gain.linearRampToValueAtTime(0, T);
+  b.noise('white', 0, T).connect(b.f('bandpass', 1400, 0.8)).connect(b.g(0.18, bus));
+  b.noise('pink', 0, T).connect(b.f('bandpass', 600, 1.5)).connect(b.g(0.2, bus));
+  b.gurgle(0.1, T * 0.55, { rate: 22, f0: 220, f1: 700, g: 0.8, dest: bus });
+  b.gurgle(T * 0.42, T * 0.55, { rate: 22, f0: 220, f1: 700, g: 0.8, dest: bus });
+  const big = b.fbus('lowpass', 900, 0, 0.9, bus);
+  let t = 0.15;
+  while (t < T - 0.15) {
+    const f = rnd(140, 240);
+    b.chirp(t, f, f * rnd(1.6, 2.2), rnd(0.05, 0.08), rnd(0.6, 1), big);
+    t += rnd(0.14, 0.22);
+  }
+  b.noise('brown', 0, T).connect(b.f('bandpass', 320, 6)).connect(b.g(0.25, bus));
+});
+
+// picking up a full jerry can: the handle clanks, the steel booms, fuel sloshes
+def('can_pickup', { d: 0.8, v: 3, gain: 0.5, rev: 0.12, max: 2, jit: 0.03 }, (b) => {
+  const t = 0.004;
+  b.cloth(t, 0.12, { g: 0.35, f: 1100 });
+  clack(b, t + 0.04, { g: 0.6, f: 0.75, dec: 0.06 });
+  const f = rnd(150, 190);
+  b.modal(t + 0.05, [[f, 0.5, 0.35], [f * 2.3, 0.35, 0.22], [f * 4.1, 0.2, 0.12], [f * 6.7, 0.1, 0.07]], 0.8);
+  b.gurgle(t + 0.08, 0.45, { rate: 26, f0: 200, f1: 650, g: 0.6 });
+});
+
+// the emptied can: hollow and light now
+def('can_empty', { d: 0.6, v: 3, gain: 0.45, rev: 0.15, max: 2, jit: 0.04 }, (b) => {
+  const t = 0.004;
+  const f = rnd(210, 260);
+  b.thump(t, { f0: 200, f1: 120, sweep: 0.03, d: 0.08, g: 0.5 });
+  b.modal(t, [[f, 0.5, 0.4], [f * 2.4, 0.35, 0.25], [f * 4.3, 0.2, 0.14]], 0.8);
+  clack(b, t + 0.1, { g: 0.5, f: 0.8, dec: 0.05 });
+  b.chirp(t + 0.02, 180, 420, 0.06, 0.3);
+});
+
+// ===== Revives (game/revive.js) ===============================================
+
+// kneeling down at a body: gear and cloth shift, a knee thumps onto the floor
+def('revive_start', { d: 0.6, v: 3, gain: 0.45, rev: 0.12, max: 2, jit: 0.04 }, (b) => {
+  const t = 0.004;
+  b.cloth(t, 0.28, { g: 0.7, f: 1200 });
+  b.thump(t + rnd(0.12, 0.18), { f0: 140, f1: 70, sweep: 0.04, d: 0.1, g: 0.7 });
+  b.nb(t + 0.15, { kind: 'brown', type: 'lowpass', f: 400, a: 0.003, d: 0.08, g: 0.4 });
+  b.rattle(t + 0.1, 0.15, 3, { f: 2600, g: 0.12 });
+});
+
+// back up: a sharp gasp of air, gear rattling as they get up, a soft rising two-note cue
+def('revive_done', { d: 1.2, v: 2, gain: 0.5, rev: 0.15, max: 2, jit: 0.02 }, (b) => {
+  const t = 0.004;
+  b.nb(t, { kind: 'pink', type: 'bandpass', f: 900, f2: 2100, ft: 0.3, q: 1.2, a: 0.08, h: 0.12, d: 0.18, g: 0.9 });
+  b.nb(t + 0.02, { type: 'bandpass', f: 3200, q: 0.9, a: 0.1, h: 0.08, d: 0.15, g: 0.25 });
+  b.cloth(t + 0.35, 0.35, { g: 0.6, f: 1100 });
+  b.rattle(t + 0.4, 0.25, 4, { f: 2400, g: 0.14 });
+  [523.25, 783.99].forEach((f, k) => {
+    b.tone(t + 0.12 + k * 0.1, f, { a: 0.01, d: 0.5, g: 0.22 });
+    b.tone(t + 0.12 + k * 0.1, f * 2, { a: 0.01, d: 0.2, g: 0.05 });
+  });
 });
 
 // ===== Ambience loops =======================================================

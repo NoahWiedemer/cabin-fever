@@ -253,6 +253,7 @@ export class Teammate {
     this.recoil = 0;
     this.crouch = 0;
     this.field = null;
+    this.portalTo = null;
     this.stuck = 0;
     this.hurtT = 0;
     this.lastPos = pos.clone();
@@ -261,7 +262,7 @@ export class Teammate {
   }
 
   takeDamage(amount, fromPos, source) {
-    if (!this.alive) return;
+    if (!this.alive || this.invulnT > 0) return; // invulnT: just revived (game/revive.js)
     let dmg = amount;
     if (this.ap > 0) {
       const ab = Math.min(this.ap, dmg * 0.5);
@@ -299,6 +300,7 @@ export class Teammate {
     this.post = pick || null;
     this.postT = rand(10, 18);
     this.field = null;
+    this.portalTo = null;
   }
 
   update(dt) {
@@ -307,6 +309,7 @@ export class Teammate {
       this._animateDead(dt);
       return;
     }
+    if (game.revives?.botUpdate(this, dt)) return; // a revive run (game/revive.js) drives this bot
     const pos = this.pos;
     this.level = levelOf(pos.y + 0.3);
     this.hurtT -= dt;
@@ -358,6 +361,20 @@ export class Teammate {
         } else {
           wantX = dx;
           wantZ = dz;
+        }
+        // stairs / the barn ladder: keep heading for the portal's far end until on its level (a bot up on the
+        // hayloft walks out of the railing gap and drops to the floor; actors/ladders.js)
+        if (st?.portal && !this.portalTo) {
+          this.portalTo = st.portalTo;
+          this.portalT = 0;
+        }
+        if (this.portalTo) {
+          this.portalT += dt;
+          if (this.level === this.portalTo.level || this.portalT > 8) this.portalTo = null;
+          else {
+            wantX = this.portalTo.x - pos.x;
+            wantZ = this.portalTo.z - pos.z;
+          }
         }
         const l = Math.hypot(wantX, wantZ) || 1;
         wantX /= l;

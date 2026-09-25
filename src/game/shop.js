@@ -3,8 +3,11 @@
 // To extend the store just add entries below. Weapon entries whose id is not in WEAPONS
 // (yet) are hidden, as are equipment entries whose `requires` weapon is missing.
 import { WEAPONS } from '../player/weaponDefs.js';
+import { giveAkimbo } from '../player/akimbo.js';
+import { SLOT_LABEL, ONE_PER_SLOT, GRENADIER, MAG_VEST, GLOVES, BOOTS, DEFIB, PACK_SLOT } from './gear.js';
 
-// slot 0 = primary, slot 1 = secondary (replaces the M9). `upg` scales upgrade prices.
+// slot 0 = primary, slot 1 = secondary (replaces the M9). `upg` scales upgrade prices. `akimbo`: price
+// of the one-time dual-wield upgrade (a second gun in the left hand, player/akimbo.js).
 export const SHOP_WEAPONS = [
   { id: 'm4a1', slot: 0, price: 1200, type: 'ASSAULT RIFLE', icon: 'rifle' },
   { id: 'm4super90', slot: 0, price: 1400, type: 'SEMI-AUTO SHOTGUN', icon: 'shotgun' },
@@ -14,8 +17,8 @@ export const SHOP_WEAPONS = [
   { id: 'softball', slot: 0, price: 3500, type: 'GRENADE LAUNCHER', icon: 'launcher', upg: 1.3 },
   { id: 'devotion', slot: 0, price: 3800, type: 'LIGHT MACHINE GUN', icon: 'lmg', upg: 1.3 },
   { id: 'sigma', slot: 0, price: 4500, type: 'HEAVY MACHINE GUN', icon: 'lmg', upg: 1.4 },
-  { id: 'm9', slot: 1, price: 0, type: 'PISTOL', icon: 'pistol', upg: 0.6 },
-  { id: 'mozambique', slot: 1, price: 700, type: 'SHOTGUN PISTOL', icon: 'pistol', upg: 0.7 },
+  { id: 'm9', slot: 1, price: 0, type: 'PISTOL', icon: 'pistol', upg: 0.6, akimbo: 2500 },
+  { id: 'mozambique', slot: 1, price: 700, type: 'SHOTGUN PISTOL', icon: 'pistol', upg: 0.7, akimbo: 3200 },
 ];
 
 // Per-weapon upgrades: `costs[n]` buys level n+1, `mult[level]` is the stat multiplier.
@@ -36,22 +39,23 @@ export const maskCapacity = (level) => GAS_MASK.base + GAS_MASK.perLevel * (leve
 // Barricade kit: planks + nails for one doorway (world/barricades.js), carried in slot 5.
 export const BARRICADE_KIT = { price: 300, max: 3 };
 
-// Equipment: `count`/`max` cap stacking, `give` applies one purchase. Items with `owned` are bought
-// once; their optional `upgrade` track is then bought from the same card.
+// Equipment: CONSUMABLES (`count`/`max` cap stacking, `carry`: the grenadier vest raises the cap,
+// `give` applies one purchase) and GEAR (`slot`: a body slot, see game/gear.js). Items with `owned`
+// are bought once; their optional `upgrade` track is then bought from the same card.
 export const SHOP_EQUIPMENT = [
   {
-    key: 'frag', name: 'M67 FRAG', type: 'FRAG GRENADE', icon: 'grenade', price: 250, max: 4, requires: 'm67',
+    key: 'frag', name: 'M67 FRAG', type: 'FRAG GRENADE', icon: 'grenade', price: 250, max: 4, carry: true, requires: 'm67',
     count: (g) => g.weapons.grenades,
     give: (g) => { g.weapons.grenades++; },
   },
   {
-    key: 'molotov', name: 'MOLOTOV', type: 'INCENDIARY', icon: 'molotov', price: 350, max: 3, requires: 'molotov',
+    key: 'molotov', name: 'MOLOTOV', type: 'INCENDIARY', icon: 'molotov', price: 350, max: 3, carry: true, requires: 'molotov',
     count: (g) => g.weapons.molotovs ?? 0,
     give: (g) => { g.weapons.molotovs = (g.weapons.molotovs ?? 0) + 1; },
   },
   {
     key: 'barricade', name: 'BARRICADE KIT', type: 'PLANKS + NAILS · BOARD UP A DOOR', icon: 'barricade',
-    price: BARRICADE_KIT.price, max: BARRICADE_KIT.max, requires: 'barricade',
+    price: BARRICADE_KIT.price, max: BARRICADE_KIT.max, carry: true, requires: 'barricade',
     count: (g) => g.weapons.barricades ?? 0,
     give: (g) => { g.weapons.barricades = (g.weapons.barricades ?? 0) + 1; },
   },
@@ -65,13 +69,16 @@ export const SHOP_EQUIPMENT = [
     full: (g) => !g.weapons.refillReserves(true),
     give: (g) => { g.weapons.refillReserves(); },
   },
+  // ---- GEAR: worn on a body slot (game/gear.js), bought once and kept all match; only one item per
+  // slot is worn (buying another one swaps it, owned items are equipped again for free). `desc`: the
+  // effect lines in the store's detail panel.
   {
-    key: 'gasmask', name: 'GAS MASK', type: 'BREATHE IN THE TOXIC GAS', icon: 'gasmask', price: GAS_MASK.price,
-    owned: (g) => !!g.gear?.mask.owned,
+    key: 'gasmask', slot: 'head', name: 'GAS MASK', type: 'BREATHE IN THE TOXIC GAS', icon: 'gasmask', price: GAS_MASK.price,
+    desc: ['No gas damage while the filter lasts', 'Filter drains in the gas, refills every round'],
+    owned: (g) => !!g.gear?.owns('gasmask'),
     give: (g) => {
-      const m = g.gear.mask;
-      m.owned = true;
-      m.filter = maskCapacity(m.level);
+      g.gear.buy('gasmask');
+      g.gear.mask.filter = maskCapacity(g.gear.mask.level);
     },
     upgrade: {
       name: 'FILTER', costs: GAS_MASK.costs,
@@ -79,12 +86,45 @@ export const SHOP_EQUIPMENT = [
       value: (lv) => `${maskCapacity(lv)}s`,
       apply: (g) => {
         const m = g.gear.mask;
-        m.level++;
+        g.gear.upgrade('gasmask');
         m.filter = maskCapacity(m.level);
       },
     },
   },
+  gearItem('grenadier', 'torso', 'GRENADIER VEST', 'BANDOLIER RIG · +2 THROWABLES', 'grenadier', 600, [
+    `Carry +${GRENADIER.carry} frags, +${GRENADIER.carry} Molotovs`,
+    `and +${GRENADIER.carry} barricade kits`,
+  ]),
+  gearItem('magvest', 'torso', 'MAG-POUCH VEST', 'FASTER RELOADS · ALL WEAPONS', 'magvest', 1000, ['Spare mags right at hand', 'Every weapon reloads faster'], {
+    name: 'RELOAD', costs: [700],
+    level: (g) => g.gear?.level('magvest') ?? 0,
+    value: (lv) => `-${Math.round((1 - MAG_VEST.reload[Math.min(lv, MAG_VEST.reload.length - 1)]) * 100)}%`,
+    apply: (g) => g.gear.upgrade('magvest'),
+  }),
+  gearItem('backpack', 'back', 'WEAPON BACKPACK', 'CARRY TWO PRIMARY WEAPONS', 'backpack', 2500, [
+    'A second primary on your back',
+    'Press 1 again to swap them',
+  ], null, 'GUN BACKPACK'),
+  gearItem('defib', 'back', 'DEFIBRILLATOR', 'FASTER REVIVES · +HP', 'defib', 1500, [
+    `Revives take ${Math.round(DEFIB.channel * 100)}% of the time`,
+    `The revived come back with ${DEFIB.hp} HP`,
+  ]),
+  gearItem('gloves', 'hands', 'TACTICAL GLOVES', 'FASTER AIM + WEAPON SWITCH', 'gloves', 800, [
+    `Aim down sights ${Math.round((1 - GLOVES.handling) * 100)}% faster`,
+    `Draw weapons ${Math.round((1 - GLOVES.handling) * 100)}% faster`,
+  ]),
+  gearItem('boots', 'feet', 'COMBAT BOOTS', 'FASTER SPRINT', 'boots', 600, [`Sprint ${Math.round((BOOTS.sprint - 1) * 100)}% faster`, 'Stairs included']),
+  gearItem('machete', 'belt', 'MACHETE', 'REPLACES THE KNIFE · SLOT 3', 'machete', 500, ['Double melee damage, faster swing', 'Cuts a Biter down in one hit']),
 ];
+
+/** A plain gear entry: bought once, worn on `slot` (game/gear.js does the effect). `short`: card label. */
+function gearItem(key, slot, name, type, icon, price, desc, upgrade = null, short = null) {
+  return {
+    key, slot, name, type, icon, price, desc, upgrade, short,
+    owned: (g) => !!g.gear?.owns(key),
+    give: (g) => g.gear.buy(key),
+  };
+}
 
 // ------------------------------------------------------------------ upgrade math
 
@@ -162,29 +202,72 @@ export function upgradeCost(entry, key, level) {
 /** Store weapons the player owns (upgrade targets), equipped ones first. */
 export function ownedWeapons(game) {
   const w = game.weapons;
-  const rank = (e) => (w.slots[e.slot] === e.id ? 0 : 1) + e.slot * 0.5;
+  const rank = (e) => (weaponSlotOf(w, e) >= 0 ? 0 : 1) + e.slot * 0.5;
   return shopWeapons().filter((e) => w.owned?.has(e.id)).sort((a, b) => rank(a) - rank(b));
 }
 
+/** The WeaponSystem slot a store weapon is carried in (a primary: 0 or the backpack's), or -1. */
+export function weaponSlotOf(w, e) {
+  if (w.slots[e.slot] === e.id) return e.slot;
+  return e.slot === 0 && w.slots[PACK_SLOT] === e.id ? PACK_SLOT : -1;
+}
+
+/** `where`: the slot it's carried in (-1: not carried). A gun in the weapon backpack counts as equipped. */
 export function weaponState(game, e) {
   const w = game.weapons;
   const owned = !!w.owned?.has(e.id);
-  const equipped = w.slots[e.slot] === e.id;
-  return { owned, equipped, afford: owned || game.economy.canAfford(game.player, e.price) };
+  const where = weaponSlotOf(w, e);
+  return { owned, equipped: where >= 0, where, afford: owned || game.economy.canAfford(game.player, e.price) };
+}
+
+/** True when the weapon backpack is worn: primaries then pick a slot (0 or PACK_SLOT). */
+export const hasPack = (game) => !!game.gear?.has?.('backpack');
+
+/**
+ * Default primary slot for a store primary with the backpack worn: where it already is, else the
+ * backpack (a second primary goes into the pack instead of replacing your main gun).
+ */
+export function primaryTarget(game, id) {
+  const w = game.weapons;
+  if (!hasPack(game)) return 0;
+  if (w.slots[0] === id) return 0;
+  return PACK_SLOT;
+}
+
+/** Carry cap of a consumable (the grenadier vest raises frags, Molotovs and barricade kits). */
+export function itemMax(game, item) {
+  return item.max == null ? null : item.max + (item.carry ? game.gear?.carryBonus?.() ?? 0 : 0);
+}
+
+/** Store section of an equipment entry: 'gear' (worn on a body slot) or 'consumable'. */
+export const itemSection = (item) => (item.slot ? 'gear' : 'consumable');
+
+/**
+ * Body-slot state of a gear entry: { slot, slotLabel, worn, replaces } (`replaces`: the name of the
+ * item worn on that slot now, which putting this one on would take off).
+ */
+export function gearSlotState(game, item) {
+  const gear = game.gear;
+  const on = ONE_PER_SLOT ? gear?.wornOn?.(item.slot) : null;
+  const other = on && on !== item.key ? SHOP_EQUIPMENT.find((e) => e.key === on) : null;
+  return { slot: item.slot, slotLabel: SLOT_LABEL[item.slot] ?? '', worn: !!gear?.has?.(item.key), replaces: other?.name ?? null };
 }
 
 export function equipmentState(game, item) {
   if (item.owned) {
-    // one-off gear with an upgrade track
+    // one-off gear (optional upgrade track); an owned item that's off is put on again for free
     const owned = item.owned(game);
     const lv = item.upgrade ? item.upgrade.level(game) : 0;
-    const cost = !owned ? item.price : item.upgrade?.costs[lv];
-    const maxed = owned && cost == null;
-    return { owned, level: lv, cost, maxed, afford: maxed || game.economy.canAfford(game.player, cost) };
+    const gs = item.slot ? gearSlotState(game, item) : null;
+    const equip = owned && !!gs && !gs.worn;
+    const cost = !owned ? item.price : equip ? 0 : item.upgrade?.costs[lv];
+    const maxed = owned && !equip && cost == null;
+    return { ...gs, owned, level: lv, cost, maxed, equip, afford: maxed || equip || game.economy.canAfford(game.player, cost) };
   }
   const n = item.count ? item.count(game) : 0;
-  const maxed = item.full ? item.full(game) : n >= item.max;
-  return { count: n, maxed, cost: item.price, afford: game.economy.canAfford(game.player, item.price) };
+  const max = itemMax(game, item);
+  const maxed = item.full ? item.full(game) : n >= max;
+  return { count: n, max, maxed, cost: item.price, afford: game.economy.canAfford(game.player, item.price) };
 }
 
 // ------------------------------------------------------------------ purchases
@@ -192,20 +275,33 @@ export function equipmentState(game, item) {
 
 const NO_CASH = { ok: false, msg: 'NOT ENOUGH CASH', sound: 'dryfire' };
 
-export function buyWeapon(game, id) {
+/**
+ * Buy / equip a store weapon. `target`: for a primary with the weapon backpack worn, the slot it goes
+ * into (0 or PACK_SLOT, default primaryTarget); a gun already in the other primary slot trades places.
+ */
+export function buyWeapon(game, id, target = null) {
   const e = weaponEntry(id);
   const def = WEAPONS[id];
   if (!e || !def) return { ok: false, msg: 'UNAVAILABLE' };
   const w = game.weapons;
-  if (w.slots[e.slot] === id) return { ok: false, msg: `${def.name} ALREADY EQUIPPED` };
+  const pack = e.slot === 0 && hasPack(game);
+  const slot = pack ? target ?? primaryTarget(game, id) : e.slot;
+  const where = pack && slot === PACK_SLOT ? ' · BACKPACK' : '';
+  if (w.slots[slot] === id) return { ok: false, msg: `${def.name} ALREADY EQUIPPED` };
+  if (pack && w.slots[slot === 0 ? PACK_SLOT : 0] === id) {
+    // carried in the other primary slot: the two guns trade places
+    if (!w.slots[slot]) return { ok: false, msg: 'SLOT 1 CAN\u2019T BE EMPTY', sound: 'dryfire' };
+    w.swapPrimaries();
+    return { ok: true, msg: `${def.name} MOVED${where || ' · SLOT 1'}` };
+  }
   if (!w.owned.has(id)) {
     if (!game.economy.spend(game.player, e.price)) return NO_CASH;
     w.owned.add(id);
-    w.equipFromStore(id, e.slot);
-    return { ok: true, msg: `${def.name} PURCHASED`, sound: 'pickup_weapon', cost: e.price };
+    w.equipFromStore(id, slot);
+    return { ok: true, msg: `${def.name} PURCHASED${where}`, sound: 'pickup_weapon', cost: e.price };
   }
-  w.equipFromStore(id, e.slot);
-  return { ok: true, msg: `${def.name} EQUIPPED` };
+  w.equipFromStore(id, slot);
+  return { ok: true, msg: `${def.name} EQUIPPED${where}` };
 }
 
 export function buyUpgrade(game, id, key) {
@@ -220,21 +316,44 @@ export function buyUpgrade(game, id, key) {
   return { ok: true, msg: `${WEAPONS[id].name} ${UPG[key].name} ${'I'.repeat(lv + 1)}`, sound: 'm4_bolt', cost };
 }
 
+/** Akimbo upgrade of a pistol: { avail (offered for it), owned, cost, afford }. */
+export function akimboState(game, e) {
+  const w = game.weapons;
+  const owned = !!w.akimbo?.has(e.id);
+  const cost = e.akimbo ?? null;
+  return { avail: cost != null && !!w.owned?.has(e.id), owned, cost, afford: owned || (cost != null && game.economy.canAfford(game.player, cost)) };
+}
+
+export function buyAkimbo(game, id) {
+  const e = weaponEntry(id);
+  const w = game.weapons;
+  if (!e?.akimbo || !w.owned?.has(id)) return { ok: false, msg: 'UNAVAILABLE' };
+  if (w.akimbo?.has(id)) return { ok: false, msg: 'ALREADY AKIMBO' };
+  if (!game.economy.spend(game.player, e.akimbo)) return NO_CASH;
+  giveAkimbo(w, id);
+  return { ok: true, msg: `AKIMBO ${WEAPONS[id].name}`, sound: 'pickup_weapon', cost: e.akimbo };
+}
+
 export function buyEquipment(game, key) {
   const item = shopEquipment().find((i) => i.key === key);
   if (!item) return { ok: false, msg: 'UNAVAILABLE' };
   if (item.owned) {
     const st = equipmentState(game, item);
+    if (st.equip) {
+      game.gear.equip(key); // owned, back on (free)
+      return { ok: true, msg: st.replaces ? `${item.name} ON · ${st.replaces} OFF` : `${item.name} EQUIPPED`, sound: 'weapon_switch' };
+    }
     if (st.maxed) return { ok: false, msg: 'MAXED OUT', sound: 'dryfire' };
     if (!game.economy.spend(game.player, st.cost)) return NO_CASH;
     if (!st.owned) {
       item.give(game);
-      return { ok: true, msg: `${item.name} PURCHASED`, sound: 'pickup_ammo', cost: st.cost };
+      return { ok: true, msg: st.replaces ? `${item.name} ON · ${st.replaces} OFF` : `${item.name} PURCHASED`, sound: 'pickup_ammo', cost: st.cost };
     }
     item.upgrade.apply(game);
     return { ok: true, msg: `${item.name} ${item.upgrade.name} ${'I'.repeat(st.level + 1)}`, sound: 'm4_bolt', cost: st.cost };
   }
-  if (equipmentState(game, item).maxed) return { ok: false, msg: item.full ? 'ALREADY FULL' : `CARRYING MAX (${item.max})`, sound: 'dryfire' };
+  const st = equipmentState(game, item);
+  if (st.maxed) return { ok: false, msg: item.full ? 'ALREADY FULL' : `CARRYING MAX (${st.max})`, sound: 'dryfire' };
   if (!game.economy.spend(game.player, item.price)) return NO_CASH;
   item.give(game);
   return { ok: true, msg: `${item.name} PURCHASED`, sound: key === 'ammo' || key === 'armor' ? 'pickup_ammo' : key === 'barricade' ? 'plank_drop' : 'grenade_pin', cost: item.price };

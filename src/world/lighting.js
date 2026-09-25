@@ -93,7 +93,13 @@ export class Lighting {
     this.hemiOutGround = new THREE.Color(0x1c140e);
     this.hemiInSky = new THREE.Color(0x3a3a40);
     this.hemiInGround = new THREE.Color(0xa47c58);
+    // indoors with the generator down: no warm lamp bounce, only cold moonlight through the boards
+    this.hemiDarkSky = new THREE.Color(0x2c3442);
+    this.hemiDarkGround = new THREE.Color(0x3a3c44);
     this.indoor = 1;
+    // generator mains 0..1 (world/power.js): scales every lamp on the circuit (not `fire` or `mains: false`)
+    this.mains = 1;
+    this._c = new THREE.Color();
     scene.add(this.hemi);
 
     // Moon
@@ -158,7 +164,8 @@ export class Lighting {
     this.cones = [];
     const glowTex = safeTex('glow');
     for (const L of lamps) {
-      if (glowTex) {
+      // fx: false = a bare light (the lab's ceiling panels are their own visuals): no glow, cone or motes
+      if (glowTex && L.fx !== false) {
         const sm = new THREE.SpriteMaterial({
           map: glowTex,
           color: new THREE.Color(L.color).multiplyScalar(3),
@@ -174,7 +181,7 @@ export class Lighting {
         scene.add(sp);
         L.glow = sp;
       }
-      if (L.spot && !L.porch) {
+      if (L.spot && !L.porch && L.fx !== false) {
         const floorY = L.level === 0 ? -3.2 : L.level === 1 ? 0 : 3.45;
         const len = Math.max(0.5, L.pos.y - floorY - 0.02);
         const rad = Math.tan(L.angle * 0.62) * len;
@@ -212,7 +219,7 @@ export class Lighting {
       const pos = [];
       const seed = [];
       for (const L of lamps) {
-        if (!L.spot || L.porch) continue;
+        if (!L.spot || L.porch || L.fx === false) continue;
         const floorY = L.level === 0 ? -3.2 : L.level === 1 ? 0 : 3.45;
         for (let i = 0; i < per; i++) {
           const r = Math.sqrt(Math.random()) * 1.6;
@@ -241,6 +248,7 @@ export class Lighting {
         })
       );
       this.motes.frustumCulled = false;
+      this.moteColor = this.motes.material.uniforms.uColor.value.clone();
       scene.add(this.motes);
     }
 
@@ -255,10 +263,12 @@ export class Lighting {
     scene.add(this.muzzle);
     this.muzzleT = 0;
 
-    // player flashlight
-    this.flashlight = enableVM(new THREE.SpotLight(0xe8f0ff, 0, 30, 0.42, 0.55, 1.6));
+    // player flashlight (world only: it sits right at the gun, which it would blow out to white)
+    this.flashlight = new THREE.SpotLight(0xe8f0ff, 0, 30, 0.42, 0.55, 1.6);
     scene.add(this.flashlight, this.flashlight.target);
     this.flashlightOn = false;
+    this.flashNear = 1; // auto-dim factor for close surfaces (needs .world, set by the game)
+    this.world = null;
 
     this.assignTimer = 0;
   }
@@ -314,9 +324,10 @@ export class Lighting {
     this.moon.intensity = this.moonBase + this.lightning * 9;
     this.moon.color.setRGB(0.62 + this.lightning * 0.3, 0.7 + this.lightning * 0.25, 0.87 + this.lightning * 0.1);
     const ind = this.indoor;
-    this.hemi.color.copy(this.hemiOutSky).lerp(this.hemiInSky, ind);
-    this.hemi.groundColor.copy(this.hemiOutGround).lerp(this.hemiInGround, ind);
-    this.hemi.intensity = 0.8 + ind * 1.3 + this.lightning * 2.2;
+    const pw = this.mains;
+    this.hemi.color.copy(this.hemiOutSky).lerp(this._c.copy(this.hemiDarkSky).lerp(this.hemiInSky, pw), ind);
+    this.hemi.groundColor.copy(this.hemiOutGround).lerp(this._c.copy(this.hemiDarkGround).lerp(this.hemiInGround, pw), ind);
+    this.hemi.intensity = 0.8 + ind * (0.12 + 1.18 * pw) + this.lightning * 2.2;
 
     // lamp flicker + weights
     for (const L of this.lamps) {
@@ -333,6 +344,7 @@ export class Lighting {
         }
         if (L.fire) f = 0.75 + 0.25 * Math.sin(t * 11 + L.seed) * Math.sin(t * 4.3 + L.seed * 0.7) + Math.random() * 0.1;
       }
+      if (!L.fire && L.mains !== false) f *= this.mains;
       L.cur = f;
       if (L.glow) L.glow.material.opacity = f;
       if (L.cone) {
@@ -340,7 +352,11 @@ export class Lighting {
         L.cone.material.uniforms.uTime.value = t;
       }
     }
-    if (this.motes) this.motes.material.uniforms.uTime.value = t;
+    if (this.motes) {
+      const u = this.motes.material.uniforms;
+      u.uTime.value = t;
+      u.uColor.value.copy(this.moteColor).multiplyScalar(this.mains); // dust only shows in lamp light
+    }
 
     // assign lamp lights to pool slots
     this.assignTimer -= dt;
@@ -348,17 +364,19 @@ export class Lighting {
       this.assignTimer = 0.2;
       const scored = [];
       for (const L of this.lamps) {
-        if (L.fire) continue;
+        if (L.fire || L.hidden) continue; // hidden: the lab's spot while the lab isn't drawn (world/lab.js)
         let d = L.pos.distanceTo(camPos);
         if (L.level !== playerLevel) d += 10;
         if (L.slot && L.slot.castShadow) d -= 2.5; // hysteresis
+        if (this.mains < 0.02 && L.mains !== false) d += 100; // blackout: the emergency lamps get the slots
         scored.push([d, L]);
       }
       scored.sort((a, b) => a[0] - b[0]);
       for (const L of this.lamps) L.nextSlot = null;
       let si = 0, pi = 0;
       for (const [, L] of scored) {
-        if (si < this.shadowSlots.length) L.nextSlot = this.shadowSlots[si++];
+        // shadow: false = never a shadow slot (wide outdoor floods: their shadow frustum would cover the yard)
+        if (si < this.shadowSlots.length && L.shadow !== false) L.nextSlot = this.shadowSlots[si++];
         else if (pi < this.plainSlots.length) L.nextSlot = this.plainSlots[pi++];
       }
       for (const s of [...this.shadowSlots, ...this.plainSlots]) s.userData.lamp = null;
@@ -367,7 +385,8 @@ export class Lighting {
           const s = L.nextSlot;
           if (L.slot !== s) {
             s.position.copy(L.pos);
-            s.target.position.set(L.pos.x, L.pos.y - 3, L.pos.z + (L.porch ? 1.2 : 0));
+            if (L.aim) s.target.position.copy(L.pos).add(L.aim); // aimed spot (lab)
+            else s.target.position.set(L.pos.x, L.pos.y - 3, L.pos.z + (L.porch ? 1.2 : 0));
             s.target.updateMatrixWorld();
             s.color.set(L.color);
             s.angle = Math.min(1.48, L.angle + 0.25);
@@ -421,15 +440,25 @@ export class Lighting {
     // flashlight follows the camera
     if (camQuat) {
       this.flashlight.position.copy(camPos);
-      const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(camQuat);
-      const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camQuat);
+      const fwd = _flFwd.set(0, 0, -1).applyQuaternion(camQuat);
+      const right = _flRight.set(1, 0, 0).applyQuaternion(camQuat);
       this.flashlight.position.addScaledVector(right, 0.18).addScaledVector(fwd, 0.2).y -= 0.12;
       this.flashlight.target.position.copy(camPos).addScaledVector(fwd, 10);
       this.flashlight.target.updateMatrixWorld();
-      this.flashlight.intensity = this.flashlightOn ? 55 : 0;
+      // auto-dim up close: the beam's falloff blows nearby surfaces out to white, so the lamp eases
+      // down (to 20 %) as the surface in the middle of the view comes within ~3.5 m
+      let near = 1;
+      if (this.flashlightOn && this.world) {
+        const hit = this.world.raycast(camPos.x, camPos.y, camPos.z, fwd.x, fwd.y, fwd.z, 3.5, null, _flHit);
+        if (hit) near = Math.max(0.2, Math.pow(hit.t / 3.5, 1.4));
+      }
+      this.flashNear += (near - this.flashNear) * Math.min(1, dt * 10);
+      this.flashlight.intensity = this.flashlightOn ? 55 * this.flashNear : 0;
     }
   }
 }
+
+const _flFwd = new THREE.Vector3(), _flRight = new THREE.Vector3(), _flHit = {};
 
 function safeTex(name) {
   try {

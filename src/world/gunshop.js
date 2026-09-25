@@ -14,6 +14,7 @@ import { getGLB } from '../core/assets.js';
 import { MODELS } from '../core/assetList.js';
 import { SURF, FLAG_NOBULLET, FLAG_NAVIGNORE } from './collision.js';
 import { createShopkeeper } from '../actors/shopkeeper.js';
+import { powerLevel } from './power.js';
 
 const WALL_X = 2.56; // shop-side face of the wall shared with the old basement
 const F = -3.2; // cellar floor (FLOOR.basement)
@@ -246,31 +247,37 @@ export function buildGunShop(scene, level, world) {
     world.add(10.1, F, -0.75, 11.1, F + 0.8, 0.25, SURF.wood);
   }
 
-  // price list for the equipment
+  // price lists: the consumables, and next to it the wearable gear (game/gear.js)
   {
-    const lines = SHOP_EQUIPMENT.filter((e) => !e.requires || WEAPONS[e.requires]).map((e) => [e.name, e.price]);
-    const tex = canvasTex(512, 512, (g, w, h) => {
-      g.fillStyle = '#16140f';
-      g.fillRect(0, 0, w, h);
-      g.strokeStyle = '#c9a15a';
-      g.lineWidth = 8;
-      g.strokeRect(10, 10, w - 20, h - 20);
-      g.fillStyle = '#e8d8b0';
-      g.font = 'bold 44px Impact, sans-serif';
-      g.textAlign = 'center';
-      g.fillText('EQUIPMENT', w / 2, 76);
-      g.font = 'bold 32px Arial, sans-serif';
-      lines.forEach(([n, p], i) => {
-        g.textAlign = 'left';
+    const avail = SHOP_EQUIPMENT.filter((e) => !e.requires || WEAPONS[e.requires]);
+    const board = (title, lines, size, z, y = F + 2.25) => {
+      const step = Math.min(62, 320 / Math.max(1, lines.length));
+      const top = lines.length > 6 ? 136 : 150;
+      const tex = canvasTex(512, 512, (g, w, h) => {
+        g.fillStyle = '#16140f';
+        g.fillRect(0, 0, w, h);
+        g.strokeStyle = '#c9a15a';
+        g.lineWidth = 8;
+        g.strokeRect(10, 10, w - 20, h - 20);
         g.fillStyle = '#e8d8b0';
-        g.fillText(n, 40, 150 + i * 62);
-        g.textAlign = 'right';
-        g.fillStyle = '#e0513c';
-        g.fillText('$' + p, w - 40, 150 + i * 62);
+        g.font = 'bold 44px Impact, sans-serif';
+        g.textAlign = 'center';
+        g.fillText(title, w / 2, 76);
+        g.font = `bold ${Math.round(Math.min(32, step * 0.6))}px Arial, sans-serif`;
+        lines.forEach(([n, p], i) => {
+          g.textAlign = 'left';
+          g.fillStyle = '#e8d8b0';
+          g.fillText(n, 40, top + i * step);
+          g.textAlign = 'right';
+          g.fillStyle = '#e0513c';
+          g.fillText('$' + p, w - 40, top + i * step);
+        });
       });
-    });
-    const board = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.9), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.85 }));
-    place(board, 11.83, F + 2.25, -3.05, -Math.PI / 2);
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(size, size), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.85 }));
+      place(m, 11.68, y, z, -Math.PI / 2); // on the brick face (the wall's inner face is at x 11.7)
+    };
+    board('EQUIPMENT', avail.filter((e) => !e.slot).map((e) => [e.name, e.price]), 0.9, -3.05);
+    board('GEAR', avail.filter((e) => e.slot).map((e) => [e.name, e.price]), 0.8, -4.1, F + 2.3);
   }
 
   // neon sign on the south wall, facing the stairs; its light comes from the room lamps
@@ -279,7 +286,7 @@ export function buildGunShop(scene, level, world) {
   place(neon, 7.4, F + 2.35, 0.83, Math.PI);
   const openMat = new THREE.MeshBasicMaterial({ map: neonTex('OPEN', '#3dff8a'), transparent: true, color: new THREE.Color(2, 2, 2), depthWrite: false });
   const openSign = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.225), openMat);
-  place(openSign, 11.83, F + 2.62, -5.2, -Math.PI / 2);
+  place(openSign, 11.68, F + 2.62, -5.2, -Math.PI / 2); // just proud of the east wall face (x 11.7)
 
   // stairwell gate (hinged grate at the top of the stairs, swings over the stairs to open)
   const gate = new THREE.Group();
@@ -373,8 +380,11 @@ export function buildGunShop(scene, level, world) {
       openT = THREE.MathUtils.clamp(openT + (open ? dt : -dt) * 1.6, 0, 1);
       const e = openT * openT * (3 - 2 * openT);
       gate.rotation.y = e * 1.45;
+      // the neon is on the generator circuit (world/power.js): dark glass tubes in a blackout
+      const pw = powerLevel();
       const flick = Math.random() < 0.015 ? 0.35 : 1;
-      neonMat.color.setScalar(2.4 * flick);
+      neonMat.color.setScalar(0.06 + 2.34 * flick * pw);
+      openMat.color.setScalar(0.06 + 1.94 * pw);
       openMat.opacity = open ? 1 : 0.15;
     },
   };

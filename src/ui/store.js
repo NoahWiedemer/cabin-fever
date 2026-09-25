@@ -3,15 +3,18 @@
  * the 3D item thumbnails and the live turntable preview; styles in store.css. All rules and prices
  * live in game/shop.js: this renders the game state and forwards clicks.
  *
- * Layout: header (close · title · wallet); the WEAPONS | EQUIPMENT bar over a card grid; on the
- * right the selected item: live 3D preview, stat bars, upgrade tracks (weapons you own) and one
- * buy / equip / upgrade button. Cards are built once per category and patched in place.
+ * Layout: header (close · title · wallet); the WEAPONS | EQUIPMENT bar over a card grid (EQUIPMENT in
+ * two sections: CONSUMABLES and the wearable GEAR, game/gear.js); on the right the selected item: live
+ * 3D preview, stat bars, upgrade tracks (weapons you own) / body slot and effects (gear) and one
+ * buy / equip / upgrade button (with the weapon backpack worn, a primary also picks its slot there).
+ * Cards are built once per category and patched in place. Gear bits: ui/storeGear.js.
  *
  * Keys: Q / E or 1 / 2 category · arrows select · Enter buy (closes the shop when the selected item
  * has nothing to buy, unless you just bought something: no accidental close while maxing out frags)
  * · Esc / F close. A focused button (upgrade row, buy, close) takes Enter natively.
  */
 import './store.css';
+import * as THREE from 'three';
 import { esc, weaponSvg, fmtCash } from './hud.js';
 import { WEAPONS } from '../player/weaponDefs.js';
 import { buildWeaponModel } from '../player/gunSafe.js';
@@ -19,6 +22,8 @@ import { buildBarricadeKit } from '../player/barricadeKit.js';
 import { buildProp } from '../world/propsSafe.js';
 import { gasMask, kevlarVest } from '../world/gearModels.js';
 import { ItemStage } from './itemStage.js';
+import { GEAR_POSES, gearModelBuilder, GEAR_ICON_PATHS, gearDetailHtml, packPickerHtml } from './storeGear.js';
+import { PACK_SLOT, SLOT_LABEL, ONE_PER_SLOT } from '../game/gear.js';
 import {
   MAX_LEVEL,
   shopWeapons,
@@ -31,6 +36,11 @@ import {
   buyWeapon,
   buyUpgrade,
   buyEquipment,
+  buyAkimbo,
+  akimboState,
+  itemSection,
+  hasPack,
+  primaryTarget,
 } from '../game/shop.js';
 
 /* ------------------------------------------------------------------ 3D models */
@@ -38,6 +48,22 @@ import {
 // guns: right side to camera, muzzle to the right, a little from the front and above
 const GUN_POSE = { rot: [0, -Math.PI / 2, 0], az: 0.38, el: 0.2, fill: 0.95 };
 const PISTOL_POSE = { ...GUN_POSE, fill: 0.8 };
+const PAIR_POSE = { ...GUN_POSE, fill: 0.88 };
+
+/** Akimbo preview: two of the pistol, crossed (grips low at the sides, muzzles up and out). */
+function pistolPair(id) {
+  const g = new THREE.Group();
+  for (let i = 0; i < 2; i++) {
+    const m = buildWeaponModel(id).root;
+    m.rotation.set(i ? -0.5 : 0.5, i ? Math.PI : 0, 0);
+    m.position.set(i ? -0.02 : 0.02, 0, i ? -0.085 : 0.085);
+    g.add(m);
+  }
+  return g;
+}
+
+// stage key of an item (thumbnail / live preview): a pistol's crossed pair once its akimbo is owned
+const stageKey = (item) => item.sk ?? item.k;
 // gear: `roll` tilts tall items in the picture plane so they use the wide frame; matte gear takes
 // less image light (`env`) so fabric and paint keep their color
 const GEAR_POSE = {
@@ -47,6 +73,7 @@ const GEAR_POSE = {
   ammo: { rot: [0, 0, 0], az: 0.62, el: 0.42, fill: 0.84, env: 0.5 },
   gasmask: { rot: [0, 0, 0], az: 0.5, el: 0.12, fill: 0.78, env: 0.6 },
   barricade: { rot: [0, -Math.PI / 2, 0], az: 0.5, el: 0.5, fill: 0.9, env: 0.55 },
+  ...GEAR_POSES, // wearable gear (ui/storeGear.js)
 };
 
 function gearBuilder(it) {
@@ -75,6 +102,8 @@ function gearBuilder(it) {
         return kit.root;
       };
   }
+  const gear = gearModelBuilder(it.key); // wearable gear (ui/storeGear.js)
+  if (gear) return gear;
   const def = it.requires && WEAPONS[it.requires];
   return def ? () => buildWeaponModel(def.model || it.requires).root : null;
 }
@@ -103,6 +132,7 @@ const ITEM_PATHS = {
     'M28 17L90 18L90 25L28 24ZM31 19.5h2.5v2.5h-2.5ZM85 20h2.5v2.5h-2.5Z' +
     'M31 28L87 26L87 33L31 35ZM34 30h2.5v2.5h-2.5ZM82 28.5h2.5v2.5h-2.5Z' +
     'M97.2 37.1L100.8 38.9L113.8 14.9L110.2 13.1ZM123.5 11.1L120.3 17.3L103.6 8.4L106.8 2.2Z',
+  ...GEAR_ICON_PATHS,
 };
 const ICON_FALLBACK = { lmg: 'rifle' };
 
@@ -257,6 +287,7 @@ export class Store {
       this._round = game.round;
       this.tab = 'weapons';
       this.sel.weapons = null;
+      this.pick = {}; // backpack slot picks (_packTarget)
     }
     this._cash = null;
     this.$.toast.className = 'cf-st-toast';
@@ -293,11 +324,11 @@ export class Store {
       if (delay) await new Promise((r) => setTimeout(r, delay));
       for (let tries = 0; tries < 64 && this.stage.ok; tries++) {
         const pool = this.isOpen ? [...this._items(this.tab), ...this._allItems()] : this._allItems();
-        const item = pool.find((i) => !this.stage.hasThumb(i.k));
+        const item = pool.find((i) => !this.stage.hasThumb(stageKey(i)));
         if (!item) break;
         const m = this._model(item);
-        const url = m ? await this.stage.bake(item.k, m.build, m.pose) : null;
-        if (!m) this.stage.thumbs.set(item.k, null);
+        const url = m ? await this.stage.bake(stageKey(item), m.build, m.pose) : null;
+        if (!m) this.stage.thumbs.set(stageKey(item), null);
         if (url === undefined) await new Promise((r) => setTimeout(r, 500)); // interrupted: again shortly
         else this._onThumb(item.k);
       }
@@ -336,7 +367,10 @@ export class Store {
   }
 
   _items(cat) {
-    if (cat === 'weapons') return shopWeapons().map((e) => ({ k: `w:${e.id}`, kind: 'weapon', e }));
+    if (cat === 'weapons') {
+      const ak = this.game?.weapons.akimbo;
+      return shopWeapons().map((e) => ({ k: `w:${e.id}`, sk: ak?.has(e.id) ? `w:${e.id}:x2` : `w:${e.id}`, kind: 'weapon', e }));
+    }
     return shopEquipment().map((it) => ({ k: `e:${it.key}`, kind: 'gear', it }));
   }
 
@@ -348,15 +382,23 @@ export class Store {
   _model(item) {
     if (item.kind === 'weapon') {
       const def = WEAPONS[item.e.id];
+      if (stageKey(item) !== item.k) return { build: () => pistolPair(def.model || item.e.id), pose: PAIR_POSE };
       return { build: () => buildWeaponModel(def.model || item.e.id).root, pose: item.e.slot === 1 ? PISTOL_POSE : GUN_POSE };
     }
     const build = gearBuilder(item.it);
     return build ? { build, pose: GEAR_POSE[item.it.key] || { az: 0.5, el: 0.2, fill: 0.8 } } : null;
   }
 
+  /** Which baked thumbnail an item shows ('' = none yet): the single pistol stands in while its pair bakes. */
+  _thumbKey(item) {
+    if (!this.stage.ok) return '';
+    const sk = stageKey(item);
+    return this.stage.thumb(sk) ? sk : this.stage.thumb(item.k) ? item.k : '';
+  }
+
   _pic(item) {
-    const src = this.stage.ok ? this.stage.thumb(item.k) : null;
-    return src ? `<img src="${src}" alt="" draggable="false">` : this._icon(item);
+    const tk = this._thumbKey(item);
+    return tk ? `<img src="${this.stage.thumb(tk)}" alt="" draggable="false">` : this._icon(item);
   }
 
   _icon(item) {
@@ -369,10 +411,18 @@ export class Store {
     if (item.kind === 'weapon') {
       const e = item.e;
       const s = weaponState(g, e);
+      // weapon backpack worn: a primary goes into the picked slot (primary or backpack)
+      const target = this._packTarget(e);
+      const w = g.weapons;
       let act = null;
+      let done = s.where === PACK_SLOT ? 'IN BACKPACK' : s.equipped ? 'EQUIPPED' : '';
       if (!s.owned) act = { label: 'BUY', cost: e.price };
-      else if (!s.equipped) act = { label: 'EQUIP', cost: 0 };
-      return { ...s, act, done: s.equipped ? 'EQUIPPED' : '', upg: s.owned ? upgTotal(g.weapons, e.id) : 0 };
+      else if (target != null && s.where !== target) {
+        // moving it from slot 1 into an empty backpack would leave slot 1 empty
+        if (s.where === 0 && !w.slots[target]) done = 'EQUIPPED';
+        else act = { label: s.equipped ? 'SWAP' : 'EQUIP', cost: 0 };
+      } else if (!s.equipped) act = { label: 'EQUIP', cost: 0 };
+      return { ...s, act, done, target, upg: s.owned ? upgTotal(w, e.id) : 0, x2: !!w.akimbo?.has(e.id) };
     }
     const it = item.it;
     const s = equipmentState(g, it);
@@ -380,16 +430,18 @@ export class Store {
     let done = '';
     let chip = '';
     if (it.owned) {
+      // gear: buy -> worn; owned but taken off -> EQUIP (free, on its body slot); worn -> its upgrade
       const u = it.upgrade;
       if (!s.owned) act = { label: 'BUY', cost: s.cost };
+      else if (s.equip) act = { label: 'EQUIP', cost: 0, slot: s.slotLabel };
       else if (!s.maxed) act = { label: `UPGRADE ${u.name}`, cost: s.cost };
-      else done = 'MAXED';
-      if (s.owned) chip = u ? `${u.value(s.level)}` : 'OWNED';
+      else done = u ? 'MAXED' : 'EQUIPPED';
+      if (s.owned && u) chip = `${u.value(s.level)}`;
     } else {
       if (!s.maxed) act = { label: 'BUY', cost: it.price };
       else done = it.unit || it.max ? 'MAX' : 'FULL';
       if (it.unit) chip = `${s.count} ${it.unit}`;
-      else if (it.max) chip = `${s.count}/${it.max}`;
+      else if (s.max) chip = `${s.count}/${s.max}`;
     }
     return { ...s, act, done, chip, afford: !act || !act.cost || g.economy.canAfford(g.player, act.cost) };
   }
@@ -414,11 +466,12 @@ export class Store {
     const items = this._items(this.tab);
     let i = 0;
     const card = (it) => {
-      const name = it.kind === 'weapon' ? WEAPONS[it.e.id].name : it.it.name;
-      return `<button class="cf-st-card" data-sfx data-k="${it.k}" style="--i:${i++}">
+      const name = it.kind === 'weapon' ? WEAPONS[it.e.id].name : it.it.short ?? it.it.name;
+      const slot = it.kind === 'gear' && it.it.slot ? `<span class="cf-st-slotb">${SLOT_LABEL[it.it.slot]}</span>` : ''; // body slot
+      return `<button class="cf-st-card" data-sfx data-k="${it.k}" data-tk="${this._thumbKey(it)}" style="--i:${i++}">
         <span class="cf-st-card-pic">${this._pic(it)}</span>
-        <span class="cf-st-chip"></span>
-        <span class="cf-st-card-foot"><span class="cf-st-card-name">${esc(name)}</span><span class="cf-st-card-tag"></span></span>
+        <span class="cf-st-chip"></span><span class="cf-st-x2" title="AKIMBO">×2</span>${slot}
+        <span class="cf-st-card-foot"><span class="cf-st-card-name${it.kind === 'gear' && name.length > 12 ? ' long' : ''}">${esc(name)}</span><span class="cf-st-card-tag"></span></span>
       </button>`;
     };
     let html;
@@ -429,7 +482,14 @@ export class Store {
       };
       html = sec(0, 'PRIMARY') + sec(1, 'SECONDARY');
     } else {
-      html = `<div class="cf-st-sec"><div class="cf-st-grid">${items.map(card).join('')}</div></div>`;
+      // CONSUMABLES (stacked, used up) and GEAR (bought once, worn on a body slot)
+      const sec = (key, label, sub) => {
+        const list = items.filter((it) => itemSection(it.it) === key);
+        return list.length
+          ? `<div class="cf-st-sec" data-sec="${key}"><div class="cf-st-sec-h">${label}${sub ? `<small>${sub}</small>` : ''}</div><div class="cf-st-grid">${list.map(card).join('')}</div></div>`
+          : '';
+      };
+      html = sec('consumable', 'CONSUMABLES', '') + sec('gear', 'GEAR', ONE_PER_SLOT ? 'KEPT ALL MATCH · ONE PER BODY SLOT' : 'KEPT ALL MATCH');
     }
     const L = this.$.list;
     L.dataset.cat = this.tab;
@@ -447,15 +507,16 @@ export class Store {
     const sel = el.dataset.k === this.sel[this.tab];
     el.classList.toggle('sel', sel);
     el.setAttribute('aria-pressed', sel);
-    el.classList.toggle('owned', item.kind === 'weapon' ? s.owned && !s.equipped : !!(item.it.owned && s.owned));
-    el.classList.toggle('equipped', !!s.equipped);
+    const on = item.kind === 'weapon' ? s.equipped : s.worn; // gear: worn on its body slot
+    el.classList.toggle('owned', item.kind === 'weapon' ? s.owned && !s.equipped : !!(item.it.owned && s.owned && !s.worn));
+    el.classList.toggle('equipped', !!on);
     el.classList.toggle('maxed', !s.act && item.kind === 'gear');
     el.classList.toggle('poor', !!s.act && !s.afford);
     const tag = el.querySelector('.cf-st-card-tag');
     let t;
     if (s.act?.cost) t = `<span class="cf-st-price">${s.act.label.startsWith('UPGRADE') ? UP_SVG : ''}${money(s.act.cost)}</span>`;
-    else if (s.equipped) t = '<span class="cf-st-tag on">EQUIPPED</span>';
-    else if (item.kind === 'weapon') t = '<span class="cf-st-tag">OWNED</span>';
+    else if (s.equipped) t = `<span class="cf-st-tag on">${s.where === PACK_SLOT ? 'BACKPACK' : 'EQUIPPED'}</span>`;
+    else if (item.kind === 'weapon' || s.equip) t = '<span class="cf-st-tag">OWNED</span>'; // gear: owned, not worn
     else t = `<span class="cf-st-tag on">${s.done || 'OWNED'}</span>`;
     if (tag.innerHTML !== t) tag.innerHTML = t;
     const chip = el.querySelector('.cf-st-chip');
@@ -463,8 +524,11 @@ export class Store {
     if (chip.innerHTML !== c) chip.innerHTML = c;
     chip.classList.toggle('on', !!c);
     chip.classList.toggle('up', item.kind === 'weapon');
-    // a thumbnail that finished baking after the grid was built
-    if (!el.querySelector('img') && this.stage.thumb(item.k)) {
+    el.classList.toggle('x2', !!s.x2); // akimbo badge
+    // a thumbnail that finished baking after the grid was built (or the akimbo pair's, once bought)
+    const tk = this._thumbKey(item);
+    if (tk && el.dataset.tk !== tk) {
+      el.dataset.tk = tk;
       const pic = el.querySelector('.cf-st-card-pic');
       pic.innerHTML = this._pic(item);
       pic.classList.add('baked');
@@ -485,13 +549,14 @@ export class Store {
     const m = this._model(item);
     const $s = this.$.stage;
     const live = this.stage.ok && !!m;
-    const ready = live && this.stage.isReady(k);
+    const sk = stageKey(item);
+    const ready = live && this.stage.isReady(sk);
     $s.classList.toggle('fb', !live);
     $s.classList.toggle('wait', live && !ready);
     if (!ready) this._placeholder(item);
     if (live) {
-      this.stage.show(k, m.build, m.pose).then((ok) => {
-        if (!this.isOpen || this.sel[this.tab] !== k || this.stage.want !== k) return; // superseded
+      this.stage.show(sk, m.build, m.pose).then((ok) => {
+        if (!this.isOpen || this.sel[this.tab] !== k || this.stage.want !== sk) return; // superseded
         $s.classList.remove('wait');
         $s.classList.toggle('fb', !ok);
       });
@@ -515,11 +580,17 @@ export class Store {
     // the buy button: amber when actionable, red price when broke, muted when there's nothing to buy
     const a = s.act;
     const focused = document.activeElement?.classList?.contains('cf-st-buy');
-    $.act.innerHTML = a
-      ? `<button class="cf-st-buy${s.afford ? '' : ' poor'}" data-sfx data-act="buy">
-          <span class="cf-st-buy-l">${a.label}</span>${a.cost ? `<span class="cf-st-buy-c">${money(a.cost)}</span>` : ''}<span class="cf-kc">ENTER</span>
+    // above the button: the backpack's primary-slot picker, or which worn gear this one would replace
+    let pre = '';
+    if (item.kind === 'weapon' && s.target != null) pre = packPickerHtml(this.game.weapons, item.e.id, s.target);
+    else if (item.kind === 'gear' && s.replaces && !s.worn) pre = `<div class="cf-st-act-hint">REPLACES <b>${esc(s.replaces)}</b> ON YOUR ${esc(s.slotLabel)} · YOU KEEP IT</div>`;
+    $.act.innerHTML =
+      pre +
+      (a
+        ? `<button class="cf-st-buy${s.afford ? '' : ' poor'}" data-sfx data-act="buy">
+          <span class="cf-st-buy-l">${a.label}</span>${a.slot ? `<span class="cf-st-buy-s">${esc(a.slot)}</span>` : ''}${a.cost ? `<span class="cf-st-buy-c">${money(a.cost)}</span>` : ''}<span class="cf-kc">ENTER</span>
         </button>`
-      : `<button class="cf-st-buy off" disabled><span class="cf-st-buy-l">${s.done}</span><svg class="cf-st-tick" viewBox="0 0 12 10" aria-hidden="true"><path d="M1 5.2L4.3 8.5L11 1.5" fill="none" stroke="currentColor" stroke-width="2"/></svg></button>`;
+        : `<button class="cf-st-buy off" disabled><span class="cf-st-buy-l">${s.done}</span><svg class="cf-st-tick" viewBox="0 0 12 10" aria-hidden="true"><path d="M1 5.2L4.3 8.5L11 1.5" fill="none" stroke="currentColor" stroke-width="2"/></svg></button>`);
     if (focused) $.act.querySelector('.cf-st-buy:not(:disabled)')?.focus();
     // one-shot feedback on the freshly rendered controls: denied shake / bought flash
     const fx = this._fx;
@@ -543,20 +614,27 @@ export class Store {
     const lv = w.upgrades?.[e.id] || {};
     const ups = upgradesFor(base);
     const b0 = statVals(base);
-    const cur = statVals(eff);
+    // akimbo: two guns' worth of fire rate and rounds on the bars (x2: the preview while it's for sale)
+    const ak = akimboState(g, e);
+    const pair = (d) => ({ ...d, rpm: d.rpm * 2, mag: d.mag * 2 });
+    const dual = (d) => (ak.owned ? pair(d) : d);
+    const cur = statVals(dual(eff));
+    const x2 = ak.avail && !ak.owned ? statVals(pair(eff)) : null;
     const next = {};
     for (const u of ups) {
       const l = w.upgradeLevel(e.id, u.key);
-      if (l < MAX_LEVEL) next[u.key] = statVals(previewDef(base, { ...lv, [u.key]: l + 1 }));
+      if (l < MAX_LEVEL) next[u.key] = statVals(dual(previewDef(base, { ...lv, [u.key]: l + 1 })));
     }
     const tag = s.equipped ? '<span class="cf-st-tag on">EQUIPPED</span>' : s.owned ? '<span class="cf-st-tag">OWNED</span>' : '';
-    const held = WEAPONS[w.slots[e.slot]];
-    const warn = !s.equipped && e.slot === 0 && held?.special ? `<div class="cf-st-warn">REPLACES YOUR ${esc(held.name)}</div>` : '';
+    const held = WEAPONS[w.slots[s.target ?? e.slot]]; // the backpack picker's slot, if any
+    const warn = s.target == null && !s.equipped && e.slot === 0 && held?.special ? `<div class="cf-st-warn">REPLACES YOUR ${esc(held.name)}</div>` : ''; // (backpack: the picker says it)
     const bars = STATS.map(([label, key], i) => {
       const ghost = next[key] ? next[key][i] - cur[i] : 0;
       return `<div class="cf-st-bar" data-u="${key}"><em>${label}</em><i><b style="width:${pct(b0[i])}"></b>${
         cur[i] - b0[i] > 0.004 ? `<u style="width:${pct(cur[i] - b0[i])}"></u>` : ''
-      }${ghost > 0.004 ? `<s style="width:${pct(ghost)}"></s>` : ''}</i></div>`;
+      }${ghost > 0.004 ? `<s style="width:${pct(ghost)}"></s>` : ''}${
+        x2 && x2[i] - cur[i] > 0.004 ? `<s class="x2" style="width:${pct(x2[i] - cur[i])}"></s>` : ''
+      }</i></div>`;
     }).join('');
     const rows = ups
       .map((u) => {
@@ -576,11 +654,19 @@ export class Store {
         </button>`;
       })
       .join('');
+    // the premium one: a second gun for the left hand (owned pistols only)
+    const akRow = ak.avail
+      ? `<button class="cf-st-upg cf-st-ak${ak.owned ? ' max' : ''}${ak.afford ? '' : ' poor'}" data-sfx data-act="akimbo" data-id="${e.id}" data-key="akimbo"${ak.owned ? ' disabled' : ''}>
+          <span class="cf-st-upg-n">AKIMBO</span><span class="cf-st-ak-x">×2</span>
+          <span class="cf-st-upg-v">${ak.owned ? '' : `${eff.mag}<i>›</i>`}<b>2×${eff.mag}</b></span>
+          <span class="cf-st-upg-p">${ak.owned ? 'OWNED' : money(ak.cost)}</span>
+        </button><div class="cf-st-ak-hint">${ak.owned ? 'MOUSE1 RIGHT GUN · MOUSE2 LEFT GUN' : 'DUAL WIELD · MOUSE2 FIRES THE LEFT GUN · NO ADS'}</div>`
+      : '';
     return (
       this._head(base.name, e.type, tag) +
       warn +
       `<div class="cf-st-bars">${bars}</div>` +
-      (rows ? `<div class="cf-st-upgs${s.owned ? '' : ' locked'}"><div class="cf-st-sub">UPGRADES</div>${rows}</div>` : '')
+      (rows ? `<div class="cf-st-upgs${s.owned ? '' : ' locked'}"><div class="cf-st-sub">UPGRADES</div>${rows}${akRow}</div>` : '')
     );
   }
 
@@ -600,13 +686,15 @@ export class Store {
       meter = `<div class="cf-st-meter"><em>ARMOR</em><i class="cf-st-meter-bar"><b style="width:${pct(s.count / it.max)}"></b>${
         s.maxed ? '' : `<s style="width:${pct((nx - s.count) / it.max)}"></s>`
       }</i><span class="cf-st-meter-v"><b>${s.count}</b>${s.maxed ? '' : `<i>›</i><b class="nx">${nx}</b>`}<small>${esc(it.unit)}</small></span></div>`;
-    } else if (it.max) {
-      meter = `<div class="cf-st-meter"><em>CARRYING</em>${pips(Math.min(s.count, it.max), it.max)}<span class="cf-st-meter-v"><b>${s.count}</b><small>/ ${it.max}</small></span></div>`;
+    } else if (s.max) {
+      // the grenadier vest's extra carry shows as its own note
+      const bonus = s.max > it.max ? `<div class="cf-st-meter-note">+${s.max - it.max} FROM YOUR GRENADIER VEST</div>` : '';
+      meter = `<div class="cf-st-meter"><em>CARRYING</em>${pips(Math.min(s.count, s.max), s.max)}<span class="cf-st-meter-v"><b>${s.count}</b><small>/ ${s.max}</small></span></div>${bonus}`;
     } else {
       meter = `<div class="cf-st-meter"><em>RESERVES</em><span class="cf-st-meter-v"><b${s.maxed ? '' : ' class="nx"'}>${s.maxed ? 'FULL' : 'REFILL'}</b></span></div>`;
     }
-    const tag = it.owned && s.owned ? '<span class="cf-st-tag on">OWNED</span>' : '';
-    return this._head(it.name, it.type, tag) + meter;
+    const tag = it.slot && s.worn ? '<span class="cf-st-tag on">EQUIPPED</span>' : it.owned && s.owned ? `<span class="cf-st-tag${it.slot ? '' : ' on'}">OWNED</span>` : '';
+    return this._head(it.name, it.type, tag) + (it.slot ? gearDetailHtml(it, s) : '') + meter;
   }
 
   /* ------------------------------------------------------------ wallet */
@@ -660,7 +748,16 @@ export class Store {
   _buy() {
     const item = this._item(this.sel[this.tab]);
     if (!item) return null;
-    return item.kind === 'weapon' ? buyWeapon(this.game, item.e.id) : buyEquipment(this.game, item.it.key);
+    return item.kind === 'weapon' ? buyWeapon(this.game, item.e.id, this._packTarget(item.e)) : buyEquipment(this.game, item.it.key);
+  }
+
+  /**
+   * Weapon backpack worn and a primary selected: the slot it goes into (0 primary / PACK_SLOT
+   * backpack), as picked in the detail panel (default shop.js primaryTarget). null otherwise.
+   */
+  _packTarget(e) {
+    if (!this.game || e.slot !== 0 || !hasPack(this.game)) return null;
+    return this.pick?.[e.id] ?? primaryTarget(this.game, e.id);
   }
 
   _onClick(e) {
@@ -675,12 +772,26 @@ export class Store {
     if (!b || b.disabled) return;
     const act = b.dataset.act;
     if (act === 'close') return this._close();
+    if (act === 'pslot') {
+      // backpack primary picker: which slot the selected gun goes into
+      const item = this._item(this.sel[this.tab]);
+      if (item?.kind !== 'weapon') return;
+      (this.pick ??= {})[item.e.id] = Number(b.dataset.slot);
+      this._sfx('ui_click', 0.5);
+      this.render();
+      return;
+    }
     let res;
     if (act === 'buy') res = this._buy();
     else if (act === 'upgrade') res = buyUpgrade(this.game, b.dataset.id, b.dataset.key);
+    else if (act === 'akimbo') res = buyAkimbo(this.game, b.dataset.id);
     if (!res) return;
-    this._feedback(res, act === 'upgrade' ? b.dataset.key : null);
+    this._feedback(res, act === 'upgrade' || act === 'akimbo' ? b.dataset.key : null);
     this.render();
+    if (act === 'akimbo' && res.ok) {
+      this._select(this.sel[this.tab], true); // the preview becomes the pair
+      this._bakeAll(); // and so does the card's thumbnail
+    }
     // keyboard activation keeps focus on the same control across the re-render
     if (e.detail === 0) {
       const sel = act === 'upgrade' ? `.cf-st-upg[data-key="${b.dataset.key}"]:not(:disabled)` : '.cf-st-buy:not(:disabled)';

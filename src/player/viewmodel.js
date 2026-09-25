@@ -2,6 +2,10 @@
 // animation (sway, bob, recoil, draw, reloads, bolt cycling, melee, grenades, muzzle flash).
 import * as THREE from 'three';
 import { buildWeaponModel, buildArms } from './gunSafe.js';
+import { buildGasCanViewmodel, buildRepairTool } from './gasCan.js';
+import { buildReviveHands } from './reviveHands.js';
+import { AkimboRig } from './akimboRig.js';
+import { macheteSwing } from './machete.js';
 import { VIEWMODEL_LAYER } from '../core/renderer.js';
 import { tex } from '../world/textures.js';
 import { clamp, damp, lerp, smoothstep } from '../core/utils.js';
@@ -9,6 +13,8 @@ import { clamp, damp, lerp, smoothstep } from '../core/utils.js';
 const _v = new THREE.Vector3();
 const _q = new THREE.Quaternion();
 const _e = new THREE.Euler();
+// full-sprint offsets [x, y, z, rx, ry, rz]: the gun drops and cants across the body (a def may bring its own)
+const SPRINT_POSE = [-0.035, -0.03, 0.015, -0.22, 0.45, 0.3];
 
 // smooth pulse: 0 before a, ramps to 1 between a..b, holds, ramps back between c..d
 function pulse(f, a, b, c, d) {
@@ -63,6 +69,8 @@ export class Viewmodel {
     this.cylAngle = 0;
     this.cylTarget = 0;
     this.slideT = 1;
+    this.akimbo = null; // an akimbo pair's left gun (akimboRig.js), made on first use
+    this._drops = []; // [mag part, weapon id] pairs that fell out this frame (fx/magDrops.js)
 
     try {
       this.arms = buildArms();
@@ -167,7 +175,8 @@ export class Viewmodel {
     if (this.models[id]) return this.models[id];
     let m;
     try {
-      m = buildWeaponModel(id);
+      // generator gear (world/power.js) isn't in the gun library
+      m = id === 'gascan' ? buildGasCanViewmodel() : id === 'wrench' ? buildRepairTool() : id === 'hands' ? buildReviveHands() : buildWeaponModel(id);
     } catch (e) {
       console.error('weapon model failed', id, e);
       m = { root: new THREE.Group(), muzzle: new THREE.Object3D(), ejectPort: null, rightHand: new THREE.Object3D(), leftHand: null, sight: { eye: new THREE.Vector3(0, 0.08, 0.1) }, parts: {} };
@@ -217,7 +226,16 @@ export class Viewmodel {
       // pistols: the support arm comes up steeply from below, so only the cupping hand shows
       c.shoulders.left.set(...(pistol ? [-0.06, -0.62, 0.02] : [-0.14, -0.34, 0.05]));
       c.poles.left.set(...(pistol ? [-0.2, -1, 0.15] : [-1, -0.55, 0]));
+      // akimbo: the left arm mirrors the right one, closing on its own gun with the same firing grip
+      c._straightenL ??= c.straighten.left;
+      c.straighten.left = def.akimbo ? c.straighten.right : c._straightenL;
+      if (def.akimbo) {
+        c.shoulders.left.set(-0.2, -0.3, 0.06);
+        c.poles.left.set(-1, -0.45, 0);
+      }
     }
+    if (def.akimbo) (this.akimbo ??= new AkimboRig(this)).equip(def);
+    else this.akimbo?.hide();
     // attach flash & proxies
     if (m.muzzle) m.muzzle.add(this.flashGroup);
     if (m.rag) m.rag.add(this.ragFlame);
@@ -242,7 +260,8 @@ export class Viewmodel {
     this.ads = a;
   }
 
-  onFire(def) {
+  onFire(def, side = 0) {
+    if (side && this.akimbo) return this.akimbo.onFire(def); // an akimbo pair's left gun
     const k = def.kick ?? 1;
     const a = 1 - this.ads * 0.55; // ADS keeps the sights on target
     // sharp punch straight back and muzzle-up: an instant offset (m / rad) plus a small shove,
@@ -273,6 +292,7 @@ export class Viewmodel {
     else if (phase === 'shellStart') this.anim = { kind: 'shell', sub: 'start', t: 0, dur: def.reloadStart, tilt: 0 };
     else if (phase === 'shellInsert') this.anim = { kind: 'shell', sub: 'insert', t: 0, dur: duration, tilt: 1 };
     else if (phase === 'shellEnd') this.anim = { kind: 'shell', sub: 'end', t: 0, dur: duration, tilt: 1, empty };
+    else if (phase === 'akimbo') this.anim = { kind: 'akimbo', t: 0, dur: duration, empty, dropped: [false, false] }; // empty: [right, left]
   }
 
   /** Pump-action rack: forend + bolt slide back and return, the support hand rides the forend. */
@@ -288,12 +308,13 @@ export class Viewmodel {
     }
   }
 
-  getMuzzleWorld(out) {
-    // project the viewmodel muzzle into the world camera
-    if (!this.cur || !this.cur.muzzle || !this.vmCamera || !this.worldCamera) {
+  getMuzzleWorld(out, side = 0) {
+    // project the viewmodel muzzle into the world camera (side 1: an akimbo pair's left gun)
+    const muzzle = side ? this.akimbo?.muzzle : this.cur?.muzzle;
+    if (!muzzle || !this.vmCamera || !this.worldCamera) {
       return out.copy(this.worldCamera ? this.worldCamera.position : _v.set(0, 0, 0));
     }
-    this.cur.muzzle.getWorldPosition(out);
+    muzzle.getWorldPosition(out);
     // out is in world coordinates but relative to the vm camera's projection; re-project
     out.project(this.vmCamera);
     const ndcZ = new THREE.Vector3(0, 0, -0.7).applyMatrix4(this.worldCamera.projectionMatrix).z;
@@ -302,8 +323,8 @@ export class Viewmodel {
     return out;
   }
 
-  getEjectWorld(out) {
-    const obj = this.cur?.ejectPort || this.cur?.muzzle;
+  getEjectWorld(out, side = 0) {
+    const obj = side ? this.akimbo?.ejectPort : this.cur?.ejectPort || this.cur?.muzzle;
     if (!obj || !this.vmCamera || !this.worldCamera) return out.copy(this.worldCamera?.position ?? _v.set(0, 0, 0));
     obj.getWorldPosition(out);
     out.project(this.vmCamera);
@@ -316,6 +337,18 @@ export class Viewmodel {
   setVisible(v) {
     this.visible = v;
     this.root.visible = v;
+  }
+
+  /** A reload lets the mag part `obj` of weapon `id` fall out: it becomes a world magazine this frame. */
+  dropMag(obj, id) {
+    this._drops.push(obj, id);
+  }
+
+  _flushDrops(weapons, player) {
+    const mags = weapons?.game?.fx?.mags; // none in the weapon viewer
+    const q = this._drops;
+    for (let i = 0; i < q.length; i += 2) mags?.drop(q[i], q[i + 1], this.worldCamera, this.vmCamera, player?.body?.vel);
+    q.length = 0;
   }
 
   update(dt, { camera, vmCamera, player, weapons, mouseDX, mouseDY }) {
@@ -379,13 +412,15 @@ export class Viewmodel {
     // sprint: gun drops and cants across the body (weapons.sprintK; the sprint-out gates firing)
     const spr = (weapons.sprintK ?? 0) * (1 - adsE);
     if (spr > 0.001) {
-      pos.x -= 0.035 * spr;
-      pos.y -= 0.03 * spr;
-      pos.z += 0.015 * spr;
-      rx -= 0.22 * spr;
-      ry += 0.45 * spr;
-      rz += 0.3 * spr;
+      const S = def.sprintPose ?? SPRINT_POSE;
+      pos.x += S[0] * spr;
+      pos.y += S[1] * spr;
+      pos.z += S[2] * spr;
+      rx += S[3] * spr;
+      ry += S[4] * spr;
+      rz += S[5] * spr;
     }
+    if (def.akimbo) this.akimbo?.setBase(pos, rx, ry, rz); // the left gun shares the hip + sprint pose
 
     // draw animation
     if (this.drawT < 1) {
@@ -426,7 +461,16 @@ export class Viewmodel {
     const st = weapons.state;
     const a = this.anim;
     if (a) a.t += dt;
-    if (a && a.kind === 'mag' && st === 'reload') {
+    if (a && a.kind === 'akimbo' && st === 'reload' && this.akimbo) {
+      // the right gun's half of the pair reload (the rig does the left one in akimbo.update below)
+      const o = this.akimbo.reloadPose(clamp(a.t / a.dur, 0, 1), 0, a, m, def.model);
+      pos.x += o.x;
+      pos.y += o.y;
+      pos.z += o.z;
+      rx += o.rx;
+      ry += o.ry;
+      rz += o.rz;
+    } else if (a && a.kind === 'mag' && st === 'reload') {
       const f = clamp(a.t / a.dur, 0, 1);
       const tilt = pulse(f, 0.0, 0.15, 0.82, 1.0);
       rz -= tilt * 0.38; // roll right: magwell turns toward the support hand
@@ -440,7 +484,12 @@ export class Viewmodel {
         const back = smoothstep(0.34, 0.55, f);
         if (f < 0.34) {
           P.mag.position.y = m.rest.mag.pos.y - out * 0.3;
-          P.mag.visible = out < 0.95;
+          // the empty falls free as it clears the well (fx/magDrops.js); the hand goes on down for a fresh one
+          if (f >= 0.13 && !a.dropped) {
+            a.dropped = true;
+            this.dropMag(P.mag, def.model);
+          }
+          P.mag.visible = !a.dropped && out < 0.95;
         } else {
           P.mag.position.y = m.rest.mag.pos.y - (1 - back) * 0.25;
           P.mag.visible = true;
@@ -544,7 +593,16 @@ export class Viewmodel {
       const heavy = st === 'heavy';
       const T = heavy ? def.heavyTime : def.swingTime;
       const f = clamp(weapons.stateT / T, 0, 1);
-      if (heavy) {
+      if (def.id === 'machete') {
+        // store gear: a diagonal chop / an overhead hack (player/machete.js)
+        const o = macheteSwing(f, heavy, Object.assign((this._mo ??= {}), { x: 0, y: 0, z: 0, rx: 0, ry: 0, rz: 0 }));
+        pos.x += o.x;
+        pos.y += o.y;
+        pos.z += o.z;
+        rx += o.rx;
+        ry += o.ry;
+        rz += o.rz;
+      } else if (heavy) {
         const wind = pulse(f, 0, 0.3, 0.32, 0.4);
         const thrust = pulse(f, 0.32, 0.42, 0.55, 0.9);
         pos.z += wind * 0.08 - thrust * 0.28;
@@ -609,6 +667,69 @@ export class Viewmodel {
       if (P.bundle && m.rest.bundle) P.bundle.position.z = m.rest.bundle.pos.z - 0.05 * k;
       pos.y -= pulse(f, 0.72, 0.75, 0.75, 0.86) * 0.006 * k; // the blow jolts the hands
       m.root.visible = true;
+    } else if (def.mode === 'tool') {
+      // generator repair (world/power.js): a pipe wrench cranks a seized nut in short strokes about its
+      // jaw, then the wrench goes and the right hand rips the pull-start cord
+      const t = weapons.toolT ?? 0;
+      const Y = weapons.toolYank ?? 1.85;
+      const k = smoothstep(0, 0.25, t);
+      if (t < Y) {
+        const S = 0.62;
+        const f = (t % S) / S;
+        const push = f < 0.5 ? smoothstep(0.02, 0.5, f) : 1 - smoothstep(0.58, 1, f);
+        if (P.wrench) P.wrench.rotateY(push * 0.42 * k);
+        pos.y -= (0.015 + push * 0.012) * k;
+        pos.z -= 0.02 * k;
+        rx -= 0.1 * k;
+        rz -= push * 0.04 * k;
+      } else {
+        const u = t - Y;
+        if (P.wrench) P.wrench.visible = false;
+        if (P.pull && m.rest.pull) {
+          P.pull.visible = true;
+          const yank = smoothstep(0.08, 0.24, u) * (1 - smoothstep(0.45, 0.85, u));
+          const r = m.rest.pull.pos;
+          P.pull.position.set(r.x + yank * 0.14, r.y + yank * 0.18, r.z + yank * 0.25);
+          P.pull.rotation.x = m.rest.pull.rot.x + yank * 0.5;
+          rz += yank * 0.12;
+          ry -= yank * 0.1;
+          pos.y += yank * 0.02;
+        }
+        rightTarget = m.pullHand ?? rightTarget;
+        leftTarget = null;
+        pos.y -= 0.02 * (1 - smoothstep(0, 0.1, u));
+      }
+      m.root.visible = true;
+    } else if (def.mode === 'revive') {
+      // reviving a teammate (game/revive.js): both hands reach down onto the body and press in rhythm
+      const t = weapons.toolT ?? 0;
+      const k = smoothstep(0, 0.35, t);
+      const f = (t * 1.7) % 1;
+      const push = f < 0.3 ? smoothstep(0, 0.3, f) : 1 - smoothstep(0.3, 1, f);
+      pos.y -= (0.04 + push * 0.035) * k;
+      pos.z -= 0.05 * k;
+      rx -= 0.15 * k + push * 0.05 * k;
+      m.root.visible = true;
+    } else if (def.mode === 'pour') {
+      // gas can: carried one-handed by the middle grip; to pour, the left hand comes up onto the rear
+      // grip and the can tips forward over the filler, fuel running from the spout
+      leftTarget = null;
+      const t = weapons.pourT;
+      if (t != null) {
+        const k = smoothstep(0.05, 0.45, t);
+        const glug = Math.sin(t * 11) * k;
+        // lifted a little, out in front, rolled over to the left until the spout points down
+        if (P.can && m.rest.can) {
+          P.can.rotation.z = m.rest.can.rot.z + 1.05 * k + glug * 0.02;
+          P.can.rotation.x = m.rest.can.rot.x - 0.15 * k;
+        }
+        if (P.stream) P.stream.visible = k > 0.8;
+        pos.x -= 0.03 * k;
+        pos.y += 0.07 * k + glug * 0.003;
+        pos.z -= 0.12 * k;
+        leftTarget = m.leftAt ? m.leftAt(smoothstep(0, 0.3, t)) : m.leftHand;
+      }
+      m.root.visible = true;
     } else if (st === 'idle') {
       m.root.visible = true;
     }
@@ -649,7 +770,20 @@ export class Viewmodel {
       if (this.flashT <= 0) this.flashGroup.visible = false;
     }
 
+    // akimbo: the left gun (mirrored), moving with the right one; the left hand closes on it
+    if (def.akimbo && this.akimbo) {
+      const sh = (this._shared ??= {});
+      sh.x = bx * (1 - adsE * 0.7);
+      sh.y = by + idleBreath - this.landDip * 0.03;
+      sh.pitch = this.sway.y;
+      sh.yaw = this.sway.x;
+      sh.roll = strafeRoll + this.sway.x * 0.5;
+      leftTarget = this.akimbo.update(dt, def, st, a, this.drawT, sh) ?? leftTarget;
+    }
+    if (this._drops.length) this._flushDrops(weapons, player);
+
     this.root.updateMatrixWorld(true);
+    m.animate?.(dt); // model extras that need the posed world matrices (the gas can's fuel stream)
     if (this.arms) {
       try {
         this.arms.update(rightTarget, leftTarget, m.root);

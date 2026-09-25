@@ -34,8 +34,9 @@ export const BITER = {
 
 const HIP = 0.98; // proxy hip height the pose code writes around (gltfCharacter.js HIP_Y)
 const _v = new THREE.Vector3();
-const _steer = { dirX: 0, dirZ: 0, portal: null, portalTo: null, dist: 0 };
 const _ray = {};
+const _w = { x: 0, z: 0 };
+const _av = { x: 0, z: 0, lx: 0, lz: 0, slow: 1 };
 
 export class Biter extends Zombie {
   spawn(pos, round, hpMult, speedMult) {
@@ -169,12 +170,8 @@ export class Biter extends Zombie {
     const dist = tgt ? tgt.pos.distanceTo(pos) : Infinity;
     const sameLevel = !!tgt && tgt.level === this.level;
 
-    this.losT -= dt;
-    if (this.losT <= 0 && tgt) {
-      this.losT = 0.2 + Math.random() * 0.12;
-      this.hasLOS = sameLevel && dist < 28 && ctx.world.lineOfSight(pos.x, pos.y + this.type.eye * this.scale, pos.z, tgt.pos.x, tgt.pos.y + 1.2, tgt.pos.z);
-      if (!this.alerted && this.hasLOS && dist < 24) this._alert(rand(0.05, 0.4));
-    }
+    // eye-level LOS + a walkable straight line on the nav grid (Zombie._senses)
+    if (this._senses(dt, ctx, tgt, dist, sameLevel, 1.2) && !this.alerted && this.hasLOS && dist < 24) this._alert(rand(0.05, 0.4));
     if (!this.alerted && (dist < 9 || ctx.roundTime > 20)) this._alert(rand(0, 0.5));
     if (this.alertDelay > 0) this.alertDelay -= dt;
     this.groanT -= dt;
@@ -195,7 +192,7 @@ export class Biter extends Zombie {
       const reach = this.type.reach + (tgt.radius ?? 0.3);
       const dy = Math.abs(tgt.pos.y - pos.y);
       const graced = (tgt.latchFreeAt ?? 0) > ctx.time; // just got one off its back
-      if (!circling && !graced && alertedNow && this.pounceCd <= 0 && this.hasLOS && sameLevel && this.body.onGround && dist > BITER.pounce.min && dist < BITER.pounce.max && !tgt.latchedBy && dy < 1) {
+      if (!circling && !graced && alertedNow && this.pounceCd <= 0 && this.hasLOS && this.canDirect && !this.portal && sameLevel && this.body.onGround && dist > BITER.pounce.min && dist < BITER.pounce.max && !tgt.latchedBy && dy < 1) {
         this._startTelegraph(tgt);
         this.animate(dt);
         return;
@@ -209,13 +206,15 @@ export class Biter extends Zombie {
       if (!circling && alertedNow && this.pounceCd <= 0 && dist < 2.2 && this.backoffT < -1.5 && Math.random() < dt * 2) this.backoffT = rand(0.4, 0.65);
       speed = (alertedNow ? this.type.run : this.type.walk) * this.speedMult;
       if (this.hitSlow > 0) speed *= 0.55;
+      this.direct = false;
+      this.noDirectT -= dt;
+      this.rawT -= dt;
       if (this.portal) {
-        const to = this.portalTo;
-        wantX = to.x - pos.x;
-        wantZ = to.z - pos.z;
-        this.portalT += dt;
-        if ((Math.hypot(wantX, wantZ) < 0.45 && levelOf(pos.y + 0.3) === to.level) || this.portalT > 8) this.portal = null;
-      } else if (sameLevel && this.hasLOS && dist < 12) {
+        this._portalMove(dt, ctx, tgt, dist, _w);
+        wantX = _w.x;
+        wantZ = _w.z;
+      } else if (sameLevel && this.canDirect && this.noDirectT <= 0 && dist < 12) {
+        this.route = null;
         direct = true;
         if (circling) {
           // prowl a ring around the carrier
@@ -232,31 +231,14 @@ export class Biter extends Zombie {
           wantZ = tgt.pos.z - pos.z;
         }
       } else {
-        const st = ctx.nav.steer(this.level, pos.x, pos.z, _steer);
-        if (st) {
-          if (st.portal) {
-            this.portal = st.portal;
-            this.portalTo = st.portalTo;
-            this.portalT = 0;
-          }
-          wantX = st.dirX;
-          wantZ = st.dirZ;
-        } else {
-          wantX = tgt.pos.x - pos.x;
-          wantZ = tgt.pos.z - pos.z;
-        }
+        this._fieldWant(dt, ctx, _w);
+        wantX = this.steerOk ? _w.x : tgt.pos.x - pos.x;
+        wantZ = this.steerOk ? _w.z : tgt.pos.z - pos.z;
       }
+      this.direct = direct;
       if (!circling && this.backoffT <= 0 && dist < reach * 0.8 && sameLevel) speed *= 0.2;
     }
 
-    // stuck → side-step
-    this.stuckT += dt;
-    if (this.stuckT > 1.0) {
-      const moved = _v.copy(pos).sub(this.lastPos).setY(0).length();
-      if (moved < 0.3 && speed > 1 && this.attackT < 0) this.sideStep = 0.5;
-      this.lastPos.copy(pos);
-      this.stuckT = 0;
-    }
     let len = Math.hypot(wantX, wantZ);
     if (len > 1e-4) {
       wantX /= len;
@@ -269,23 +251,22 @@ export class Biter extends Zombie {
       this.zig = rand(-0.8, 0.8);
     }
     const zig = speed > 2.5 && dist > 2.5 && this.attackT < 0 ? this.zig * (direct ? 1 : 0.4) : 0;
-    let sx = -wantZ, sz = wantX;
+    const sx = -wantZ, sz = wantX;
     wantX += sx * zig;
     wantZ += sz * zig;
-    if (this.sideStep > 0) {
-      this.sideStep -= dt;
-      const s = this.id % 2 ? 1 : -1;
-      wantX = wantX * 0.3 + sx * s;
-      wantZ = wantZ * 0.3 + sz * s;
-    }
     len = Math.hypot(wantX, wantZ);
-    if (len > 1e-4) {
-      wantX /= len;
-      wantZ /= len;
-    }
-    const sep = ctx.separation(this, _v);
-    wantX += sep.x * 1.4;
-    wantZ += sep.z * 1.4;
+    _w.x = len > 1e-4 ? wantX / len : 0;
+    _w.z = len > 1e-4 ? wantZ / len : 0;
+    // stuck → side-step to the roomier side, grid-only steering (Zombie._unstick)
+    const near = !circling && sameLevel && dist < this.type.reach + (tgt?.radius ?? 0.3) + 0.4;
+    this._unstick(dt, ctx, speed, _w, near);
+    if (speed > 0.5 && this.attackT < 0) this._wallAvoid(dt, ctx, _w);
+    wantX = _w.x;
+    wantZ = _w.z;
+    // crowd: separation, stepping round the one in front (it's small: it slips past the big ones)
+    const av = ctx.avoid ? ctx.avoid(this, wantX, wantZ, _av) : ctx.separation(this, _av);
+    wantX += av.x * 1.4 + (av.lx ?? 0);
+    wantZ += av.z * 1.4 + (av.lz ?? 0);
 
     let faceYaw = this.yaw;
     if ((this.attackT >= 0 || circling || this.backoffT > 0) && tgt) faceYaw = Math.atan2(tgt.pos.x - pos.x, tgt.pos.z - pos.z);

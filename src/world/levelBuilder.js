@@ -14,8 +14,8 @@ const FACE_DIRS = {
   nz: [0, 0, -1],
 };
 
-// simple hash for deterministic per-box variation
-function hash3(x, y, z) {
+// simple hash for deterministic per-box variation (exported: world/lab.js matches its yard cap to it)
+export function hash3(x, y, z) {
   let h = Math.sin(x * 12.9898 + y * 78.233 + z * 37.719) * 43758.5453;
   return h - Math.floor(h);
 }

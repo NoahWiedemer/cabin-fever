@@ -5,6 +5,7 @@ import { SpriteParticles, StreakParticles } from './particles.js';
 import { Decals } from './decals.js';
 import { tex } from '../world/textures.js';
 import { buildShellCasing } from '../player/gunSafe.js';
+import { MagDrops } from './magDrops.js';
 import { SURF } from '../world/collision.js';
 import { rand } from '../core/utils.js';
 
@@ -85,6 +86,7 @@ export class Effects {
         console.warn('shell casing build failed', type, e);
       }
     }
+    this.mags = new MagDrops(scene, world, audio); // the player's empty magazines on the floor
     this.acidClouds = [];
     this.fireZones = [];
     this.time = 0;
@@ -98,6 +100,25 @@ export class Effects {
   impact(p, n, surface, opts = {}) {
     const loud = opts.silent ? 0 : 1;
     const sparkCol = [4.5, 3.0, 1.4];
+    if (surface === SURF.glass) {
+      // armored glass: it chips, it doesn't break. Sparks, glittering splinters, a puff of glass dust
+      for (let i = 0; i < 7; i++) {
+        _v.copy(n).multiplyScalar(rand(1.5, 5)).add(new THREE.Vector3(rand(-2.5, 2.5), rand(-0.5, 3), rand(-2.5, 2.5)));
+        this.sparks.emit(p.x, p.y, p.z, _v.x, _v.y, _v.z, { life: rand(0.08, 0.25), length: 0.015, color: [3.2, 3.6, 3.8], width: 0.006 });
+      }
+      for (let i = 0; i < 9; i++) {
+        _v.copy(n).multiplyScalar(rand(1, 3.5)).add(new THREE.Vector3(rand(-1.2, 1.2), rand(0, 2), rand(-1.2, 1.2)));
+        this.glow.emit(p.x, p.y, p.z, _v.x, _v.y, _v.z, { life: rand(0.35, 0.8), size: rand(0.012, 0.025), gravity: 9.8, drag: 0.4, color: [1.4, 1.7, 1.7] });
+      }
+      for (let i = 0; i < 2; i++) {
+        _v.copy(n).multiplyScalar(rand(0.3, 0.9));
+        this.smoke.emit(p.x, p.y, p.z, _v.x, _v.y, _v.z, { life: rand(0.4, 0.8), size: rand(0.08, 0.14), grow: 0.5, drag: 3, gravity: -0.05, color: [0.75, 0.8, 0.8], alpha: 0.35 });
+      }
+      this.glow.emit(p.x + n.x * 0.01, p.y + n.y * 0.01, p.z + n.z * 0.01, 0, 0, 0, { life: 0.05, size: 0.3, color: [2.4, 2.6, 2.8] });
+      if (loud) this.audio.play('impact_glass', { position: p, volume: 0.65 });
+      if (!opts.noDecal) this.decals.glassChip(p, n, rand(0.1, 0.15));
+      return;
+    }
     if (surface === SURF.metal) {
       for (let i = 0; i < 10; i++) {
         _v.copy(n).multiplyScalar(rand(2, 7)).add(new THREE.Vector3(rand(-3, 3), rand(-1, 4), rand(-3, 3)));
@@ -293,6 +314,7 @@ export class Effects {
     this.time += dt;
     for (const s of this.systems) s.update(dt);
     this.sparks.update(dt);
+    this.mags.update(dt);
     // acid clouds
     for (let i = this.acidClouds.length - 1; i >= 0; i--) {
       const c = this.acidClouds[i];

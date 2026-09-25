@@ -112,6 +112,14 @@ export const WEAPONS = {
     damage: 80, heavyDamage: 190, range: 1.9, heavyRange: 1.7, swingTime: 0.42, heavyTime: 0.9,
     moveMul: 1.1, hip: [0.15, -0.15, -0.35], hipRot: [0.35, 0.45, -0.5], drawTime: 0.25,
   },
+  machete: {
+    // store gear (game/gear.js), replaces the knife in slot 3 while worn: double damage, a quicker swing,
+    // a longer reach; `oneHit`: infected types it always cuts down in one blow (player/machete.js: model)
+    id: 'machete', name: 'MACHETE', slot: 2, model: 'machete', mode: 'melee',
+    damage: 160, heavyDamage: 380, range: 2.15, heavyRange: 1.95, swingTime: 0.33, heavyTime: 0.72,
+    hitAt: 0.1, heavyHitAt: 0.29, oneHit: ['biter'], swingSound: 'machete_swing', hitSound: 'machete_hit',
+    moveMul: 1.08, hip: [0.17, -0.16, -0.33], hipRot: [-0.1, 0.22, 0.28], drawTime: 0.3,
+  },
   m67: {
     id: 'm67', name: 'M67 FRAG', slot: 3, model: 'm67', mode: 'grenade',
     damage: 360, radius: 7.5, fuse: 3.0, throwSpeed: 15, moveMul: 1.05, hip: [0.15, -0.14, -0.33], hipRot: [0.25, 0.2, -0.2], drawTime: 0.3,
@@ -126,6 +134,21 @@ export const WEAPONS = {
     // store kit, slot 5 (world/barricades.js): hold fire at a doorway to nail planks across it
     id: 'barricade', name: 'BARRICADE KIT', slot: 4, model: 'barricade', mode: 'build', moveMul: 1.0,
     hip: [0.17, -0.18, -0.4], hipRot: [0.04, 0.06, 0], drawTime: 0.35,
+  },
+  gascan: {
+    // jerry can from upstairs, slot 6 (world/power.js): hold fire at the generator to pour it in
+    id: 'gascan', name: 'GAS CAN', slot: 5, model: 'gascan', mode: 'pour', moveMul: 0.92,
+    hip: [0.17, -0.15, -0.46], hipRot: [0.16, 0.05, 0.04], drawTime: 0.4,
+  },
+  wrench: {
+    // not a slot: drawn by WeaponSystem.beginTool while you repair the generator (world/power.js)
+    id: 'wrench', name: 'WRENCH', slot: -1, model: 'wrench', mode: 'tool', moveMul: 0.6,
+    hip: [0.14, -0.155, -0.4], hipRot: [0, 0, 0], drawTime: 0.25,
+  },
+  hands: {
+    // not a slot: both hands on a downed teammate while you revive them (game/revive.js, beginTool)
+    id: 'hands', name: 'REVIVE', slot: -1, model: 'hands', mode: 'revive', moveMul: 0.5,
+    hip: [0.02, -0.165, -0.52], hipRot: [0.35, 0, 0], drawTime: 0.3,
   },
   m32: {
     id: 'm32', name: 'M32 MGL', slot: 0, model: 'm32', mode: 'semi', rpm: 150,

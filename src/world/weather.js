@@ -2,6 +2,13 @@
 // drifting toxic fog banks, lightning bolts, and interior ceiling drips.
 import * as THREE from 'three';
 import { tex } from './textures.js';
+import { BARN, BARN_ROOF } from './ranchLayout.js';
+
+// the barn is turned: its roof test runs in its own frame (constants baked into the shaders)
+const BR = BARN_ROOF, f4 = (v) => v.toFixed(4);
+const IN_BARN = (p) =>
+  `(abs(${f4(BR.cos)} * (${p}.x - ${f4(BR.x)}) - ${f4(BR.sin)} * (${p}.y - ${f4(BR.z)})) < ${f4(BR.hx)} && ` +
+  `abs(${f4(BR.sin)} * (${p}.x - ${f4(BR.x)}) + ${f4(BR.cos)} * (${p}.y - ${f4(BR.z)})) < ${f4(BR.hz)})`;
 
 const skyVert = /* glsl */ `
 varying vec3 vDir;
@@ -89,6 +96,7 @@ void main() {
   if (inRect(p.xz, uRoofA) && p.y < 9.5) vA = 0.0;
   if (inRect(p.xz, uRoofB) && p.y < 3.2) vA = 0.0;
   if (inRect(p.xz, uRoofC) && p.y < 3.3) vA = 0.0;
+  if (p.y < ${BARN.ridge.toFixed(2)} && ${IN_BARN('p.xz')}) vA = 0.0; // barn (ranchLayout.js)
   if (p.y < -0.6) vA = 0.0;
   float dist = length(wp - uCam);
   vA *= smoothstep(1.5, 4.5, dist) * (1.0 - smoothstep(16.0, 26.0, dist)); // no fat streaks right at the lens
@@ -127,6 +135,7 @@ void main() {
   vec3 wp = vec3(p.x, -0.48, p.y);
   vA = (1.0 - ph) * step(ph, 0.35) * 2.5;
   if (p.x > uRoofA.x && p.x < uRoofA.z && p.y > uRoofA.y && p.y < uRoofA.w) vA = 0.0;
+  if (${IN_BARN('p')}) vA = 0.0;
   vec4 mv = viewMatrix * vec4(wp, 1.0);
   float dist = -mv.z;
   vA *= 1.0 - smoothstep(9.0, 14.0, length(wp - uCam));
@@ -169,7 +178,7 @@ void main() {
   vec4 mv = viewMatrix * vec4(wp, 1.0);
   float dist = -mv.z;
   // hide when inside the house region or too close to the camera
-  float inHouse = step(abs(center.x), 13.0) * step(abs(center.z), 9.0);
+  float inHouse = max(step(abs(center.x), 13.0) * step(abs(center.z), 9.0), ${IN_BARN('center.xz')} ? 1.0 : 0.0);
   vA = (1.0 - inHouse) * smoothstep(2.0, 8.0, dist) * (1.0 - smoothstep(38.0, 55.0, dist));
   vFrame = floor(aSeed.w * 3.99);
   gl_Position = projectionMatrix * mv;
@@ -230,11 +239,12 @@ function buildWindowShafts(windows, moonDir) {
   let base = 0;
   const len = 6.0;
   for (const w of windows) {
-    const n = w.axis === 'x' ? new THREE.Vector3(0, 0, w.outward) : new THREE.Vector3(w.outward, 0, 0);
+    // w.n / w.along / w.center: explicit world vectors (the turned barn's windows, world/barn.js)
+    const n = w.n ?? (w.axis === 'x' ? new THREE.Vector3(0, 0, w.outward) : new THREE.Vector3(w.outward, 0, 0));
     if (n.dot(moonDir) <= 0.05) continue;
-    const along = w.axis === 'x' ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 0, 1);
+    const along = w.along ?? (w.axis === 'x' ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 0, 1));
     const cx = (w.a + w.b) / 2;
-    const center = w.axis === 'x' ? new THREE.Vector3(cx, (w.y0 + w.y1) / 2, w.c) : new THREE.Vector3(w.c, (w.y0 + w.y1) / 2, cx);
+    const center = w.center ? w.center.clone() : w.axis === 'x' ? new THREE.Vector3(cx, (w.y0 + w.y1) / 2, w.c) : new THREE.Vector3(w.c, (w.y0 + w.y1) / 2, cx);
     center.addScaledVector(n, -0.16);
     const halfW = (w.b - w.a) / 2, halfH = (w.y1 - w.y0) / 2;
     const corner = (u, v) => center.clone().addScaledVector(along, (u - 0.5) * 2 * halfW).add(new THREE.Vector3(0, (v - 0.5) * 2 * halfH, 0));
@@ -470,7 +480,55 @@ export class Weather {
     return l;
   }
 
+  /** A bolt that comes down right onto `target` (the barn, world/barnFire.js): jagged, converging, a branch or two. */
+  strikeAt(target) {
+    const pts = [];
+    const n = 22, top = 70;
+    let x = target.x + (Math.random() - 0.5) * 18, z = target.z + (Math.random() - 0.5) * 18;
+    for (let i = 0; i <= n; i++) {
+      const k = i / n;
+      const y = top + (target.y - top) * k;
+      // wander, pulled onto the target as it comes down
+      x += (Math.random() - 0.5) * 3.2 * (1 - k);
+      z += (Math.random() - 0.5) * 3.2 * (1 - k);
+      pts.push(new THREE.Vector3(x + (target.x - x) * k * k, y, z + (target.z - z) * k * k));
+      if (i === 9 || i === 15) {
+        // a short fork
+        const f = pts[pts.length - 1];
+        pts.push(f.clone().add(new THREE.Vector3((Math.random() - 0.5) * 6, -4 - Math.random() * 4, (Math.random() - 0.5) * 6)), f.clone());
+      }
+    }
+    pts[pts.length - 1].copy(target);
+    this._boltGeo0 ??= this.bolt.geometry; // the distant bolts keep their own shape
+    this._targetBolt?.dispose();
+    this._targetBolt = new THREE.BufferGeometry().setFromPoints(pts);
+    this.bolt.geometry = this._targetBolt;
+    this.bolt.position.set(0, 0, 0);
+    this.bolt.rotation.y = 0;
+    this.bolt.visible = true;
+    this.boltT = 0.45;
+    // a 1 px line is lost at this range: a glowing channel of tubes around it (the drip material's program)
+    if (!this.boltTube) {
+      const mat = (o) => new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false, fog: false, blending: THREE.AdditiveBlending, ...o });
+      this.boltTube = new THREE.Group();
+      this.boltTube.add(new THREE.Mesh(undefined, mat({ color: new THREE.Color(2.6, 2.8, 4.0) })));
+      this.boltTube.add(new THREE.Mesh(undefined, mat({ color: new THREE.Color(0.35, 0.45, 0.9), opacity: 0.5 })));
+      this.boltTube.renderOrder = 7;
+      this.scene.add(this.boltTube);
+    }
+    const path = new THREE.CurvePath();
+    for (let i = 1; i < pts.length; i++) path.add(new THREE.LineCurve3(pts[i - 1], pts[i]));
+    const [core, halo] = this.boltTube.children;
+    core.geometry?.dispose();
+    halo.geometry?.dispose();
+    core.geometry = new THREE.TubeGeometry(path, pts.length * 2, 0.07, 4, false);
+    halo.geometry = new THREE.TubeGeometry(path, pts.length * 2, 0.32, 5, false);
+    core.frustumCulled = halo.frustumCulled = false;
+    this.boltTube.visible = true;
+  }
+
   strike() {
+    if (this._boltGeo0) this.bolt.geometry = this._boltGeo0;
     const a = Math.random() * Math.PI * 2;
     const r = 70 + Math.random() * 50;
     this.bolt.position.set(Math.cos(a) * r, 0, Math.sin(a) * r);
@@ -506,7 +564,11 @@ export class Weather {
     if (this.boltT > 0) {
       this.boltT -= dt;
       this.bolt.material.opacity = Math.random() < 0.3 ? 0.2 : 1;
-      if (this.boltT <= 0) this.bolt.visible = false;
+      if (this.boltTube?.visible) this.boltTube.children[0].material.opacity = this.bolt.material.opacity;
+      if (this.boltT <= 0) {
+        this.bolt.visible = false;
+        if (this.boltTube) this.boltTube.visible = false;
+      }
     }
     for (const d of this.drips) {
       if (d.wait > 0) {

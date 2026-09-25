@@ -4,6 +4,7 @@ import * as G from './gunModels.js';
 import { buildGltfWeapon, hasGltfWeapon } from './gltfGuns.js';
 import { buildGltfArms, hasGltfArms } from './gltfArms.js';
 import { buildBarricadeKit } from './barricadeKit.js';
+import { buildMachete } from './machete.js';
 
 const fbMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.5, metalness: 0.6 });
 
@@ -32,6 +33,7 @@ const STAND_IN = { m16a2: 'm4a1', spas12: 'm4super90', r201: 'm4a1', devotion: '
 
 export function buildWeaponModel(id) {
   if (id === 'barricade') return buildBarricadeKit();
+  if (id === 'machete') return buildMachete(); // store gear (game/gear.js)
   if (hasGltfWeapon(id)) {
     try {
       return buildGltfWeapon(id);

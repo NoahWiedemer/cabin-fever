@@ -108,6 +108,12 @@ export class Decals {
     this.pools = pool ? new DecalPool(scene, pool, { max: 40, atlas: false, roughness: 0.15, order: 0, envMapIntensity: 1.6 }) : null;
     this.holes = hole ? new DecalPool(scene, hole, { max: 260, atlas: false, roughness: 0.9, order: 2 }) : null;
     this.scorch = scorch ? new DecalPool(scene, scorch, { max: 24, atlas: false, roughness: 1, order: 0, color: 0xffffff }) : null;
+    // chips in armored glass (the lab window): a white spall with radial cracks
+    this.chips = new DecalPool(scene, { map: glassChipTexture() }, { max: 60, atlas: false, roughness: 0.3, order: 3, envMapIntensity: 1.2 });
+    // the fractured glass catches the light: a little self-lighting keeps it white against the bright lab
+    this.chips.mesh.material.emissive.set(0xffffff);
+    this.chips.mesh.material.emissiveMap = this.chips.mesh.material.map;
+    this.chips.mesh.material.emissiveIntensity = 0.35;
     this.permanentBlood = 0;
   }
 
@@ -123,6 +129,63 @@ export class Decals {
   scorchMark(pos, normal = _up, size = 3.5) {
     this.scorch?.add(pos, normal, size);
   }
+  glassChip(pos, normal, size = 0.09) {
+    this.chips.add(pos, normal, size);
+  }
+}
+
+function glassChipTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const g = c.getContext('2d');
+  const R = 64;
+  g.translate(R, R);
+  // radial cracks, dark-edged so they read against the bright lab behind the glass
+  const n = 7 + Math.floor(Math.random() * 3);
+  for (let i = 0; i < n; i++) {
+    let a = (i / n) * Math.PI * 2 + Math.random() * 0.5;
+    let x = 0, y = 0;
+    const len = 30 + Math.random() * 30;
+    g.beginPath();
+    g.moveTo(0, 0);
+    for (let s = 0; s < len; s += 6) {
+      a += (Math.random() - 0.5) * 0.35;
+      x += Math.cos(a) * 6;
+      y += Math.sin(a) * 6;
+      g.lineTo(x, y);
+    }
+    g.strokeStyle = 'rgba(12,20,18,0.85)';
+    g.lineWidth = 3.2;
+    g.stroke();
+    g.strokeStyle = 'rgba(245,252,252,1)';
+    g.lineWidth = 1.3;
+    g.stroke();
+  }
+  // the laminate's ring and the crushed center
+  const ring = 14 + Math.random() * 4;
+  g.strokeStyle = 'rgba(12,20,18,0.6)';
+  g.lineWidth = 3;
+  g.beginPath();
+  g.arc(0, 0, ring, 0, Math.PI * 2);
+  g.stroke();
+  g.strokeStyle = 'rgba(240,248,248,0.8)';
+  g.lineWidth = 1.4;
+  g.stroke();
+  const gr = g.createRadialGradient(0, 0, 0, 0, 0, 12);
+  gr.addColorStop(0, 'rgba(255,255,255,1)');
+  gr.addColorStop(0.55, 'rgba(228,240,238,0.95)');
+  gr.addColorStop(1, 'rgba(200,215,212,0)');
+  g.fillStyle = gr;
+  g.beginPath();
+  g.arc(0, 0, 12, 0, Math.PI * 2);
+  g.fill();
+  g.fillStyle = 'rgba(30,40,38,0.7)'; // the crater
+  g.beginPath();
+  g.arc(0, 0, 2.5, 0, Math.PI * 2);
+  g.fill();
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
 }
 
 const _up = new THREE.Vector3(0, 1, 0);

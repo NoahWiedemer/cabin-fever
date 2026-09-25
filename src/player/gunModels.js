@@ -2522,3 +2522,11 @@ export function buildWeaponModel(id) {
 	rnd = mulberry32(0x5eed + WEAPON_MODEL_IDS.indexOf(id) * 977);
 	return b();
 }
+
+// geometry kit for procedural weapons built outside this file (player/machete.js): the same builder,
+// materials and helpers, so they match the rest of the arsenal. `seed(n)` reseeds the wear noise.
+export const gunKit = {
+	PB, Acc, lathe, cyl, tube, hull, cbox, loft, prism, rounded, extrude, sweep, sphere, torus, xf, worn, shade,
+	handQuat, handTarget, grp, empty, finishWeapon,
+	seed: (s) => { rnd = mulberry32(s); },
+};

@@ -2,7 +2,17 @@
 // explodes, weak spot on the gut), Striker (female, fast), Crusher (tank), Mutant Dog (quadruped
 // GLB, packs, pounce + bite; animated by dogAnim.js), Biter (small kid in packs that pounces and latches
 // onto your back; a Zombie subclass in biter.js).
-// AI (alert → chase via flow field / direct LOS → attack), procedural animation, hitboxes.
+// AI (alert → chase → attack), procedural animation, hitboxes. The chase:
+//   * target: the survivor nearest by PATH (the flow field labels each cell with it), sticky (a new one has
+//     to win twice in a row) and spread (a survivor already mobbed sheds zombies to others in the open)
+//   * direct chase (leading a moving target a little) only along a walkable straight line on the nav grid
+//     (not into window boards, furniture, grilles or barricades), else the string-pulled flow field; from
+//     outside the house through the entrance nav/horde.js picked for it (the wave spreads over the doors)
+//   * crowd: separation, stepping round the one in front (light ones yield to heavy ones), queueing in
+//     doorways; stuck (< 0.3 m in 1 s while trying) → side-step to the roomier side, grid-only steering,
+//     then a different route
+//   * stairs / portals (_portalMove): turn round when the target goes back, go straight for a target on
+//     the flight; `portalWait` (ladders.js) queues at portalTo
 import * as THREE from 'three';
 import { createCharacter } from './rig.js';
 import { poseDog, resetDog } from './dogAnim.js';
@@ -22,7 +32,8 @@ export const ZOMBIE_TYPES = {
   dog: { name: 'Mutant Dog', body: ['dog'], hp: 90, walk: 1.375, run: 4.73, dmg: 8, reach: 1.1, attackTime: 0.55, radius: 0.36, scale: 1.0, score: 120, mass: 0.7, turn: 14, height: 1.0, eye: 0.75, pitch: 1.55, lunge: 0.6, hitAt: 0.5, leap: { min: 1.8, max: 4.5, vy: 3.4, t: 0.45, cd: [2.2, 3.8], snd: 'zombie_attack', pitch: 1.6 } },
   // small feral kid in packs: ~42 % of a Mauler's hp, 1.3x its run; pounces and latches on (biter.js: the
   // Biter class, its AI, pose and the latch). dmg / reach are its claw swipe when it can't pounce.
-  biter: { name: 'Biter', body: ['biter'], hp: 62, walk: 1.7, run: 5.0, dmg: 6, reach: 0.85, attackTime: 0.5, radius: 0.24, scale: 1.0, score: 150, mass: 0.45, turn: 16, height: 1.0, eye: 0.8, pitch: 1.75, lunge: 0.5, hitAt: 0.45 },
+  // claws: false — it doesn't claw at barricades (nav/horde.js routes it round them)
+  biter: { name: 'Biter', claws: false, body: ['biter'], hp: 62, walk: 1.7, run: 5.0, dmg: 6, reach: 0.85, attackTime: 0.5, radius: 0.24, scale: 1.0, score: 150, mass: 0.45, turn: 16, height: 1.0, eye: 0.8, pitch: 1.75, lunge: 0.5, hitAt: 0.45 },
 };
 // type name -> Zombie subclass (a module that defines one registers it here, e.g. biter.js)
 export const ZOMBIE_CLASSES = {};
@@ -34,6 +45,10 @@ const _v2 = new THREE.Vector3();
 const _v3 = new THREE.Vector3();
 const _steer = { dirX: 0, dirZ: 0, portal: null, portalTo: null, dist: 0 };
 const _ray = {};
+const _want = { x: 0, z: 0 };
+const _av = { x: 0, z: 0, lx: 0, lz: 0, slow: 1 };
+const _sopts = { need: 1 };
+export const DIRECT_MAX = 18; // m: straight chase along a clear walkable line up to this far
 
 let ZID = 1;
 const bodyCount = {};
@@ -154,7 +169,38 @@ export class Zombie {
     this.portalT = 0;
     this.stuckT = 0;
     this.sideStep = 0;
+    this.sideDir = this.id % 2 ? 1 : -1;
     this.lastPos = pos.clone();
+    // pathing (see the header)
+    this.need = this.type.radius > 0.4 ? 2 : 1; // grid clearance a straight line needs (the Crusher: 2 cells)
+    this.canDirect = false;
+    this.direct = false;
+    this.leadK = 0;
+    this.tgtT = 0;
+    this.nextTgt = null;
+    this.route = null;
+    this.goal = null; // a spot to reach instead of a survivor (the wall-breaching Boomer, world/breach.js)
+    this.routeT = Math.random() * 0.5;
+    this.routeBias = null;
+    this.routePenalty = null;
+    this.wpT = 0;
+    this.wpx = pos.x;
+    this.wpz = pos.z;
+    this.steerOk = false;
+    this.portalFrom = null;
+    this.portalWait = false;
+    this.portalChk = 0;
+    this.portalDist = null;
+    this.stuck = 0;
+    this.noDirectT = 0;
+    this.rawT = 0;
+    this.crowd = 0;
+    this.feelT = 0;
+    this.feelX = 0;
+    this.feelZ = 0;
+    this.trail = (this.trail ?? new Float32Array(8)).fill(0);
+    this.trailI = 0;
+    this.trailN = 0;
     this.groanT = rand(1, 6);
     this.fuse = -1;
     this.leapT = -1;
@@ -226,8 +272,10 @@ export class Zombie {
     this.deathArms = rand(0.6, 1.4);
     if (this.led) this.led.material.emissiveIntensity = 0;
     if (this.glow) for (const m of this.glow) m.emissiveIntensity = 0;
-    // some kills (most blasts) throw the body as a ragdoll instead of the fall below; it's dead either way
-    this.game.zombies?.ragdolls?.tryStart(this, dir, source, opts);
+    // some kills (most blasts) throw the body as a ragdoll instead of the fall below; it's dead either way.
+    // Shot off a ladder (actors/ladders.js): always a ragdoll fall
+    const fell = this.climb && this.game.ladders?.drop(this);
+    this.game.zombies?.ragdolls?.[fell ? 'start' : 'tryStart'](this, dir, source, opts);
     this.game.onZombieKilled(this, { source, ...opts });
   }
 
@@ -251,29 +299,13 @@ export class Zombie {
     const pos = this.pos;
     this.level = levelOf(pos.y + 0.3);
 
-    // pick target: nearest living team member (prefer same level)
-    let best = null, bd = Infinity;
-    for (const m of ctx.team) {
-      if (!m.alive) continue;
-      let d = m.pos.distanceToSquared(pos);
-      if (m.level !== this.level) d += 400;
-      if (d < bd) {
-        bd = d;
-        best = m;
-      }
-    }
-    this.target = best;
-    const tgt = best;
+    // target: the survivor nearest by path, sticky and spread over the team
+    const tgt = this._pickTarget(dt, ctx);
     const dist = tgt ? Math.sqrt(tgt.pos.distanceToSquared(pos)) : Infinity;
     const sameLevel = tgt && tgt.level === this.level;
 
-    // LOS checks (throttled)
-    this.losT -= dt;
-    if (this.losT <= 0 && tgt) {
-      this.losT = 0.25 + Math.random() * 0.15;
-      this.hasLOS = sameLevel && dist < 28 && ctx.world.lineOfSight(pos.x, pos.y + (this.type.eye ?? 1.5) * this.scale, pos.z, tgt.pos.x, tgt.pos.y + 1.3, tgt.pos.z);
-      if (!this.alerted && (this.hasLOS && dist < 24)) this._alert(rand(0.1, 0.6));
-    }
+    // senses (throttled): eye-level LOS (alert, leaps) and a walkable straight line (direct chase)
+    if (this._senses(dt, ctx, tgt, dist, sameLevel, 1.3) && !this.alerted && this.hasLOS && dist < 24) this._alert(rand(0.1, 0.6));
     if (!this.alerted && (dist < 9 || ctx.roundTime > 22)) this._alert(rand(0, 0.8));
     if (this.alertDelay > 0) this.alertDelay -= dt;
 
@@ -340,32 +372,9 @@ export class Zombie {
       speed *= this.speedMult;
       if (this.hitSlow > 0) speed *= 0.55;
 
-      if (this.portal) {
-        // traversing stairs between levels
-        const to = this.portalTo;
-        wantX = to.x - pos.x;
-        wantZ = to.z - pos.z;
-        this.portalT += dt;
-        const hd = Math.hypot(wantX, wantZ);
-        if ((hd < 0.45 && levelOf(pos.y + 0.3) === to.level) || this.portalT > 8) this.portal = null;
-      } else if (sameLevel && this.hasLOS && dist < 12) {
-        wantX = tgt.pos.x - pos.x;
-        wantZ = tgt.pos.z - pos.z;
-      } else {
-        const st = ctx.nav.steer(this.level, pos.x, pos.z, _steer);
-        if (st) {
-          if (st.portal) {
-            this.portal = st.portal;
-            this.portalTo = st.portalTo;
-            this.portalT = 0;
-          }
-          wantX = st.dirX;
-          wantZ = st.dirZ;
-        } else if (tgt) {
-          wantX = tgt.pos.x - pos.x;
-          wantZ = tgt.pos.z - pos.z;
-        }
-      }
+      const w = this._moveWant(dt, ctx, tgt, dist, sameLevel);
+      wantX = w.x;
+      wantZ = w.z;
       if (dist < reach * 0.8 && sameLevel) speed *= 0.2;
       // an intact barricade in the way (world/barricades.js) gets clawed down first
       if (this.attackT < 0 && this.attackCooldown <= 0) game.barricades?.engage(this, wantX, wantZ);
@@ -373,7 +382,7 @@ export class Zombie {
       const lp = this.type.leap;
       if (lp && alertedNow) {
         this.leapCooldown -= dt;
-        if (this.leapCooldown <= 0 && dist < lp.max && dist > lp.min && this.hasLOS && this.body.onGround && sameLevel) {
+        if (this.leapCooldown <= 0 && dist < lp.max && dist > lp.min && this.hasLOS && this.canDirect && !this.portal && this.body.onGround && sameLevel) {
           this.leapCooldown = rand(lp.cd[0], lp.cd[1]);
           this.body.vel.y = lp.vy;
           this.leapT = lp.t;
@@ -382,34 +391,21 @@ export class Zombie {
       }
     }
 
-    // stuck detection → side-step
-    this.stuckT += dt;
-    if (this.stuckT > 1.2) {
-      const moved = _v1.copy(pos).sub(this.lastPos).setY(0).length();
-      if (moved < 0.35 && speed > 1 && this.attackT < 0) this.sideStep = 0.6;
-      this.lastPos.copy(pos);
-      this.stuckT = 0;
-    }
-    let len = Math.hypot(wantX, wantZ);
-    if (len > 1e-4) {
-      wantX /= len;
-      wantZ /= len;
-    }
-    if (this.sideStep > 0) {
-      this.sideStep -= dt;
-      const sx = -wantZ, sz = wantX;
-      const s = (this.id % 2 ? 1 : -1);
-      wantX = wantX * 0.3 + sx * s;
-      wantZ = wantZ * 0.3 + sz * s;
-      len = Math.hypot(wantX, wantZ) || 1;
-      wantX /= len;
-      wantZ /= len;
-    }
+    // stuck → recovery (side-step to the roomier side, grid-only steering, another route)
+    const len = Math.hypot(wantX, wantZ);
+    _want.x = len > 1e-4 ? wantX / len : 0;
+    _want.z = len > 1e-4 ? wantZ / len : 0;
+    const near = !!tgt && sameLevel && dist < this.type.reach + (tgt.radius ?? 0.3) + 0.4;
+    this._unstick(dt, ctx, speed, _want, near);
+    if (speed > 0.5 && this.attackT < 0) this._wallAvoid(dt, ctx, _want);
+    wantX = _want.x;
+    wantZ = _want.z;
 
-    // separation from neighbors
-    const sep = ctx.separation(this, _v2);
-    wantX += sep.x * 1.4;
-    wantZ += sep.z * 1.4;
+    // crowd: separation, stepping round the one in front, queueing behind slower ones
+    const av = ctx.avoid ? ctx.avoid(this, wantX, wantZ, _av) : ctx.separation(this, _av);
+    wantX += av.x * 1.4 + (av.lx ?? 0);
+    wantZ += av.z * 1.4 + (av.lz ?? 0);
+    if (!near) speed *= av.slow ?? 1;
 
     // face movement / target
     let faceYaw = this.yaw;
@@ -456,6 +452,294 @@ export class Zombie {
       else if (this.quad) {
         if (Math.random() < 0.3) game.audio.play('zombie_footstep', { position: pos, volume: 0.2, pitch: 1.7 });
       } else if (Math.random() < 0.4) game.audio.play('zombie_footstep', { position: pos, volume: 0.35 });
+    }
+  }
+
+  // ---------------------------------------------------------------- pathing
+  /** the survivor to go for: nearest by path, sticky (a new one wins two looks in a row), spread */
+  _pickTarget(dt, ctx) {
+    const pos = this.pos;
+    if (this.goal) {
+      if (!this.goal.spot?.broken) return (this.target = this.goal);
+      this.goal = null;
+    }
+    let cur = this.target;
+    if (cur?.isGoal) cur = this.target = null;
+    if (cur && (!cur.alive || !ctx.team.includes(cur))) cur = this.target = null;
+    if ((this.tgtT -= dt) > 0 && cur) return cur;
+    this.tgtT = 0.3 + Math.random() * 0.2;
+    // nearest by path: the flow field labels every cell with the survivor it leads to
+    let best = ctx.nav.ownerAt?.(this.level, pos.x, pos.z) ?? null;
+    if (!best || !best.alive || !ctx.team.includes(best)) {
+      // off the grid: nearest in a straight line, another floor counts 20 m extra
+      best = null;
+      let bd = Infinity;
+      for (const m of ctx.team) {
+        if (!m.alive) continue;
+        let d = m.pos.distanceToSquared(pos);
+        if (m.level !== this.level) d += 400;
+        if (d < bd) {
+          bd = d;
+          best = m;
+        }
+      }
+    }
+    if (best && ctx.horde) best = ctx.horde.balance(this, best, ctx.team);
+    // sticky: keep clawing the one in reach; otherwise a new target has to win twice in a row, unless
+    // the old one left this floor for another
+    let pick = best;
+    if (cur && best && best !== cur) {
+      const inReach = cur.level === this.level && Math.hypot(cur.pos.x - pos.x, cur.pos.z - pos.z) < this.type.reach + 0.9;
+      const leftFloor = cur.level !== this.level && best.level === this.level;
+      if (inReach || (!leftFloor && this.nextTgt !== best)) {
+        this.nextTgt = inReach ? null : best;
+        pick = cur;
+      } else this.nextTgt = null;
+    } else this.nextTgt = null;
+    this.target = pick;
+    return pick;
+  }
+
+  /**
+   * Throttled senses: eye-level line of sight (alerting, leaps) and whether a straight walkable line on
+   * the grid reaches the target (the direct chase), plus how far to lead it. True on the frames it looked.
+   */
+  _senses(dt, ctx, tgt, dist, sameLevel, eyeTo = 1.3) {
+    this.losT -= dt;
+    if (this.losT > 0 || !tgt) return false;
+    this.losT = 0.2 + Math.random() * 0.12;
+    const pos = this.pos, nav = ctx.nav, tp = tgt.pos;
+    this.hasLOS = sameLevel && dist < 28 && ctx.world.lineOfSight(pos.x, pos.y + (this.type.eye ?? 1.5) * this.scale, pos.z, tp.x, tp.y + eyeTo, tp.z);
+    this.canDirect = !!sameLevel && dist < DIRECT_MAX && (!nav.lineClear || nav.lineClear(this.level, pos.x, pos.z, tp.x, tp.z, this.need, nav.dist, nav.cost));
+    // intercept: aim a little ahead of a moving target (only where that point is in the clear too)
+    this.leadK = 0;
+    const tv = tgt.body?.vel;
+    if (this.canDirect && tv && dist > 1.8 && Math.abs(tv.x) + Math.abs(tv.z) > 0.6) {
+      const k = Math.min(0.9, dist / Math.max(2.5, this.type.run * (this.speedMult ?? 1))) * 0.55;
+      if (nav.lineClear(this.level, pos.x, pos.z, tp.x + tv.x * k, tp.z + tv.z * k, this.need, nav.dist, nav.cost)) this.leadK = k;
+    }
+    return true;
+  }
+
+  /** where to head this frame (unnormalized): a portal, the target itself, or the flow field */
+  _moveWant(dt, ctx, tgt, dist, sameLevel) {
+    const w = _want, pos = this.pos;
+    w.x = 0;
+    w.z = 0;
+    this.direct = false;
+    this.noDirectT -= dt;
+    this.rawT -= dt;
+    if (this.portal) {
+      this._portalMove(dt, ctx, tgt, dist, w);
+      return w;
+    }
+    if (tgt && sameLevel && this.canDirect && dist < DIRECT_MAX && this.noDirectT <= 0) {
+      this.direct = true;
+      this.route = null;
+      const tv = tgt.body?.vel;
+      const k = tv ? this.leadK : 0;
+      w.x = tgt.pos.x + (k ? tv.x * k : 0) - pos.x;
+      w.z = tgt.pos.z + (k ? tv.z * k : 0) - pos.z;
+      return w;
+    }
+    this._fieldWant(dt, ctx, w);
+    if (!this.steerOk && tgt) {
+      // off the grid / no path: head straight for it
+      w.x = tgt.pos.x - pos.x;
+      w.z = tgt.pos.z - pos.z;
+    }
+    return w;
+  }
+
+  /** follow the flow field (the entrance route while outside, else the main field) via a cached waypoint */
+  _fieldWant(dt, ctx, w) {
+    const pos = this.pos, nav = ctx.nav, horde = ctx.horde;
+    if (horde && this.alerted && !this.goal) {
+      if (this.route && horde.arrived(this)) {
+        this.route = null;
+        this.wpT = 0;
+      }
+      if ((this.routeT -= dt) <= 0) {
+        this.routeT = rand(2, 3);
+        const r = horde.pickRoute(this);
+        if (r !== this.route) {
+          this.route = r;
+          this.wpT = 0;
+        }
+      }
+    }
+    // waypoint: the farthest cell of the route ahead in a clear straight line, refreshed every ~0.12 s
+    this.wpT -= dt;
+    const dw = Math.hypot(this.wpx - pos.x, this.wpz - pos.z);
+    if (this.wpT <= 0 || (dw < 0.35 && this.wpT < 0.07)) {
+      this.wpT = 0.1 + Math.random() * 0.05;
+      _sopts.need = this.need;
+      // a goal's own field, else the entrance route's (null right after a reset), else the main field
+      const field = this.goal?.field ?? (this.route ? horde.fieldFor(this.route) : null);
+      const st = field ? field.steer(this.level, pos.x, pos.z, _steer, _sopts) : nav.steer(this.level, pos.x, pos.z, _steer, null, _sopts);
+      this.steerOk = !!st;
+      if (st) {
+        if (st.portal) {
+          const p = st.portal;
+          this.portal = p;
+          this.portalTo = st.portalTo;
+          this.portalFrom = st.portalTo === p.a ? p.b : p.a;
+          this.portalT = 0;
+          this.portalChk = 0.5;
+          this.portalDist = field ? field.dist : null;
+        }
+        const raw = this.rawT > 0 && !st.portal;
+        this.wpx = raw ? st.fx : st.wx;
+        this.wpz = raw ? st.fz : st.wz;
+      } else {
+        this.wpx = pos.x;
+        this.wpz = pos.z;
+      }
+    }
+    w.x = this.wpx - pos.x;
+    w.z = this.wpz - pos.z;
+  }
+
+  /**
+   * Walking a portal (stairs) from portalFrom to portalTo. Goes straight for a target on the flight,
+   * turns round when the far end stopped being the way. `portalWait` (ladders.js): walk to portalTo and
+   * wait there (never cleared on arrival, no timeout; cleared here too when the portal isn't the way).
+   */
+  _portalMove(dt, ctx, tgt, dist, w) {
+    const pos = this.pos, p = this.portal, to = this.portalTo;
+    this.portalT += dt;
+    if (tgt && !this.portalWait) {
+      // someone right here, or on this flight: go for them
+      let on = dist < 2.2 && Math.abs(tgt.pos.y - pos.y) < 1.1;
+      if (!on && p.a && p.b) {
+        const vx = p.b.x - p.a.x, vz = p.b.z - p.a.z, L2 = vx * vx + vz * vz;
+        const t = L2 > 1e-6 ? ((tgt.pos.x - p.a.x) * vx + (tgt.pos.z - p.a.z) * vz) / L2 : -1;
+        on = t > 0.02 && t < 0.98 && Math.hypot(p.a.x + vx * t - tgt.pos.x, p.a.z + vz * t - tgt.pos.z) < 0.9;
+      }
+      if (on) {
+        w.x = tgt.pos.x - pos.x;
+        w.z = tgt.pos.z - pos.z;
+        return;
+      }
+    }
+    // the far end no longer the way (the target came back)? turn round / leave the queue
+    if ((this.portalChk -= dt) <= 0 && this.portalFrom) {
+      this.portalChk = 0.5;
+      const D = this.portalDist ?? ctx.nav.dist;
+      const fromA = this.portalFrom === p.a;
+      const dFrom = D[fromA ? p.ia : p.ib], dTo = D[fromA ? p.ib : p.ia];
+      if (dFrom + 2 < dTo) {
+        this.wpT = 0;
+        if (this.portalWait) {
+          this.portal = null;
+          this.portalWait = false;
+          return;
+        }
+        const back = this.portalFrom;
+        this.portalFrom = fromA ? p.b : p.a;
+        this.portalTo = back;
+        this.portalT = 0;
+      }
+    }
+    const t2 = this.portalTo;
+    w.x = t2.x - pos.x;
+    w.z = t2.z - pos.z;
+    const hd = Math.hypot(w.x, w.z);
+    if (this.portalWait) {
+      if (hd < 0.3) w.x = w.z = 0;
+      return;
+    }
+    if ((hd < 0.45 && levelOf(pos.y + 0.3) === t2.level) || this.portalT > 8) {
+      this.portal = null;
+      this.wpT = 0;
+    }
+  }
+
+  /**
+   * Stuck detection (< 0.3 m in the last second while trying to move, not just queueing in a crowd) and
+   * recovery; applies an active side-step to the unit direction `w`.
+   */
+  _unstick(dt, ctx, speed, w, near) {
+    const pos = this.pos;
+    if ((this.stuckT += dt) >= 0.25) {
+      this.stuckT = 0;
+      const tr = this.trail, k = this.trailI * 2;
+      const moved = Math.hypot(pos.x - tr[k], pos.z - tr[k + 1]); // vs 1 s ago
+      tr[k] = pos.x;
+      tr[k + 1] = pos.z;
+      this.trailI = (this.trailI + 1) % 4;
+      this.trailN++;
+      const trying = speed > 1 && this.attackT < 0 && !near && !this.portalWait && this.trailN > 4 && (w.x !== 0 || w.z !== 0) && this.sideStep <= 0;
+      if (trying && moved < 0.3 && !(this.crowd > 0 && !this.body.blocked)) this._recover(ctx, w);
+      else if (moved > 0.9) this.stuck = 0;
+    }
+    if (this.sideStep > 0) {
+      this.sideStep -= dt;
+      const s = this.sideDir;
+      let x = w.x * 0.3 - w.z * s, z = w.z * 0.3 + w.x * s;
+      const l = Math.hypot(x, z) || 1;
+      w.x = x / l;
+      w.z = z / l;
+    }
+  }
+
+  /**
+   * Keep a hand's breadth off walls, jambs and furniture while passing them: a push away from any
+   * collider within radius + FEEL (sampled every ~0.1 s), with the part against the heading dropped so
+   * it only ever steers sideways, never stops it.
+   */
+  _wallAvoid(dt, ctx, w) {
+    const FEEL = 0.24;
+    if ((this.feelT = (this.feelT ?? 0) - dt) <= 0) {
+      this.feelT = 0.08 + Math.random() * 0.04;
+      const p = this.pos, b = this.body;
+      const r = b.radius + FEEL;
+      const lo = p.y + b.stepHeight, hi = p.y + b.height;
+      let fx = 0, fz = 0;
+      ctx.world.query(p.x - r, p.z - r, p.x + r, p.z + r, (bx) => {
+        if (bx.maxY <= lo || bx.minY >= hi) return;
+        const cx = p.x < bx.minX ? bx.minX : p.x > bx.maxX ? bx.maxX : p.x;
+        const cz = p.z < bx.minZ ? bx.minZ : p.z > bx.maxZ ? bx.maxZ : p.z;
+        const dx = p.x - cx, dz = p.z - cz;
+        const d = Math.hypot(dx, dz);
+        if (d >= r || d < 1e-4) return;
+        const k = Math.min(1, (r - d) / FEEL);
+        fx += (dx / d) * k;
+        fz += (dz / d) * k;
+      });
+      this.feelX = fx;
+      this.feelZ = fz;
+    }
+    let fx = this.feelX, fz = this.feelZ;
+    if (!fx && !fz) return;
+    const along = fx * w.x + fz * w.z;
+    fx -= w.x * along;
+    fz -= w.z * along;
+    const x = w.x + fx * 0.7, z = w.z + fz * 0.7;
+    const l = Math.hypot(x, z) || 1;
+    w.x = x / l;
+    w.z = z / l;
+  }
+
+  _recover(ctx, w) {
+    const nav = ctx.nav, pos = this.pos;
+    this.stuck++;
+    this.stuckEvents = (this.stuckEvents ?? 0) + 1;
+    this.noDirectT = 1.5; // back to the grid for a bit
+    this.wpT = 0;
+    // side-step toward the side with more room (first time), then the other way
+    const room = (s) => {
+      const i = nav.index(this.level, pos.x - w.z * s * 0.8, pos.z + w.x * s * 0.8);
+      return i >= 0 && nav.walk[i] ? nav.clear[i] : 0;
+    };
+    this.sideDir = this.stuck % 2 === 1 ? (room(1) >= room(-1) ? 1 : -1) : -this.sideDir;
+    this.sideStep = 0.3 + 0.12 * Math.min(this.stuck, 3);
+    if (this.stuck >= 2) this.rawT = 1.5; // step cell by cell, no smoothing
+    if (this.stuck >= 3 && this.route) {
+      // this way in is jammed: try another one
+      (this.routePenalty ??= {})[this.route.id] = (this.routePenalty[this.route.id] ?? 0) + 20;
+      this.route = null;
+      this.routeT = 0;
     }
   }
 
@@ -795,7 +1079,9 @@ export class ZombieManager {
   }
 
   separation(zb, out) {
-    out.set(0, 0, 0);
+    out.x = 0;
+    out.y = 0;
+    out.z = 0;
     const p = zb.pos;
     const cx = Math.floor(p.x / this.cell), cz = Math.floor(p.z / this.cell);
     for (let dz = -1; dz <= 1; dz++) {
@@ -824,10 +1110,79 @@ export class ZombieManager {
     return out;
   }
 
+  /**
+   * Crowd steering for `zb` heading along (wx, wz): out.x/z = separation (and a hard positional fix of
+   * overlaps, heavier bodies shove lighter ones), out.lx/lz = a side-step round the ones in front (light
+   * ones yield to heavy ones, smaller in tight spots), out.slow = queueing behind a slower one going our
+   * way. Sets zb.crowd (how many it is queueing behind).
+   */
+  avoid(zb, wx, wz, out, nav) {
+    this.separation(zb, out);
+    out.lx = 0;
+    out.lz = 0;
+    out.slow = 1;
+    let crowd = 0;
+    const wl = Math.hypot(wx, wz);
+    if (wl > 1e-4) {
+      const ux = wx / wl, uz = wz / wl;
+      const p = zb.pos, rz = zb.type.radius, mz = zb.type.mass ?? 1;
+      const my = Math.max(0.5, zb.moveSpeed);
+      const ci = nav ? nav.index(zb.level, p.x, p.z) : -1;
+      const room = ci >= 0 ? nav.clear[ci] : 3; // 1: next to a wall / in a doorway
+      const cx = Math.floor(p.x / this.cell), cz = Math.floor(p.z / this.cell);
+      let lx = 0, lz = 0;
+      for (let dz = -1; dz <= 1; dz++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const arr = this.hash.get((cx + dx + 1000) * 4096 + (cz + dz + 1000));
+          if (!arr) continue;
+          for (const o of arr) {
+            if (o === zb || !o.alive || Math.abs(p.y - o.pos.y) > 1.2) continue;
+            const rx = o.pos.x - p.x, rzz = o.pos.z - p.z; // me → o
+            const ro = o.type.radius;
+            const d = Math.hypot(rx, rzz);
+            if (d < 1e-3 || d > rz + ro + 1.1) continue;
+            const ahead = (rx * ux + rzz * uz) / d;
+            if (ahead < 0.3) continue;
+            const close = 1 - Math.min(1, Math.max(0, d - rz - ro) / 1.1);
+            const mo = o.type.mass ?? 1;
+            // step round it on the side it isn't on (light ones step aside for heavy ones)
+            const s = ux * rzz - uz * rx > 0 ? -1 : 1;
+            const k = close * ahead * (2 * mo) / (mo + mz);
+            lx += -uz * s * k;
+            lz += ux * s * k;
+            // someone (nearly) stopped right in front of us, going nowhere our way: wait behind it, don't
+            // shove (a door, a barricade being clawed at, the ring round a survivor). In the open a
+            // walker is overtaken instead; the light, nimble ones (dogs, Biters) weave past anything
+            const along = o.body.vel.x * ux + o.body.vel.z * uz;
+            if (close > 0.3 && along < Math.min(1.2, my * 0.8)) {
+              if (close > 0.5 && ahead > 0.5) crowd++;
+              if (mz >= 0.8 && ro >= rz * 0.8) out.slow = Math.min(out.slow, 1 - (room >= 3 ? 0.3 : 0.65) * close * ahead);
+            }
+          }
+        }
+      }
+      if (lx || lz) {
+        // tight spot (a doorway): barely sideways, or it steers into the frame
+        const f = room >= 3 ? 1 : room === 2 ? 0.55 : 0.2;
+        out.lx = lx * f;
+        out.lz = lz * f;
+      }
+    }
+    zb.crowd = crowd;
+    return out;
+  }
+
   update(dt, ctx) {
     this._rebuildHash();
-    ctx.separation = (z, out) => this.separation(z, out);
-    for (const z of this.list) z.update(dt, ctx);
+    ctx.separation = (this._sepFn ??= (z, out) => this.separation(z, out));
+    ctx.avoid = (this._avoidFn ??= (z, wx, wz, out) => this.avoid(z, wx, wz, out, this.game.nav));
+    ctx.horde?.update(this.list);
+    const ladders = this.game.ladders; // actors/ladders.js: climbing zombies are driven by it
+    for (const z of this.list) {
+      if (z.climb && ladders?.updateZombie(z, dt, ctx)) continue;
+      z.update(dt, ctx);
+      if (z.portal?.ladder && !z.climb && z.alive) ladders?.tryMount(z, ctx);
+    }
     this.ragdolls.update(dt, ctx.world);
     // refresh bone matrices + hit volumes so hitscans this frame are accurate
     for (const z of this.list) {

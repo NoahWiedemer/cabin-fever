@@ -3,24 +3,31 @@
 import * as THREE from 'three';
 import { WEAPONS } from './weaponDefs.js';
 import { effectiveDef } from '../game/shop.js';
+import { akimboDef, akimboTriggers, akimboTryReload, akimboReloadTick, akimboRounds } from './akimbo.js';
+import { gearDef, PACK_SLOT } from '../game/gear.js';
 import { clamp, coneDirection, damp, rand } from '../core/utils.js';
 
 const _dir = new THREE.Vector3();
 const _fwd = new THREE.Vector3();
 const _muzzle = new THREE.Vector3();
 const DEG = Math.PI / 180;
+const WHEEL_ORDER = [0, PACK_SLOT, 1, 2, 3, 4, 5]; // scroll order of the slots
 
 export class WeaponSystem {
   constructor(game, player, viewmodel) {
     this.game = game;
     this.player = player;
     this.vm = viewmodel;
-    this.slots = [null, 'm9', 'knife', 'm67', 'barricade'];
+    this.slots = [null, 'm9', 'knife', 'm67', 'barricade', 'gascan', null]; // [6]: backpack primary (game/gear.js)
     this.ammo = {};
     this.grenades = 2;
     this.molotovs = 0;
     this.barricades = 0; // store barricade kits (slot 5; world/barricades.js does the building)
     this.buildT = null; // seconds into nailing one up (viewmodel hammer swing), set by world/barricades.js
+    this.gascans = 0; // jerry cans from upstairs (slot 6; world/power.js does the refuelling)
+    this.pourT = null; // seconds into pouring one into the generator (viewmodel), set by world/power.js
+    this.tool = null; // a tool drawn for a moment instead of the weapon (generator repair, see beginTool)
+    this.toolT = null; // seconds into using it (viewmodel), set by world/power.js
     this.burstLeft = 0;
     this.cur = 0;
     this.prev = 1;
@@ -46,18 +53,27 @@ export class WeaponSystem {
   }
 
   reset(primaryId = 'm4a1') {
-    this.slots = [primaryId, 'm9', 'knife', 'm67', 'barricade'];
+    this.slots = [primaryId, 'm9', 'knife', 'm67', 'barricade', 'gascan', null];
+    this.packStash = null; // the backpack gun while the backpack is off (see setBackpack)
     this.owned = new Set([primaryId, 'm9']); // store inventory
     this.upgrades = {}; // id -> { dmg, mag, reload, rate } (replaced, never mutated)
+    this.akimbo = new Set(); // pistols with the akimbo upgrade (player/akimbo.js)
+    this.duo = null;
+    this.game.fx?.mags?.clear(); // last run's empty magazines
     this.ammo = {};
     for (const id of this.slots) this._initAmmo(id);
     this.grenades = 2;
     this.molotovs = 0;
     this.barricades = 0;
     this.buildT = null;
+    this.gascans = 0;
+    this.pourT = null;
+    this.tool = null;
+    this.toolT = null;
     this.burstLeft = 0;
     this.cur = 0;
     this.prev = 1;
+    this.lastPrimary = 0; // key 1 brings this primary back (0, or the backpack's PACK_SLOT)
     this._setState('draw');
     this.ads = 0;
     this.bloom = 0;
@@ -75,7 +91,10 @@ export class WeaponSystem {
   }
 
   get def() {
-    return this.defOf(this.slots[this.cur]);
+    const id = this.slots[this.cur];
+    // the secondary as a pair once its akimbo upgrade is bought (player/akimbo.js); worn gear (faster
+    // reloads, ADS, draws) on top (game/gear.js)
+    return gearDef(this.game, this.cur === 1 && this.akimbo?.has(id) ? akimboDef(this.defOf(id)) : this.defOf(id));
   }
   get curAmmo() {
     return this.ammo[this.slots[this.cur]];
@@ -90,14 +109,76 @@ export class WeaponSystem {
     this.phaseDone = {};
   }
 
-  /** Replace the primary with a found weapon. Returns the id that was dropped. */
-  giveWeapon(id) {
-    const old = this.slots[0];
-    this.slots[0] = id;
+  /**
+   * Put a found weapon in a primary slot and draw it. Returns the id that was dropped. With the weapon
+   * backpack it goes into the backpack while that is empty (nothing dropped), or replaces the primary
+   * in your hands.
+   */
+  giveWeapon(id, slot = this._pickupSlot()) {
+    const old = this.slots[slot];
+    this.slots[slot] = id;
     const d = WEAPONS[id];
     this.ammo[id] = { mag: d.mag, reserve: d.reserve };
-    this.switchTo(0, true);
+    this.switchTo(slot, true);
     return old;
+  }
+
+  /**
+   * Key 1: the primary you last had out; pressed again with a primary in hand it swaps to the other
+   * one, the weapon backpack's gun (like 4 toggles frag <-> Molotov).
+   */
+  _primaryKey() {
+    const S = PACK_SLOT;
+    if (!this.slots[S]) return 0;
+    if (this.cur === 0) return S;
+    if (this.cur === S) return 0;
+    return this.lastPrimary === S ? S : 0;
+  }
+
+  /** HUD: with a primary in hand and a second one in the weapon backpack, the other one (key 1 swaps). */
+  altPrimary() {
+    const S = PACK_SLOT;
+    if (!this.slots[S] || (this.cur !== 0 && this.cur !== S)) return null;
+    return WEAPONS[this.slots[this.cur === S ? 0 : S]]?.name ?? null;
+  }
+
+  _pickupSlot() {
+    if (this.cur === PACK_SLOT && this.slots[PACK_SLOT]) return PACK_SLOT;
+    return this.game.gear?.has?.('backpack') && !this.slots[PACK_SLOT] ? PACK_SLOT : 0;
+  }
+
+  /**
+   * Weapon backpack on / off (game/gear.js): off, its gun leaves the slots (still owned, kept with its
+   * ammo) and comes back when the backpack is worn again.
+   */
+  setBackpack(on) {
+    const S = PACK_SLOT;
+    if (on) {
+      const id = this.packStash;
+      this.packStash = null;
+      if (id && !this.slots[S] && id !== this.slots[0]) this.slots[S] = id;
+      return;
+    }
+    this.packStash = this.slots[S];
+    this.slots[S] = null;
+    if (this.prev === S) this.prev = 0;
+    if (this.cur === S) this.switchTo(0, true);
+  }
+
+  /** The two primaries trade places (store: choosing which gun sits where). */
+  swapPrimaries() {
+    const S = PACK_SLOT;
+    if (!this.slots[S]) return false;
+    [this.slots[0], this.slots[S]] = [this.slots[S], this.slots[0]];
+    if (this.cur === 0 || this.cur === S) this.switchTo(this.cur, true);
+    return true;
+  }
+
+  /** Slot 3's melee weapon: 'knife', or 'machete' while that gear is worn. */
+  setMelee(id) {
+    if (!WEAPONS[id] || this.slots[2] === id) return;
+    this.slots[2] = id;
+    if (this.cur === 2) this.switchTo(2, true);
   }
 
   restock() {
@@ -126,8 +207,9 @@ export class WeaponSystem {
   }
 
   addRifleAmmo() {
-    const d = WEAPONS[this.slots[0]];
-    const a = this.ammo[this.slots[0]];
+    const id = this.slots[this.cur === PACK_SLOT ? PACK_SLOT : 0]; // the primary in your hands (or slot 1's)
+    const d = WEAPONS[id];
+    const a = this.ammo[id];
     if (!a) return false;
     if (d.noReload) {
       a.mag = Math.min(d.mag, a.mag + 300);
@@ -155,7 +237,41 @@ export class WeaponSystem {
     return true;
   }
 
+  /** A usable slot to fall back to once a consumable slot (kits, cans) runs empty. */
+  fallbackSlot() {
+    const p = this.prev;
+    if (p === 4 || p === 5 || (p === 3 && this.grenades + this.molotovs <= 0)) return 0;
+    return p;
+  }
+
+  /**
+   * Draw a tool for a moment instead of the weapon (world/power.js: the generator repair). Nothing
+   * fires, aims, reloads or switches until endTool() brings the weapon back with a draw.
+   */
+  beginTool(id) {
+    if (this.tool || !this.defOf(id)) return;
+    this._stopLoops();
+    this.tool = id;
+    this.toolT = 0;
+    this.ads = 0;
+    this._setState('tool');
+    this.vm.equip(this.defOf(id), 'draw');
+  }
+
+  endTool() {
+    if (!this.tool) return;
+    this.tool = null;
+    this.toolT = null;
+    this._setState('draw');
+    this.vm.equip(this.def, 'draw');
+  }
+
   switchTo(slot, force = false) {
+    if (this.tool) {
+      if (!force) return;
+      this.tool = null;
+      this.toolT = null;
+    }
     // pressing 4 again while holding a throwable toggles frag <-> molotov
     if (slot === 3 && slot === this.cur && !force && this.state !== 'pinpull' && this.state !== 'throw') {
       const other = this._otherThrowable();
@@ -164,13 +280,15 @@ export class WeaponSystem {
       force = true;
     }
     if (slot === this.cur && !force) return;
-    if ((slot === 3 && !this._pickThrowable()) || (slot === 4 && !(this.barricades > 0))) {
+    if (!this.slots[slot]) return; // an empty backpack slot
+    if ((slot === 3 && !this._pickThrowable()) || (slot === 4 && !(this.barricades > 0)) || (slot === 5 && !(this.gascans > 0))) {
       this.game.audio.play('dryfire', { volume: 0.4 });
       return;
     }
     if (this.state === 'throw' && !force) return;
     this._stopLoops();
     if (slot !== this.cur) this.prev = this.cur;
+    if (slot === 0 || slot === PACK_SLOT) this.lastPrimary = slot;
     this.cur = slot;
     this._setState('draw');
     this.ads = Math.min(this.ads, 0.3);
@@ -201,25 +319,32 @@ export class WeaponSystem {
       this._stopLoops();
       return;
     }
+    if (p.climbing) input = null; // hands on the ladder (actors/ladders.js): no switching, reloading or firing
 
     // weapon selection
     if (input) {
-      if (input.hit('Digit1')) this.switchTo(0);
+      if (input.hit('Digit1')) this.switchTo(this._primaryKey());
       if (input.hit('Digit2')) this.switchTo(1);
       if (input.hit('Digit3')) this.switchTo(2);
       if (input.hit('Digit4')) this.switchTo(3);
       if (input.hit('Digit5')) this.switchTo(4);
+      if (input.hit('Digit6')) this.switchTo(5);
       if (input.hit('KeyQ')) this.switchTo(this.prev);
       if (input.wheel !== 0 && this.state !== 'throw') {
-        // empty throwable / barricade slots are skipped
+        // empty throwable / barricade / gas can / backpack slots are skipped; the backpack gun comes
+        // right after the primary
+        const order = WHEEL_ORDER;
+        const n = order.length;
+        let i = order.indexOf(this.cur);
         let s = this.cur;
-        for (let i = 0; i < 5; i++) {
-          s = (s + (input.wheel > 0 ? 1 : 4)) % 5;
-          if (s === 3 ? this.grenades + this.molotovs > 0 : s === 4 ? this.barricades > 0 : true) break;
+        for (let k = 0; k < n; k++) {
+          i = (i + (input.wheel > 0 ? 1 : n - 1)) % n;
+          s = order[i];
+          if (s === 3 ? this.grenades + this.molotovs > 0 : s === 4 ? this.barricades > 0 : s === 5 ? this.gascans > 0 : !!this.slots[s]) break;
         }
         this.switchTo(s);
       }
-      if (input.hit('KeyG') && this.cur !== 3 && this.state !== 'throw' && this._pickThrowable()) {
+      if (input.hit('KeyG') && this.cur !== 3 && this.state !== 'throw' && !this.tool && this._pickThrowable()) {
         this.nadeReturn = this.cur;
         this.quickNade = true;
         this._stopLoops();
@@ -279,10 +404,10 @@ export class WeaponSystem {
       case 'heavy': {
         const heavy = this.state === 'heavy';
         const T = heavy ? d.heavyTime : d.swingTime;
-        const hitAt = heavy ? 0.35 : 0.12;
+        const hitAt = heavy ? d.heavyHitAt ?? 0.35 : d.hitAt ?? 0.12;
         if (!this.phaseDone.hit && this.stateT >= hitAt) {
           this.phaseDone.hit = true;
-          this.game.meleeAttack(p, heavy ? d.heavyDamage : d.damage, heavy ? d.heavyRange : d.range, heavy);
+          this.game.meleeAttack(p, heavy ? d.heavyDamage : d.damage, heavy ? d.heavyRange : d.range, heavy, d);
         }
         if (this.stateT >= T) this._setState('idle');
         break;
@@ -318,7 +443,7 @@ export class WeaponSystem {
 
     // ADS: eases toward the target (fast start, settled in ~adsTime, out a bit quicker); the linear
     // floor lands it exactly, so full ADS accuracy arrives on time
-    const canAds = d.mode !== 'melee' && d.mode !== 'grenade' && d.mode !== 'build' && (this.state === 'idle' || this.state === 'bolt' || this.state === 'draw') && !(d.scope && this.state === 'bolt') && !p.latchedBy; // no aiming with a Biter on your back
+    const canAds = !d.akimbo && d.mode !== 'melee' && d.mode !== 'grenade' && d.mode !== 'build' && d.mode !== 'pour' && (this.state === 'idle' || this.state === 'bolt' || this.state === 'draw') && !(d.scope && this.state === 'bolt') && !p.latchedBy; // no aiming with a Biter on your back
     this.adsWanted = altDown && canAds;
     const adsTime = d.adsTime ?? 0.2;
     const adsGoal = this.adsWanted ? 1 : 0;
@@ -330,10 +455,10 @@ export class WeaponSystem {
     if (d.mode === 'melee' && this.state === 'idle') {
       if (altPressed) {
         this._setState('heavy');
-        this.game.audio.play('knife_swing', { volume: 0.8, pitch: 0.8 });
+        this.game.audio.play(d.swingSound ?? 'knife_swing', { volume: 0.8, pitch: 0.8 });
       } else if (firePressed) {
         this._setState('melee');
-        this.game.audio.play('knife_swing', { volume: 0.7 });
+        this.game.audio.play(d.swingSound ?? 'knife_swing', { volume: 0.7 });
       }
     }
 
@@ -362,7 +487,9 @@ export class WeaponSystem {
     // firing: a click fires on this very frame. While the trigger is held the cooldown carries its
     // overshoot (see _fire), so full-auto holds its exact rpm at any frame rate, and a long frame
     // fires the rounds it owes instead of dropping them.
-    if (gun && (this.state === 'idle' || (this.state === 'draw' && this.stateT > (d.drawTime ?? 0.4) * 0.75))) {
+    if (d.akimbo) {
+      akimboTriggers(this, dt, firePressed, altPressed); // Mouse1 the right gun, Mouse2 the left one
+    } else if (gun && (this.state === 'idle' || (this.state === 'draw' && this.stateT > (d.drawTime ?? 0.4) * 0.75))) {
       for (let n = 0; n < 4 && this.cooldown <= 0 && this.sprintK < 0.35; n++) {
         const wants = d.mode === 'auto' ? fireDown || this.fireBuffer > 0 : d.mode === 'burst' ? this.fireBuffer > 0 || this.burstLeft > 0 : this.fireBuffer > 0;
         if (!wants || (d.id === 'chaingun' && this.spin < 1)) break; // chaingun: still spinning up
@@ -395,6 +522,7 @@ export class WeaponSystem {
 
   tryReload() {
     const d = this.def;
+    if (d.akimbo) return akimboTryReload(this);
     const a = this.curAmmo;
     if (!a || d.noReload) return;
     if (this.state !== 'idle' && this.state !== 'bolt') return;
@@ -417,6 +545,7 @@ export class WeaponSystem {
 
   _updateMagReload() {
     const d = this.def;
+    if (d.akimbo) return akimboReloadTick(this);
     const a = this.curAmmo;
     const T = this.reloadDur;
     const f = this.stateT / T;
@@ -515,7 +644,8 @@ export class WeaponSystem {
     };
   }
 
-  _fire(dt = 0) {
+  /** One round (`side`: akimbo 0 = right gun, 1 = left gun). */
+  _fire(dt = 0, side = 0) {
     const d = this.def;
     const a = this.curAmmo;
     const p = this.player;
@@ -524,7 +654,8 @@ export class WeaponSystem {
     // carry the overshoot while the trigger is held (this round was due inside the frame), so the
     // average rate is exactly rpm; after a pause the clock simply restarts from now
     this.cooldown = (this.cooldown > -dt ? this.cooldown : 0) + 60 / (d.rampRpm ? d.rpm + (d.rampRpm - d.rpm) * wind : d.rpm);
-    a.mag--;
+    if (side) a.mag2--;
+    else a.mag--;
     this.shotCount++;
     const spreadDeg = this.currentSpread();
     this.bloom = Math.min(d.spreadMax, this.bloom + d.spreadPerShot);
@@ -532,7 +663,7 @@ export class WeaponSystem {
     // aim ray from the eye
     p.camera.getWorldDirection(_fwd);
     const origin = p.camera.position;
-    this.vm.getMuzzleWorld(_muzzle);
+    this.vm.getMuzzleWorld(_muzzle, side);
     const tracer = d.tracerEvery > 0 && this.shotCount % d.tracerEvery === 0;
     if (d.projectile) {
       coneDirection(_fwd, spreadDeg * DEG * 0.5, _dir);
@@ -558,32 +689,32 @@ export class WeaponSystem {
     // recoil: an instant kick on the aim (the player springs most of it back once you stop firing),
     // an aim-neutral camera punch, a sharp viewmodel punch and a thump of shake on the heavy hitters
     const vk = d.recoilV * (1 - this.ads * 0.3) * (1 - 0.2 * this.crouchK);
-    const hk = (Math.random() * 2 - 1) * d.recoilH * (1 - this.ads * 0.3);
+    const hk = (Math.random() * 2 - 1) * d.recoilH * (1 - this.ads * 0.3) + (d.akimbo ? (side ? 0.35 : -0.35) * d.recoilH : 0); // akimbo: each gun pulls to its side
     p.addRecoil(vk, hk, d.kick ?? 1);
     const sk = d.shake ?? d.kick * 0.02;
     game.shake.add(Math.min(sk, Math.max(0, sk * 2.5 - game.shake.trauma))); // sustained fire can't pile it up
-    this.vm.onFire(d);
+    this.vm.onFire(d, side);
     this.sprintLock = 0.25;
     if (d.mode === 'bolt' || d.mode === 'pump') {
       this._setState('bolt');
     } else if (!d.noEject && d.shell && d.reloadType !== 'shell') {
-      this._ejectShell(d.shell, 1);
+      this._ejectShell(d.shell, 1, side);
     } else if (d.id === 'm4super90' || d.id === 'goldenPunisher') {
       this._ejectShell('shotgun', 1);
     }
     game.alertNoise(p.pos, d.id === 'l96a1' ? 45 : 30);
-    if (a.mag === 0 && d.mode !== 'bolt' && d.mode !== 'pump' && !d.noReload) {
+    if ((d.akimbo ? akimboRounds(a) : a.mag) === 0 && d.mode !== 'bolt' && d.mode !== 'pump' && !d.noReload) {
       // auto-reload after a short beat
       setTimeout(() => {
-        if (this.def === d && this.state === 'idle' && this.curAmmo.mag === 0) this.tryReload();
+        if (this.def === d && this.state === 'idle' && (d.akimbo ? akimboRounds(this.curAmmo) : this.curAmmo.mag) === 0) this.tryReload();
       }, 250);
     }
   }
 
-  _ejectShell(type, strength = 1) {
+  _ejectShell(type, strength = 1, side = 0) {
     const cam = this.player.camera;
-    const port = this.vm.getEjectWorld(new THREE.Vector3());
-    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(cam.quaternion);
+    const port = this.vm.getEjectWorld(new THREE.Vector3(), side);
+    const right = new THREE.Vector3(side ? -1 : 1, 0, 0).applyQuaternion(cam.quaternion); // the mirrored left gun ejects left
     const up = new THREE.Vector3(0, 1, 0).applyQuaternion(cam.quaternion);
     const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
     const v = right.multiplyScalar(rand(2.2, 3.2) * strength).addScaledVector(up, rand(1.6, 2.6)).addScaledVector(fwd, rand(-0.6, 0.4));
@@ -599,8 +730,9 @@ export class WeaponSystem {
       ammo: a ? a.mag : d.mode === 'grenade' ? this.grenades : 0,
       magSize: a ? d.mag : 1,
       reserve: a ? a.reserve : 0,
-      showAmmo: d.mode !== 'melee' && d.mode !== 'build',
+      showAmmo: d.mode !== 'melee' && d.mode !== 'build' && d.mode !== 'pour',
       reloading: this.state === 'reload' || this.state === 'shellReload',
+      dual: d.akimbo && a ? { l: a.mag2 ?? 0, r: a.mag } : null, // akimbo: both guns' mags
     };
   }
 
@@ -624,18 +756,19 @@ export class WeaponSystem {
     const a = this.ammo[id];
     if (key === 'mag' && a && d.mag) {
       a.mag = Math.max(a.mag, d.mag);
+      if (a.mag2 != null) a.mag2 = Math.max(a.mag2, d.mag); // the akimbo left gun
       a.reserve = Math.max(a.reserve, d.reserve);
     }
   }
 
-  /** Put an owned store weapon into its slot (0 primary via giveWeapon, 1 secondary), fully loaded. */
+  /** Put an owned store weapon into its slot (0 primary / 6 backpack via giveWeapon, 1 secondary), fully loaded. */
   equipFromStore(id, slot = WEAPONS[id]?.slot === 1 ? 1 : 0) {
     if (!WEAPONS[id]) return false;
     const kept = this.ammo[id]?.reserve ?? 0; // reserve carried from an earlier stint
-    if (slot === 0) this.giveWeapon(id);
+    if (slot === 0 || slot === PACK_SLOT) this.giveWeapon(id, slot);
     else this.slots[1] = id;
     const d = this.defOf(id);
-    if (d.mag) this.ammo[id] = { mag: d.mag, reserve: Math.max(kept, d.reserve) };
+    if (d.mag) this.ammo[id] = { mag: d.mag, mag2: d.mag, reserve: Math.max(kept, d.reserve) }; // mag2: an akimbo left gun
     if (slot === 1 && this.cur === 1) this.switchTo(1, true);
     return true;
   }

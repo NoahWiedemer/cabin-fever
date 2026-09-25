@@ -25,6 +25,7 @@ export const ASSETS = [
   ['Meshy_AI_Character_output.glb', 'characters/meshy.glb', 1024], // UniRig skeleton, bones mapped by topology
   ['Viper.glb', 'characters/viper.glb', 1024], // UniRig skeleton, bones mapped by topology
   ['shopkeeper.glb', 'characters/shopkeeper.glb', 1024], // gun shop clerk (UniRig), bones mapped by topology
+  ['nadja.glb', 'characters/nadja.glb', 1024], // lab tech behind the basement's armored glass (UniRig, weights: fix-viper-weights)
   ['kirche2.glb', 'environment/church.glb', 1024],
   // built in Blender (tools/blender/m16a2.py -> Kit.export)
   ['m16a2_raw.glb', 'weapons/m16a2.glb', 1024],

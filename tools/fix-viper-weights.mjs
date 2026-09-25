@@ -69,7 +69,7 @@ const subtree = (i) => [i, ...kids(i).flatMap(subtree)];
 const leaves = joints.map((_, i) => i).filter((i) => !kids(i).length);
 const lo = Math.min(...JP.map((p) => p.y)), hi = Math.max(...JP.map((p) => p.y)), H = hi - lo;
 
-const legBones = new Set(), armLow = new Set(), knees = [], palms = [], handJoints = [];
+const legBones = new Set(), armLow = new Set(), knees = [], palms = [], handJoints = []; // handJoints: one list per side
 const lowest = (sx) => leaves.filter((i) => JP[i].x * sx > 0).sort((a, b) => JP[a].y - JP[b].y)[0];
 const legRoot = common(lowest(1), lowest(-1));
 for (const sx of [1, -1]) {
@@ -92,7 +92,7 @@ for (const sx of [1, -1]) {
   const fore = far(k, k + 1), hand = fore < 0 ? -1 : far(fore, fore + 1);
   if (hand < 0) throw new Error('arm chain');
   subtree(c[fore]).forEach((i) => armLow.add(i)); // forearm, hand, palm, fingers
-  handJoints.push(...subtree(c[hand])); // wrist, palm, fingers: palm-distance seeds
+  handJoints.push(subtree(c[hand])); // wrist, palm, fingers: palm-distance seeds
   let palm = c[hand];
   while (kids(palm).length === 1) palm = kids(palm)[0];
   palms.push(palm);
@@ -248,8 +248,11 @@ function surfaceDistance(seeds) {
 }
 // palm seeds + the few vertices nearest every wrist / finger joint (always the hand's own outer surface, also
 // when a glove's inner layer is what lies closest to the palm joint; no radius, so a hand resting against a
-// thigh can't seed the thigh)
-const dPalm = surfaceDistance([...new Set([...seedsNear(palms, 0.018 * H), ...seedsNear(handJoints, 0, 6)])]);
+// thigh can't seed the thigh). One walk per hand, then the nearer one: a hand that is its own mesh island
+// (Nadja's left hand, a glove) attaches through its own sleeve instead of being reached from the other hand
+// across the whole body, which left that forearm on the leg side of the divide.
+const dSide = palms.map((pm, k) => surfaceDistance([...new Set([...seedsNear([pm], 0.018 * H), ...seedsNear(handJoints[k], 0, 6)])]));
+const dPalm = new Map(verts.map((i) => [i, Math.min(...dSide.map((D) => D.get(i) ?? Infinity))]));
 const dKnee = surfaceDistance(seedsNear(knees, 0.06 * H));
 
 // ---- strip + fill

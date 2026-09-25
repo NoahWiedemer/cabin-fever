@@ -106,6 +106,18 @@ const MOLOTOV_SVG =
 const BARRICADE_SVG =
   '<svg class="cf-gren-ico" viewBox="0 0 32 36" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M2 5L30 3L30 10L2 12ZM4.5 7h2v2h-2ZM25.5 5.5h2v2h-2ZM2 15L30 16L30 23L2 22ZM4.5 17.5h2v2h-2ZM25.5 18.5h2v2h-2ZM3 27L29 25L29 32L3 34ZM5.5 29h2v2h-2ZM24.5 27.5h2v2h-2Z"/></svg>';
 
+// jerry can (generator fuel, slot 6): body with the embossed X, triple handle, spout
+const GASCAN_SVG =
+  '<svg class="cf-gren-ico" viewBox="0 0 32 36" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M6 10L26 10Q28 10 28 12L28 33Q28 35 26 35L6 35Q4 35 4 33L4 12Q4 10 6 10ZM8.6 14L10.2 14L24 31L22.4 31ZM22.4 14L24 14L10.2 31L8.6 31ZM8 4L22 4L22 9L8 9ZM10 5.4h3.2v2.2h-3.2ZM14.4 5.4h3.2v2.2h-3.2ZM18.8 5.4h1.8v2.2h-1.8ZM23.5 5L27.5 2.2L30 5.2L26.3 9Z"/></svg>';
+
+// revive (kill feed + the dead player's line): a medic cross
+const REVIVE_SVG =
+  '<svg viewBox="0 0 128 40" aria-hidden="true"><path fill="currentColor" d="M56 6h16v10h10v16H72v10H56V32H46V16h10Z"/></svg>';
+
+// generator status (lightning bolt)
+const BOLT_SVG =
+  '<svg class="cf-gen-ico" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M9.6 0.6L2.8 9.2h4.3L5.9 15.4 13.2 6.5H8.7L9.6 0.6Z"/></svg>';
+
 const GASMASK_SVG =
   '<svg class="cf-mask-ico" viewBox="32 -4 64 44" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M44 5Q64 -3 84 5Q92 13 88 24Q85 30 76 32L52 32Q43 30 40 24Q36 13 44 5ZM48 13a7 7 0 1 0 14 0a7 7 0 1 0-14 0ZM66 13a7 7 0 1 0 14 0a7 7 0 1 0-14 0ZM57 33h14v6h-14ZM34 11L39 10L39 17L34 18ZM94 11L89 10L89 17L94 18Z"/></svg>';
 
@@ -224,6 +236,7 @@ const HUD_HTML = `
   <div class="cf-radar-disc"><canvas class="cf-radar-cv"></canvas></div>
   <div class="cf-round"><span class="cf-round-num">00/00</span><span class="cf-round-lbl">ROUND</span></div>
   <div class="cf-infected"><span>INFECTED</span><b>0</b></div>
+  <div class="cf-gen">${BOLT_SVG}<div class="cf-gen-bar"><i></i></div><b>100%</b></div>
 </div>
 <div class="cf-banner">
   <div class="cf-banner-title"></div>
@@ -231,6 +244,7 @@ const HUD_HTML = `
   <div class="cf-banner-sub"></div>
 </div>
 <div class="cf-reload"></div>
+<div class="cf-revive"><span class="cf-revive-t"></span><div class="cf-revive-bar"><i></i></div></div>
 <div class="cf-pickup"></div>
 <div class="cf-pickup cf-interact"></div>
 <div class="cf-vitals">
@@ -244,14 +258,15 @@ const HUD_HTML = `
   </div>
 </div>
 <div class="cf-weapon">
-  <div class="cf-wpn-top"><span class="cf-reloading">RELOADING</span><span class="cf-wpn-name"></span></div>
+  <div class="cf-wpn-top"><span class="cf-reloading">RELOADING</span><span class="cf-wpn-alt"><span class="cf-key">1</span><b></b></span><span class="cf-wpn-name"></span></div>
   <div class="cf-ammo-row">
     <div class="cf-gren">${GRENADE_SVG}<span class="cf-gren-x">×</span><b>0</b></div>
     <div class="cf-gren cf-molo cf-hide">${MOLOTOV_SVG}<span class="cf-gren-x">×</span><b>0</b></div>
     <div class="cf-gren cf-barr cf-hide">${BARRICADE_SVG}<span class="cf-gren-x">×</span><b>0</b></div>
-    <div class="cf-ammo"><b class="cf-mag">000</b><span class="cf-res">/000</span></div>
+    <div class="cf-gren cf-can cf-hide">${GASCAN_SVG}<span class="cf-gren-x">×</span><b>0</b></div>
+    <div class="cf-ammo"><b class="cf-mag2">00</b><i class="cf-mag-sep"></i><b class="cf-mag">000</b><span class="cf-res">/000</span></div>
   </div>
-  <div class="cf-bar cf-bar-mag"><div class="cf-bar-fill"></div><div class="cf-bar-ticks"></div></div>
+  <div class="cf-mag-bars"><div class="cf-bar cf-bar-magl"><div class="cf-bar-fill"></div><div class="cf-bar-ticks"></div></div><div class="cf-bar cf-bar-mag"><div class="cf-bar-fill"></div><div class="cf-bar-ticks"></div></div></div>
 </div>
 <div class="cf-board">
   <div class="cf-board-panel">
@@ -317,6 +332,8 @@ export class HUD {
       hpFill: q('.cf-bar-hp .cf-bar-fill'),
       weapon: q('.cf-weapon'),
       wpnName: q('.cf-wpn-name'),
+      wpnAlt: q('.cf-wpn-alt'),
+      wpnAltName: q('.cf-wpn-alt b'),
       reloading: q('.cf-reloading'),
       gren: q('.cf-gren'),
       grenNum: q('.cf-gren b'),
@@ -324,6 +341,15 @@ export class HUD {
       moloNum: q('.cf-molo b'),
       barr: q('.cf-barr'),
       barrNum: q('.cf-barr b'),
+      revive: q('.cf-revive'),
+      reviveT: q('.cf-revive-t'),
+      reviveBar: q('.cf-revive-bar'),
+      reviveFill: q('.cf-revive-bar i'),
+      can: q('.cf-can'),
+      canNum: q('.cf-can b'),
+      gen: q('.cf-gen'),
+      genFill: q('.cf-gen-bar i'),
+      genPct: q('.cf-gen b'),
       vigMask: q('.cf-vig-mask'),
       hold: q('.cf-hold'),
       holdFg: q('.cf-hold .fg'),
@@ -346,6 +372,9 @@ export class HUD {
       res: q('.cf-res'),
       magBar: q('.cf-bar-mag'),
       magFill: q('.cf-bar-mag .cf-bar-fill'),
+      mag2: q('.cf-mag2'), // akimbo: the left gun's mag
+      magBarL: q('.cf-bar-magl'),
+      magFillL: q('.cf-bar-magl .cf-bar-fill'),
       board: q('.cf-board'),
       boardDiff: q('.cf-board-diff'),
       boardMeta: q('.cf-board-meta'),
@@ -495,13 +524,18 @@ export class HUD {
 
     /* weapon */
     this._text($.wpnName, 'wname', String(state.weaponName ?? '').toUpperCase());
+    // weapon backpack (game/gear.js): the other primary, a press of 1 away
+    this._cls($.wpnAlt, 'on', 'altOn', !!state.altPrimary);
+    if (state.altPrimary) this._text($.wpnAltName, 'altName', String(state.altPrimary).toUpperCase());
     const showAmmo = state.showAmmo !== false;
     this._cls($.weapon, 'noammo', 'noAmmo', !showAmmo);
     const ammo = Math.max(0, Number(state.ammo) | 0);
     const mag = Math.max(0, Number(state.magSize) | 0);
     const reserve = Math.max(0, Number(state.reserve) | 0);
+    const dual = showAmmo && state.dual ? state.dual : null; // akimbo: left | right mags
+    this._cls($.weapon, 'dual', 'dual', !!dual);
     if (showAmmo) {
-      this._text($.mag, 'ammo', pad(ammo, 3));
+      this._text($.mag, 'ammo', pad(ammo, dual ? 2 : 3));
       this._text($.res, 'res', `/${pad(reserve, 3)}`);
       const low = mag > 0 && ammo / mag < 0.25;
       this._cls($.ammo, 'low', 'ammoLow', low && ammo > 0);
@@ -509,6 +543,16 @@ export class HUD {
       this._cls($.magBar, 'low', 'magBarLow', low);
       const mf = mag > 0 ? Math.round(clamp(ammo / mag, 0, 1) * 500) / 500 : 0;
       if (this._set('magFrac', mf)) $.magFill.style.transform = `scaleX(${mf})`;
+      if (dual) {
+        const l = Math.max(0, dual.l | 0);
+        const lowL = mag > 0 && l / mag < 0.25;
+        this._text($.mag2, 'ammo2', pad(l, 2));
+        this._cls($.ammo, 'low2', 'ammoLow2', lowL && l > 0);
+        this._cls($.ammo, 'empty2', 'ammoEmpty2', l === 0);
+        this._cls($.magBarL, 'low', 'magBarLowL', lowL);
+        const lf = mag > 0 ? Math.round(clamp(l / mag, 0, 1) * 500) / 500 : 0;
+        if (this._set('magFracL', lf)) $.magFillL.style.transform = `scaleX(${lf})`;
+      }
     }
     const reloading = !!state.reloading;
     this._cls($.reloading, 'on', 'reloading', reloading && showAmmo);
@@ -525,10 +569,26 @@ export class HUD {
     const barr = Math.max(0, state.barricades | 0);
     this._cls($.barr, 'cf-hide', 'barrHide', !barr);
     if (barr) this._text($.barrNum, 'barr', String(barr));
+    const cans = Math.max(0, state.gascans | 0);
+    this._cls($.can, 'cf-hide', 'canHide', !cans);
+    if (cans) this._text($.canNum, 'can', String(cans));
+
+    /* generator (once the basement is open): fuel bar, status colour (on / warn / off) */
+    const gen = state.generator;
+    this._cls($.gen, 'on', 'genOn', !!gen);
+    if (gen) {
+      const f = Math.round(clamp(gen.fuel, 0, 1) * 100) / 100;
+      if (this._set('genF', f)) $.genFill.style.transform = `scaleX(${f})`;
+      this._text($.genPct, 'genPct', `${Math.round(f * 100)}%`);
+      this._cls($.gen, 'warn', 'genWarn', gen.state === 'warn');
+      this._cls($.gen, 'off', 'genOff', gen.state === 'off');
+    }
 
     /* reload hint */
     let hint = '';
-    if (showAmmo && ammo === 0 && !reloading) hint = reserve > 0 ? 'reload' : 'noammo';
+    if (showAmmo && (dual ? Math.min(ammo, dual.l | 0) : ammo) === 0 && !reloading) {
+      hint = reserve > 0 ? 'reload' : ammo + (dual ? dual.l | 0 : 0) === 0 ? 'noammo' : ''; // akimbo: either gun dry
+    }
     if (this._set('hint', hint)) {
       $.reload.innerHTML =
         hint === 'reload' ? 'RELOAD <span class="cf-key">R</span>' : hint === 'noammo' ? 'NO AMMO' : '';
@@ -561,9 +621,21 @@ export class HUD {
     if (this._c.get('boardOn')) this._updateBoardMeta();
   }
 
-  addKill({ killer, victim, weapon, headshot } = {}) {
+  addKill({ killer, victim, weapon, headshot, revive } = {}) {
     const row = document.createElement('div');
-    row.className = 'cf-kf-row' + (headshot ? ' hs' : '');
+    row.className = 'cf-kf-row' + (headshot ? ' hs' : '') + (revive ? ' rev' : '');
+    if (revive) {
+      // "Ellis ✚ Viper": a teammate got someone back up (game/revive.js)
+      row.innerHTML = `<span class="cf-kf-name cf-kf-ally">${esc(killer ?? '')}</span><span class="cf-kf-wpn cf-kf-rev">${REVIVE_SVG}</span><span class="cf-kf-name cf-kf-ally">${esc(victim ?? '')}</span>`;
+      const feed = this.$.feed;
+      feed.appendChild(row);
+      while (feed.children.length > 5) feed.firstElementChild.remove();
+      setTimeout(() => {
+        row.classList.add('out');
+        setTimeout(() => row.remove(), 520);
+      }, 5000);
+      return;
+    }
     const victimInfected = INFECTED_RE.test(String(victim || ''));
     const killerInfected = INFECTED_RE.test(String(killer || '')) && !victimInfected;
     const kCls = killerInfected ? 'cf-kf-enemy' : 'cf-kf-ally';
@@ -817,6 +889,21 @@ export class HUD {
     if (wp.edge && this._set('wpA', a)) $.wpArrow.style.transform = `rotate(${a}rad)`;
   }
 
+  /** The dead player's revive line: { text, frac (0..1 progress or null), urgent } or null. */
+  setRevive(r) {
+    const $ = this.$;
+    this._cls($.revive, 'on', 'revOn', !!r);
+    if (!r) return;
+    this._text($.reviveT, 'revT', String(r.text ?? ''));
+    this._cls($.revive, 'urgent', 'revUrg', !!r.urgent);
+    const hasBar = r.frac != null;
+    this._cls($.reviveBar, 'on', 'revBar', hasBar);
+    if (hasBar) {
+      const f = Math.round(clamp(r.frac, 0, 1) * 100) / 100;
+      if (this._set('revF', f)) $.reviveFill.style.transform = `scaleX(${f})`;
+    }
+  }
+
   /** Gas mask filter meter: { frac, secs, active } or null. */
   setMask(m) {
     const $ = this.$;
@@ -1019,7 +1106,7 @@ export class HUD {
         const d2 = (x - c) * (x - c) + (y - c) * (y - c);
         if (d2 > R * R) continue;
         const kind = String(p.kind || '');
-        ctx.fillStyle = /health|med/i.test(kind) ? '#6dff8a' : /ammo/i.test(kind) ? '#ffd24a' : '#ffe38a';
+        ctx.fillStyle = /health|med/i.test(kind) ? '#6dff8a' : /ammo/i.test(kind) ? '#ffd24a' : kind === 'generator' ? '#ff4a32' : kind === 'gascan' ? '#ff9a3c' : kind === 'revive' ? '#7dffa0' : '#ffe38a';
         const k = 3.2 * dpr;
         ctx.beginPath();
         ctx.moveTo(x, y - k);

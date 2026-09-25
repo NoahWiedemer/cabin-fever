@@ -14,6 +14,9 @@ import { CollisionWorld, SURF, FLAG_NOBULLET, FLAG_NAVIGNORE } from './collision
 import { buildProp, clearPropCache } from './propsSafe.js';
 import { getMaterial } from './materials.js';
 import { buildStairCage } from './stairCage.js';
+import { buildLab, LAB, LAB_OPENINGS } from './lab.js';
+import { buildRanch, ranchClear, adjustSpawns } from './ranch.js';
+import { BARN, inBarn } from './ranchLayout.js';
 
 export const FLOOR = { basement: -3.2, ground: 0, upper: 3.45, outside: -0.5 };
 // ruined chapel on the horizon (src/world/landmarks.js); the porch keeps a clear view of it
@@ -71,11 +74,12 @@ export function buildLevel() {
   };
 
   // ------------------------------------------------------------------ ground / terrain
-  // Big mud slab (top at -0.5) with holes for the basement, the gun shop and the cellar stairwell.
+  // Big mud slab (top at -0.5) with holes for the basement, the gun shop, the cellar stairwell and the lab.
   B.slab(-75, 75, -75, 75, -1.5, FLOOR.outside, [
     [-12, 2.4, -8, 4], // basement footprint
     [2.4, 12, -8, 1], // gun shop cellar footprint (its stairs come down from the back room)
     [-17.4, -12, -3.25, -1.35], // cellar stairwell
+    LAB.mudHole, // the lab behind the basement's south wall (world/lab.js re-covers the yard over it)
   ], { mat: 'mud', surface: SURF.mud, grime: 0, skip: ['ny'], castShadow: false });
 
   // invisible world boundary
@@ -122,6 +126,17 @@ export function buildLevel() {
   B.box(-12.05, -0.5, -8.05, -11.95, 0.02, 8.05, { mats: { nx: 'concrete', py: 'concrete' }, skip: ['px', 'ny'], surface: SURF.concrete, collide: false });
   B.box(11.95, -0.5, -8.05, 12.05, 0.02, 8.05, { mats: { px: 'concrete', py: 'concrete' }, skip: ['nx', 'ny'], surface: SURF.concrete, collide: false });
 
+  // Weak spots in the ground-floor walls a Boomer can blow open (rarely, world/breach.js): each is left
+  // out of its wall below and filled by a patch breach.js can hide. `n`: the outward normal's sign on
+  // the wall's normal axis; `out` / `in`: points just outside / inside (where the Boomer goes off, where
+  // the horde's new entrance is).
+  const breachSpots = [
+    { id: 'livingWest', name: 'LIVING ROOM', axis: 'z', c: westC, t: TE, a: 6.25, b: 7.5, y0: 0, y1: 2.3, n: -1, sides: extSides(true), ceil: CEIL1, out: [-12.95, 6.9], in: [-10.8, 6.9] },
+    { id: 'storageNorth', name: 'STORAGE ROOM', axis: 'x', c: northC, t: TE, a: -3.1, b: -1.7, y0: 0, y1: 2.3, n: -1, sides: extSides(true), ceil: CEIL1, out: [-2.4, -8.95], in: [-2.4, -6.8] },
+    { id: 'backRoomEast', name: 'BACK ROOM', axis: 'z', c: eastC, t: TE, a: -3.35, b: -2.0, y0: 0, y1: 2.3, n: 1, sides: extSides(false), ceil: CEIL1, out: [12.9, -2.9], in: [10.8, -2.7] },
+  ];
+  const breachOpen = (axis, c) => breachSpots.filter((b) => b.axis === axis && b.c === c).map((b) => ({ a: b.a, b: b.b, y0: b.y0, y1: b.y1 }));
+
   // Ground floor
   const gSouthOpen = [
     { a: -11.0, b: -9.6, ...WIN, win: true },
@@ -137,16 +152,19 @@ export function buildLevel() {
     { a: -0.6, b: 0.75, y0: 0, y1: DOOR_H, door: 'back' },
     { a: 5.0, b: 6.4, ...WIN, win: true },
     { a: 9.0, b: 10.4, ...WIN, win: true },
+    ...breachOpen('x', northC),
   ];
   B.wall('x', northC, -12, 12, 0, CEIL1 + 0.25, TE, gNorthOpen, { sides: extSides(true), floorY: 0, ceilY: CEIL1 });
   const gWestOpen = [
     { a: 2.8, b: 4.2, ...WIN, win: true },
     { a: -5.0, b: -3.6, ...WIN, win: true },
+    ...breachOpen('z', westC),
   ];
   B.wall('z', westC, -8 + TE, 8 - TE, 0, CEIL1 + 0.25, TE, gWestOpen, { sides: extSides(true), floorY: 0, ceilY: CEIL1 });
   const gEastOpen = [
     { a: 3.4, b: 5.6, y0: 0, y1: 2.05, hole: true },
     { a: -5.0, b: -3.6, ...WIN, win: true },
+    ...breachOpen('z', eastC),
   ];
   B.wall('z', eastC, -8 + TE, 8 - TE, 0, CEIL1 + 0.25, TE, gEastOpen, { sides: extSides(false), floorY: 0, ceilY: CEIL1 });
 
@@ -194,7 +212,9 @@ export function buildLevel() {
   B.wall('z', -12 + TE / 2, -8, 4, FLOOR.basement, 0, TE, [{ a: -3.0, b: -1.6, y0: FLOOR.basement, y1: FLOOR.basement + 2.6 }], bWallOpts);
   B.wall('x', -8 + TE / 2, -12, 2.4, FLOOR.basement, 0, TE, [], bWallOpts);
   B.wall('z', 2.4, -8, 4, FLOOR.basement, 0, TE, [], bWallOpts);
-  B.wall('x', 4, -12, 2.55, FLOOR.basement, 0, TE, [], bWallOpts);
+  B.wall('x', 4, -12, 2.55, FLOOR.basement, 0, TE, LAB_OPENINGS, bWallOpts);
+  // behind it: the vault door, the armored window and the lab (world/lab.js)
+  const lab = buildLab(B, world, lamps);
   // basement pillars
   for (const [px, pz] of [[-7, -2.8], [-3, -2.8], [-7, 1.4], [-3, 1.4]]) {
     B.box(px - 0.2, FLOOR.basement, pz - 0.2, px + 0.2, BCEIL, pz + 0.2, { mat: 'concrete', surface: SURF.concrete, floorY: FLOOR.basement, ceilY: BCEIL });
@@ -516,16 +536,20 @@ export function buildLevel() {
   prop('radio', 11.1, 0.92, -5.4, -1.7);
   prop('mattressFloor', 8.2, 0, -4.4, 0.1);
   // Basement
-  prop('generator', -9.8, FLOOR.basement, 2.6, 0.2);
+  // THE generator (world/power.js runs it, world/generator.js animates it): SW corner, front to the
+  // room, exhaust stack against the south wall; not batched, it shakes while it runs
+  const GEN = { x: -10.0, z: 2.95, rot: Math.PI + 0.1 };
+  const genProp = prop('generator', GEN.x, FLOOR.basement, GEN.z, GEN.rot, { live: true }, { dynamic: true, tag: 'generator', surface: SURF.metal });
+  if (genProp) dynamic.add(genProp.object);
   prop('shelfUnit', 1.8, FLOOR.basement, -1.5, -Math.PI / 2);
   prop('shelfUnit', -11.2, FLOOR.basement, 0.4, Math.PI / 2);
-  prop('workbench', -5.0, FLOOR.basement, 3.55, Math.PI);
+  prop('workbench', 1.9, FLOOR.basement, 1.3, -Math.PI / 2); // east wall: the south wall has the lab window
   prop('barrel', -11.0, FLOOR.basement, -5.8, 0);
   prop('barrel', -10.3, FLOOR.basement, -5.2, 0);
   prop('crate', 1.4, FLOOR.basement, 3.2, 0.2);
-  prop('cardboardStack', -1.4, FLOOR.basement, 3.3, 0.5);
+  prop('cardboardStack', -8.3, FLOOR.basement, 3.35, 0.3);
   prop('crateLong', 0.4, FLOOR.basement, -6.9, 0);
-  prop('lantern', -5.2, FLOOR.basement + 0.92, 3.5, 0);
+  prop('lantern', 1.95, FLOOR.basement + 0.92, 1.6, 0);
   // Upper floor
   prop('bed', -9.8, FLOOR.upper, 5.8, Math.PI / 2);
   prop('dresser', -3.2, FLOOR.upper, 7.35, Math.PI);
@@ -570,7 +594,14 @@ export function buildLevel() {
     ['fence', 26.2, 5.0, Math.PI / 2],
     ['fence', -28.0, -8.0, Math.PI / 2 + 0.1],
   ];
-  for (const [t, x, z, r] of outsideProps) prop(t, x, FLOOR.outside, z, r);
+  for (const [t, x, z, r] of outsideProps) {
+    // the ranch (world/ranch.js) replaced the stray fences over there; rnd() keeps the tree ring below as it was
+    if (t === 'fence' && ranchClear(x, z)) {
+      rnd();
+      continue;
+    }
+    prop(t, x, FLOOR.outside, z, r);
+  }
   lamps.push({ pos: new THREE.Vector3(11.0, FLOOR.outside + 1.2, 14.0), level: 1, color: 0xff7a2a, intensity: 30, angle: 0, distance: 14, flicker: 1, spot: false, fire: true });
 
   // trees in a ring, away from spawn lanes
@@ -596,17 +627,28 @@ export function buildLevel() {
       if (Math.hypot(x - ax - dx * t, z - az - dz * t) < 5) continue;
     }
     treeSpots.push([x, z]);
+    if (ranchClear(x, z)) {
+      // barn / paddock / yard: no tree, but draw its randoms so the rest of the ring stays put
+      rnd(), rnd(), rnd();
+      continue;
+    }
     prop(rnd() < 0.7 ? 'pineTreeDead' : 'deadTree', x, FLOOR.outside, z, rnd() * Math.PI * 2);
   }
+  adjustSpawns(spawnPoints); // two ring spawns fell on the barn: moved beside it
+
+  // ------------------------------------------------------------------ the ranch: barn, paddock, windmill, ...
+  const ranch = buildRanch({ B, world, prop, lamp, lamps, rnd, dynamic });
+  for (const w of ranch.windows) windows.push(w); // (after the house window loop: moonlight shafts only)
 
   // ------------------------------------------------------------------ nav metadata
   const portals = [
     { id: 'upstairs', a: { level: 1, x: 1.63, z: 2.35 }, b: { level: 2, x: 1.63, z: -4.75 }, cost: 7.5, enabled: false, path: [[1.63, 2.35], [1.63, -4.75]] },
     { id: 'basementInterior', a: { level: 1, x: -3.25, z: -7.0 }, b: { level: 0, x: -9.75, z: -7.0 }, cost: 7.5, enabled: false },
     { id: 'cellar', a: { level: 1, x: -17.95, z: -2.3 }, b: { level: 0, x: -11.2, z: -2.3 }, cost: 7.5, enabled: false },
+    ...ranch.portals, // the barn's hayloft ladder (always open)
   ];
   const navBlocks = [
-    { level: 1, rect: [0.9, 2.35, -4.25, 1.95] },
+    { level: 1, rect: [0.62, 2.35, -4.25, 1.95] }, // from 0.62: the cells against the cage's side grille (a NAVIGNORE collider at x 0.9)
     { level: 2, rect: [0.9, 2.35, -4.25, 1.95] },
     { level: 0, rect: [-9.25, -3.7, -7.75, -6.2] },
     { level: 1, rect: [-9.25, -3.7, -7.75, -6.2] },
@@ -614,6 +656,16 @@ export function buildLevel() {
     { level: 1, rect: [-17.45, -11.7, -3.3, -1.3] },
     { level: 1, rect: [3.85, 9.55, -7.8, -6.25] }, // gun shop stairwell
     { level: 0, rect: [4.0, 9.5, -7.8, -6.3] },
+  ];
+
+  // Ways into the house for the infected (src/nav/horde.js spreads a wave over them): x/z = a point just
+  // inside on `level`; `portal`: only while that stair portal is open. `id` doubles as the barricade
+  // spot across it (if any). More can be pushed at runtime (world/breach.js).
+  const entrances = [
+    { id: 'front', level: 1, x: -6.5, z: 6.7 },
+    { id: 'back', level: 1, x: 0.07, z: -6.7 },
+    { id: 'kitchenHole', level: 1, x: 10.7, z: 4.5 },
+    { id: 'cellar', level: 0, x: -10.5, z: -2.3, portal: 'cellar' },
   ];
 
   // Doorways the store's barricade kit can board up (src/world/barricades.js). The openings of the
@@ -640,11 +692,13 @@ export function buildLevel() {
   radarSegments.push(
     [-12, -8, 12, -8], [12, -8, 12, 8], [12, 8, -12, 8], [-12, 8, -12, -8],
     [-1, -8, -1, 8], [2.4, -8, 2.4, 8], [-12, -1, -1, -1], [2.4, 1, 12, 1],
-    [-9.6, 8, -9.6, 10.4], [-9.6, 10.4, -3.4, 10.4], [-3.4, 10.4, -3.4, 8]
+    [-9.6, 8, -9.6, 10.4], [-9.6, 10.4, -3.4, 10.4], [-3.4, 10.4, -3.4, 8],
+    ...ranch.radarSegments
   );
 
   const group = B.finish();
   group.add(dynamic);
+  group.add(lab.group);
   clearPropCache();
 
   const specialSpots = {
@@ -672,6 +726,7 @@ export function buildLevel() {
     for (const c of u.colliders) c.enabled = false;
   };
   const update = (dt) => {
+    ranch.update(dt);
     for (const u of Object.values(unlockables)) {
       if (!u.open || u.t >= 1) continue;
       u.t = Math.min(1, u.t + dt * 0.9);
@@ -696,6 +751,7 @@ export function buildLevel() {
     if (x > -12 && x < 12 && z > -8 && z < 8 && y < CEIL2 + 1) return 1;
     if (x > -9.8 && x < -3.2 && z > 8 && z < 10.8 && y < 3) return 1;
     if (x > 3.8 && x < 11.2 && z > 8 && z < 9.7 && y < CEIL1) return 1;
+    if (y < BARN.ridge && inBarn(x, z)) return 1; // barn + hayloft (turned: tested in its frame)
     return 0;
   };
   const inGasZone = (x, y, z) => {
@@ -703,6 +759,7 @@ export function buildLevel() {
     if (x > -9.8 && x < -3.2 && z > 8 && z < 11.4) return false;
     if (x > 3.7 && x < 11.3 && z > 7.9 && z < 9.8 && y > 3.0) return false; // balcony: a clean-air firing spot over the yard
     if (x > -17.5 && x < -11 && z > -3.3 && z < -1.3 && y < -0.3) return false; // cellar stairwell
+    if (inBarn(x, z, 0.3)) return false; // barn (both floors)
     return true;
   };
 
@@ -714,10 +771,15 @@ export function buildLevel() {
     spawnPoints,
     portals,
     navBlocks,
+    entrances,
     barricadeSpots,
+    breachSpots,
     radarSegments,
     specialSpots,
+    // fuse panel on the west wall (x = inner face), its cables and the house feed: world/generator.js
+    generator: genProp ? { object: genProp.object, anchors: genProp.anchors, x: GEN.x, y: FLOOR.basement, z: GEN.z, rot: GEN.rot, panel: new THREE.Vector3(-11.85 + TE / 2 + 0.02, FLOOR.basement + 1.55, 2.25) } : null,
     defensePosts,
+    lab,
     playerSpawn: new THREE.Vector3(0.2, 0, -0.8),
     shop: {
       bounds: [2.55, 11.85, -7.85, 0.85], // x0, x1, z0, z1 of the cellar
@@ -730,6 +792,8 @@ export function buildLevel() {
     update,
     isSheltered,
     inGasZone,
+    ladders: ranch.ladders, // src/actors/ladders.js
+    barn: { root: ranch.root, buckets: ranch.buckets }, // world/barnFire.js
     levelOf,
     FLOOR,
   };

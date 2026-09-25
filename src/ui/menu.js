@@ -54,6 +54,7 @@ const CONTROLS = [
   [['MOUSE 2'], 'Aim / scope'],
   [['R'], 'Reload'],
   [['1', '–', '5', '/', 'WHEEL'], 'Switch weapon'],
+  [['1'], 'Again: primary ↔ backpack gun (weapon backpack)'],
   [['4'], 'Again: frag ↔ Molotov'],
   [['5'], 'Barricade kit · hold Mouse 1 at a doorway'],
   [['Q'], 'Last weapon'],
@@ -70,6 +71,7 @@ const TIPS = [
   'Headshots are worth bonus points — and bonus cash.',
   'Every kill by your fireteam pays everyone. Spend it in the cellar gun shop between rounds.',
   'A gas mask from the gun shop lets you breathe outside for a while. Upgrade the filter for longer.',
+  'Gear from the gun shop stays with you all match: one item per body slot, and owned gear goes back on for free.',
   'Barricade kits from the gun shop board up a doorway. You can still shoot through the gaps between the planks.',
   'Stick with your fireteam. Infected flank lone survivors.',
   'Stay out of the green gas. It hurts more than it looks.',
@@ -332,7 +334,7 @@ export class Menu {
           .map((id) => {
             const c = FIRETEAM_BY_ID[id];
             const t = byId.get(id);
-            return `<span class="cf-end-mate">${this._avatar(id)}<b>${esc(c.name)}</b><small>${t ? `${t.kills | 0} KILLS` : esc(c.gun)}</small></span>`;
+            return `<span class="cf-end-mate">${this._avatar(id)}<b>${esc(c.name)}</b><small>${t ? `${t.kills | 0} KILLS${t.revives > 0 ? ` · ${t.revives} REVIVE${t.revives > 1 ? 'S' : ''}` : ''}` : esc(c.gun)}</small></span>`;
           })
           .join('')
       : solo

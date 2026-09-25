@@ -39,7 +39,7 @@ function makePose() {
  * Two-bone leg IK on the proxy bones (hinge = local X, the knee bends toward `pole`), foot set to the
  * world orientation `footQ`. Mirror of teammate.js reach() for a joint that flexes the other way.
  */
-function legIK(thigh, shin, foot, target, pole, footQ) {
+export function legIK(thigh, shin, foot, target, pole, footQ) {
   const a = shin.position.length(), c = foot.position.length();
   thigh.getWorldPosition(_S);
   _n.copy(target).sub(_S);
@@ -61,7 +61,7 @@ function legIK(thigh, shin, foot, target, pole, footQ) {
 }
 
 /** move a share `k` of the hand's twist about the forearm axis into the forearm (no candy-wrapper wrist) */
-function spreadTwist(fore, hand, k) {
+export function spreadTwist(fore, hand, k) {
   _a.copy(hand.position).normalize();
   const q = hand.quaternion;
   const d = q.x * _a.x + q.y * _a.y + q.z * _a.z;

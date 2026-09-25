@@ -63,9 +63,11 @@ export const GLB_BODIES = {
   dog: { url: MODELS.dog, quad: true, length: 1.3, fallback: 'mauler' },
   // gun shop clerk (actors/shopkeeper.js): never a bot or a target
   shopkeeper: { url: MODELS.shopkeeper, height: 1.76, armSpread: 0.1, fallback: 'soldier' },
+  // lab tech behind the basement's armored glass (actors/labTech.js): never a bot or a target
+  nadja: { url: MODELS.nadja, height: 1.7, armSpread: 0.1, fallback: 'soldier' },
 };
 // finger curl per joint (rad): a rifle grip for the survivors, a loose claw for the infected
-const CURL = { coach: 0.5, ellis: 0.5, meshy: 0.45, viper: 0.45, smoker: 0.3, boomer: 0.3, tank: 0.35, bomber: 0.3, gasmask: 0.3, biter: 0.4, shopkeeper: 0.28 };
+const CURL = { coach: 0.5, ellis: 0.5, meshy: 0.45, viper: 0.45, smoker: 0.3, boomer: 0.3, tank: 0.35, bomber: 0.3, gasmask: 0.3, biter: 0.4, shopkeeper: 0.28, nadja: 0.3 };
 
 const normName = (n) => n.replace(/(_\d+)+$/, '').replace(/[^a-z0-9]/gi, '').toLowerCase().replace(/^(valvebiped|mixamorig)/, '');
 

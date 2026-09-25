@@ -54,6 +54,8 @@ export class Player {
     this.lastY = 0;
     this.flashlight = false;
     this.latchedBy = null; // a Biter clinging to your back (biter.js): slower, no sprint, no ADS
+    this.climbing = null; // on a ladder (actors/ladders.js)
+    this.ladderCd = 0;
   }
 
   get pos() {
@@ -80,6 +82,8 @@ export class Player {
     this.punchFov = 0;
     this.punchRoll = 0;
     this.latchedBy = null;
+    this.climbing = null;
+    this.ladderCd = 0;
   }
 
   /**
@@ -104,7 +108,7 @@ export class Player {
   }
 
   takeDamage(amount, fromPos, source, opts = {}) {
-    if (!this.alive || this.game.godMode) return;
+    if (!this.alive || this.game.godMode || this.invulnT > 0) return; // invulnT: just revived (game/revive.js)
     let dmg = amount;
     if (!opts.ignoreArmor && this.ap > 0) {
       const absorbed = Math.min(this.ap, dmg * 0.5);
@@ -145,6 +149,12 @@ export class Player {
 
     if (!this.alive) {
       this.deadT += dt;
+      if (!b.onGround) {
+        // killed mid-air (jumping, on a ladder): the body still drops to the floor
+        b.vel.x *= 0.9;
+        b.vel.z *= 0.9;
+        world.moveBody(b, dt);
+      }
       // death cam: fall to the floor and roll
       const k = Math.min(1, this.deadT / 0.8);
       const e = k * k;
@@ -187,7 +197,8 @@ export class Player {
     this.punchRoll *= Math.exp(-16 * dt);
 
     // ---- crouch
-    const wantCrouch = input.down('ControlLeft') || input.down('KeyC') || input.down('ControlRight');
+    // kneel: reviving a teammate (game/revive.js)
+    const wantCrouch = input.down('ControlLeft') || input.down('KeyC') || input.down('ControlRight') || !!this.kneel;
     if (wantCrouch && !this.crouching) {
       this.crouching = true;
       b.height = 1.2;
@@ -203,10 +214,22 @@ export class Player {
     // ---- move
     const fw = (input.down('KeyW') ? 1 : 0) - (input.down('KeyS') ? 1 : 0);
     const st = (input.down('KeyD') ? 1 : 0) - (input.down('KeyA') ? 1 : 0);
-    // Shift sprints (+40%) while moving and standing
+    // on a ladder (actors/ladders.js) the climb moves the body; the gun stays lowered (sprint pose)
+    if (this.game.ladders?.updatePlayer(this, dt, input, fw)) {
+      this.sprinting = true;
+      this.horizontalSpeed = 0;
+      this.localVelX = 0;
+      this.level = levelOf(b.pos.y + 0.3);
+      this.bobAmt = 0;
+      this.eyeOffset = damp(this.eyeOffset, 0, 14, dt);
+      this._applyCamera();
+      this.lastY = b.pos.y;
+      return;
+    }
+    // Shift sprints (+40%, combat boots x1.15 on top: game/gear.js) while moving and standing
     const sprinting = (input.down('ShiftLeft') || input.down('ShiftRight')) && (fw !== 0 || st !== 0) && !this.crouching && !this.noSprint && !this.latchedBy;
     this.sprinting = sprinting;
-    let speed = this.crouching ? 2.0 : 5.1 * (sprinting ? 1.4 : 1);
+    let speed = this.crouching ? 2.0 : 5.1 * (sprinting ? 1.4 * (this.game.gear?.sprintMul?.() ?? 1) : 1);
     if (this.latchedBy) speed *= 0.6;
     speed *= weapons?.def?.moveMul ?? 1;
     if (weapons && weapons.ads > 0.5) speed *= 0.72;

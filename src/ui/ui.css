@@ -634,6 +634,60 @@
   color: var(--c-orange);
   text-shadow: var(--ts-hud), 0 0 8px rgba(255, 120, 20, 0.45);
 }
+/* generator (world/power.js), only once the basement is open: bolt + fuel bar + percent */
+.cf-gen {
+  display: none;
+  align-items: center;
+  gap: calc(var(--u) * 5);
+  margin-top: calc(var(--u) * 6);
+  white-space: nowrap;
+  --gen-c: #9fe07a;
+}
+.cf-gen.on {
+  display: flex;
+}
+.cf-gen.warn {
+  --gen-c: #ffb040;
+}
+.cf-gen.off {
+  --gen-c: #ff5a3a;
+}
+.cf-gen-ico {
+  width: calc(var(--u) * 14);
+  height: calc(var(--u) * 14);
+  color: var(--gen-c);
+  filter: drop-shadow(0 1px 0 #000) drop-shadow(0 0 4px rgba(0, 0, 0, 0.6));
+}
+.cf-gen.warn .cf-gen-ico,
+.cf-gen.off .cf-gen-ico {
+  animation: cf-soft-blink 0.7s ease-in-out infinite;
+}
+.cf-gen-bar {
+  width: calc(var(--u) * 62);
+  height: calc(var(--u) * 5);
+  background: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
+}
+.cf-gen-bar i {
+  display: block;
+  height: 100%;
+  background: var(--gen-c);
+  transform-origin: left center;
+  transition: transform 0.3s linear;
+}
+.cf-gen b {
+  min-width: calc(var(--u) * 30);
+  font-family: var(--f-num);
+  font-weight: 500;
+  font-size: calc(var(--u) * 16);
+  line-height: 0.8;
+  padding-top: 0.08em;
+  color: #eef5fa;
+  text-shadow: var(--ts-hud);
+}
+.cf-gen.off b {
+  color: #ff8a70;
+}
 
 /* ---------------- kill feed + fps (top left) ---------------- */
 
@@ -687,6 +741,9 @@
   text-shadow: var(--ts-hud);
 }
 .cf-kf-ally { color: #a6e8ff; }
+.cf-kf-row .cf-kf-rev {
+  color: #7dffa0;
+}
 .cf-kf-enemy { color: #ff9a4a; }
 .cf-kf-wpn svg {
   width: calc(var(--u) * 54);
@@ -1137,6 +1194,28 @@
   display: inline;
   animation: cf-soft-blink 0.7s ease-in-out infinite;
 }
+/* weapon backpack (game/gear.js): the other primary, key 1 swaps to it */
+.cf-wpn-alt {
+  display: none;
+  align-items: baseline;
+  font-family: var(--f-ui);
+  font-weight: 700;
+  font-size: calc(var(--u) * 12);
+  letter-spacing: 0.18em;
+  color: var(--c-hud-2);
+  text-shadow: var(--ts-hud);
+  opacity: 0.85;
+}
+.cf-wpn-alt.on {
+  display: inline-flex;
+}
+.cf-wpn-alt .cf-key {
+  margin: 0 0.5em 0 0;
+  font-size: 1em;
+}
+.cf-wpn-alt b {
+  font-weight: 700;
+}
 .cf-ammo-row {
   display: flex;
   align-items: flex-end;
@@ -1144,7 +1223,7 @@
   margin-top: calc(var(--u) * 2);
 }
 .cf-weapon.noammo .cf-ammo,
-.cf-weapon.noammo .cf-bar-mag {
+.cf-weapon.noammo .cf-mag-bars {
   display: none;
 }
 .cf-ammo {
@@ -1191,6 +1270,66 @@
 }
 .cf-bar-mag.low .cf-bar-fill {
   background: linear-gradient(90deg, #ffb060, #ff5a1f);
+  box-shadow: 0 0 8px rgba(255, 100, 30, 0.8);
+}
+.cf-mag-bars {
+  display: flex;
+  gap: calc(var(--u) * 8);
+  width: 100%;
+  min-width: calc(var(--u) * 170);
+}
+/* akimbo: left gun | right gun, each mag with its own bar (the left one drains the other way) */
+.cf-mag2,
+.cf-mag-sep,
+.cf-bar-magl {
+  display: none;
+}
+.cf-weapon.dual .cf-mag2 {
+  display: block;
+}
+.cf-weapon.dual .cf-mag,
+.cf-mag2 {
+  font-family: var(--f-num);
+  font-weight: 600;
+  font-size: calc(var(--u) * 66);
+  line-height: 0.8;
+  padding-top: 0.06em;
+  letter-spacing: 0.02em;
+  color: #f5f9fc;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.95), 0 0 2px rgba(0, 0, 0, 0.9), 0 0 14px rgba(160, 210, 255, 0.4);
+  transition: color 0.2s;
+}
+.cf-weapon.dual .cf-mag-sep {
+  display: block;
+  align-self: center;
+  width: calc(var(--u) * 2);
+  height: calc(var(--u) * 34);
+  margin: 0 calc(var(--u) * 10);
+  background: linear-gradient(180deg, transparent, var(--c-hud-2) 25%, var(--c-hud-2) 75%, transparent);
+  opacity: 0.7;
+}
+.cf-ammo.low2 .cf-mag2 {
+  color: #ff8a2a;
+  text-shadow: 0 1px 0 #000, 0 0 2px #000, 0 0 14px rgba(255, 120, 30, 0.6);
+}
+.cf-ammo.empty2 .cf-mag2 {
+  color: #ff3b2f;
+  animation: cf-pulse-red 0.8s ease-in-out infinite;
+}
+.cf-weapon.dual .cf-bar-magl {
+  display: block;
+}
+.cf-weapon.dual .cf-bar-mag,
+.cf-weapon.dual .cf-bar-magl {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.cf-bar-magl .cf-bar-fill {
+  background: linear-gradient(90deg, #0f5fc4 0%, #2aa6f5 55%, #a6e6ff 100%);
+  transform-origin: left center;
+}
+.cf-bar-magl.low .cf-bar-fill {
+  background: linear-gradient(90deg, #ff5a1f, #ffb060);
   box-shadow: 0 0 8px rgba(255, 100, 30, 0.8);
 }
 .cf-gren {
@@ -1241,6 +1380,13 @@
 }
 .cf-barr .cf-gren-ico {
   color: #e2bb86;
+}
+.cf-gren.cf-can {
+  margin-left: calc(var(--u) * -12);
+  border-color: rgba(255, 110, 70, 0.38);
+}
+.cf-can .cf-gren-ico {
+  color: #ff7a5a;
 }
 
 /* ---------------- scoreboard ---------------- */
@@ -1465,6 +1611,52 @@
 }
 .cf-interact {
   top: calc(65% + var(--u) * 42);
+}
+
+/* the dead player's revive line (game/revive.js): "WAITING FOR REVIVE 12s" / "COACH IS REVIVING YOU" */
+.cf-revive {
+  position: absolute;
+  left: 50%;
+  top: 62%;
+  transform: translateX(-50%);
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(var(--u) * 6);
+  z-index: 6;
+  pointer-events: none;
+}
+.cf-revive.on {
+  display: flex;
+}
+.cf-revive-t {
+  font-family: var(--f-ui);
+  font-weight: 700;
+  font-size: calc(var(--u) * 20);
+  letter-spacing: 0.2em;
+  color: #9dffb8;
+  text-shadow: var(--ts-hud), 0 0 10px rgba(80, 255, 140, 0.35);
+  white-space: nowrap;
+}
+.cf-revive.urgent .cf-revive-t {
+  color: #ffb08a;
+  animation: cf-soft-blink 0.6s ease-in-out infinite;
+}
+.cf-revive-bar {
+  display: none;
+  width: calc(var(--u) * 180);
+  height: calc(var(--u) * 5);
+  background: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
+}
+.cf-revive-bar.on {
+  display: block;
+}
+.cf-revive-bar i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #4fdc7c, #b4ffc8);
+  transform-origin: left center;
 }
 
 .cf-wp {
