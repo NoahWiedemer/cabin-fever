@@ -183,21 +183,38 @@ def molotov():
     return w
 
 
-def decimate(w, tris):
-    """Collapse-decimate every mesh to roughly `tris` triangles in total (for dense AI scans)."""
+def decimate(w, tris, keep_normals=False):
+    """Collapse-decimate every mesh to roughly `tris` triangles in total (for dense AI scans).
+    keep_normals: re-project the dense mesh's custom normals onto the result (collapsing smears
+    imported split normals into dents on flat panels)."""
     total = sum(sum(len(p.vertices) - 2 for p in o.data.polygons) for o in w.meshes)
     ratio = min(1.0, tris / max(1, total))
     for o in w.meshes:
+        src = None
+        if keep_normals:
+            src = bpy.data.objects.new(o.name + '_nsrc', o.data.copy())
+            w.coll.objects.link(src)
         mod = o.modifiers.new('dec', 'DECIMATE')
         mod.decimate_type = 'COLLAPSE'
         mod.ratio = ratio
         mod.use_collapse_triangulate = True
+        if src:
+            tr = o.modifiers.new('nrm', 'DATA_TRANSFER')
+            tr.object = src
+            tr.use_loop_data = True
+            tr.data_types_loops = {'CUSTOM_NORMAL'}
+            tr.loop_mapping = 'POLYINTERP_NEAREST'
         dg = bpy.context.evaluated_depsgraph_get()
         me = bpy.data.meshes.new_from_object(o.evaluated_get(dg), preserve_all_data_layers=True, depsgraph=dg)
-        o.modifiers.remove(mod)
+        for m in list(o.modifiers):
+            o.modifiers.remove(m)
         old = o.data
         o.data = me
         bpy.data.meshes.remove(old)
+        if src:
+            me_src = src.data
+            bpy.data.objects.remove(src, do_unlink=True)
+            bpy.data.meshes.remove(me_src)
     return ratio
 
 
@@ -248,8 +265,33 @@ def sigma():
     return w
 
 
+def p90():
+    """FN P90 (single-mesh textured scan, 1.9 units long, muzzle toward -X, +Z up). Measured in model
+    units: bore z 0.048, flash hider face x -0.952, front post tip x -0.649 / z 0.337 (above the rear
+    sight block, top z 0.311, back face x 0.278), grip bar between the trigger and the thumbhole,
+    support hand on the curved front grip, magazine lying on top under the rail."""
+    S, BORE = 0.505 / 1.903, 0.048  # real length 505 mm
+    w = iw.Imported('p90', 'P90.glb')
+    w.orient(rot=(0, 0, -90), scale=S, offset=(0, 0, -BORE * S))
+    decimate(w, 190000, keep_normals=True)
+
+    P = lambda x, z, lat=0.0: (lat * S, -x * S, (z - BORE) * S)  # model units -> gun space
+    # the magazine: the see-through box between the receiver top and the rail
+    y0, y1 = P(0.436, 0)[1], P(-0.276, 0)[1]
+    z0, z1 = P(0, 0.078)[2], P(0, 0.188)[2]
+    mag = split_box(w, 'mag', lambda c: y0 < c.y < y1 and z0 < c.z < z1)
+    _, mn, mx = top_center(mag)
+    w.finalize(
+        web=P(-0.053, -0.07),  # top of the grip bar's back face, where it meets the thumbhole
+        markers={'muzzle': P(-0.952, 0.048), 'ejectPort': P(0.05, -0.27), 'rightHand': P(-0.13, -0.085),
+                 'leftHand': P(-0.51, -0.127), 'rearSight': P(0.278, 0.3366)},  # sight line = front post tip
+        pivots={'mag': ((mn.x + mx.x) / 2, (mn.y + mx.y) / 2, (mn.z + mx.z) / 2)},
+    )
+    return w
+
+
 BUILDERS = {'r201': r201, 'spas12': spas12, 'devotion': devotion, 'mozambique': mozambique, 'softball': softball, 'molotov': molotov,
-            'sigma': sigma}
+            'sigma': sigma, 'p90': p90}
 
 
 def build(key, export=True):

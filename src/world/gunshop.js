@@ -129,7 +129,7 @@ export function buildGunShop(scene, level, world) {
   const pegMat = getMaterial('metalDark');
   const rows = [
     { y: F + 2.42, ids: ['m16a2', 'devotion', 'sigma', 'r201'] },
-    { y: F + 1.66, ids: ['m4a1', 'spas12', 'm4super90', 'softball'] },
+    { y: F + 1.66, ids: ['m4a1', 'p90', 'spas12', 'm4super90', 'softball'] },
   ];
   const displayed = [];
   for (const row of rows) {

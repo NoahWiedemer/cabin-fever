@@ -7,3 +7,4 @@ dist
 # optimized files in public/models, regenerated with `node tools/optimize-assets.mjs`)
 assets/source/*.glb
 assets/source/*.blend1
+__pycache__/

@@ -62,6 +62,16 @@ export const WEAPONS = {
     adsZoom: 1.3, adsTime: 0.24, sound: 'lmg_fire', shell: 'rifle', tracerEvery: 2, moveMul: 0.84,
     hip: [0.2, -0.245, -0.2], hipRot: [0.02, 0.07, 0.04], ammoKind: 'rifle', drawTime: 0.6,
   },
+  p90: {
+    // bullpup PDW: fast, flat and mobile with a 50-round top magazine; lighter hits that fall off early
+    id: 'p90', name: 'P90', slot: 0, model: 'p90', mode: 'auto', rpm: 900,
+    damage: 30, pellets: 1, penetration: 1, falloff: [22, 60, 0.6],
+    spreadHip: 1.1, spreadAds: 0.14, spreadMove: 1.0, spreadAir: 2.6, spreadPerShot: 0.2, spreadMax: 2.0,
+    recoilV: 0.2, recoilH: 0.12, recoilRecover: 9, kick: 0.7,
+    mag: 50, reserve: 250, maxReserve: 400, reload: 2.5, reloadEmpty: 3.0, reloadType: 'mag',
+    adsZoom: 1.25, adsTime: 0.13, sound: 'smg_fire', shell: 'pistol', tracerEvery: 3, moveMul: 1.06,
+    hip: [0.12, -0.17, -0.3], hipRot: [0.04, 0.12, 0.05], ammoKind: 'rifle', drawTime: 0.3,
+  },
   softball: {
     id: 'softball', name: 'R-6P SOFTBALL', slot: 0, model: 'softball', mode: 'semi', rpm: 170, cylStep: Math.PI / 3,
     projectile: 'grenade40', damage: 260, radius: 4.8, velocity: 40, pellets: 1, penetration: 0,

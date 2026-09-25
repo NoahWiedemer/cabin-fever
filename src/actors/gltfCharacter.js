@@ -57,6 +57,8 @@ export const GLB_BODIES = {
   // the Crusher boss (zombie type scale 1.4 on top): heavy UniRig tank, arms held clear of the gut
   // the Striker: gas-mask bomber that scatters three charges when it dies
   bomber: { url: MODELS.bomber, height: 1.76, armSpread: 0.14, fallback: 'striker' },
+  // zombie woman in the Mauler rotation (replaced the procedural mauler / mauler2 bodies)
+  woman: { url: MODELS.woman, height: 1.68, armSpread: 0.12, fallback: 'mauler2' },
   tank: { url: MODELS.tank, height: 1.8, armSpread: 0.3, fallback: 'crusher' },
   boomer: { url: MODELS.boomer, height: 1.8, armSpread: 0.42, fallback: 'charger', belly: true, glow: 0xff7a30 },
   // quadruped: sized by body length (nose to tail); no procedural dog exists, so the fallback is a mauler body
@@ -67,7 +69,7 @@ export const GLB_BODIES = {
   nadja: { url: MODELS.nadja, height: 1.7, armSpread: 0.1, fallback: 'soldier' },
 };
 // finger curl per joint (rad): a rifle grip for the survivors, a loose claw for the infected
-const CURL = { coach: 0.5, ellis: 0.5, meshy: 0.45, viper: 0.45, smoker: 0.3, boomer: 0.3, tank: 0.35, bomber: 0.3, gasmask: 0.3, biter: 0.4, shopkeeper: 0.28, nadja: 0.3 };
+const CURL = { coach: 0.5, ellis: 0.5, meshy: 0.45, viper: 0.45, smoker: 0.3, boomer: 0.3, woman: 0.3, tank: 0.35, bomber: 0.3, gasmask: 0.3, biter: 0.4, shopkeeper: 0.28, nadja: 0.3 };
 
 const normName = (n) => n.replace(/(_\d+)+$/, '').replace(/[^a-z0-9]/gi, '').toLowerCase().replace(/^(valvebiped|mixamorig)/, '');
 

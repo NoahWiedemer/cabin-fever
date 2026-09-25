@@ -29,7 +29,7 @@ function fallbackWeapon(id) {
 }
 
 // GLB weapons borrow a procedural model when their file is missing or broken
-const STAND_IN = { m16a2: 'm4a1', spas12: 'm4super90', r201: 'm4a1', devotion: 'm4a1', sigma: 'm4a1', mozambique: 'm9', softball: 'm32', molotov: 'm67' };
+const STAND_IN = { m16a2: 'm4a1', spas12: 'm4super90', r201: 'm4a1', devotion: 'm4a1', sigma: 'm4a1', p90: 'm4a1', mozambique: 'm9', softball: 'm32', molotov: 'm67' };
 
 export function buildWeaponModel(id) {
   if (id === 'barricade') return buildBarricadeKit();

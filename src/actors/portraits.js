@@ -9,8 +9,10 @@ const FOV = 21;
 /**
  * span: meters of body in frame (top of the head down to about mid-thigh), azimuth: camera around the
  * character (rad, 0 = straight on; negative = its right, the gun side), ready: how far the gun is raised.
+ * `bots`: anything with { id, root, bones.head, posePortrait(ready) } (the store's gear paperdoll passes
+ * a bare body, ui/storeDoll.js). onRender(bot, camera): called after each render (to project points).
  */
-export function renderPortraits(bots, { width = 300, height = 380, span = 1.12, azimuth = -0.62, ready = 0.55, exposure = 1.25, headroom = 0.27, lift = 0.05, L = {} } = {}) {
+export function renderPortraits(bots, { width = 300, height = 380, span = 1.12, azimuth = -0.62, ready = 0.55, exposure = 1.25, headroom = 0.27, lift = 0.05, L = {}, onRender = null } = {}) {
   const SPAN = span;
   const AZIMUTH = azimuth;
   const out = {};
@@ -67,6 +69,7 @@ export function renderPortraits(bots, { width = 300, height = 380, span = 1.12, 
       cam.lookAt(0.02, lookY, 0);
       cam.updateMatrixWorld(true);
       renderer.render(scene, cam);
+      onRender?.(bot, cam);
       const url = canvas.toDataURL('image/webp', 0.9);
       out[bot.id] = url.startsWith('data:image/webp') ? url : canvas.toDataURL('image/png');
     } catch (e) {

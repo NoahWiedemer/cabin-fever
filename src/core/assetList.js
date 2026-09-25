@@ -13,6 +13,7 @@ export const MODELS = {
   smoker: '/models/zombies/smoker.glb',
   dog: '/models/zombies/dog.glb',
   tank: '/models/zombies/tank.glb', // Crusher boss
+  woman: '/models/zombies/woman.glb', // Mauler variant (zombie woman)
   bomber: '/models/zombies/bomber.glb', // Striker (gas mask, explosives)
   gasmask: '/models/zombies/gasmask.glb', // Mauler body variant
   biter: '/models/zombies/biter.glb', // Biter (small, pounces and latches on)
@@ -22,6 +23,7 @@ export const MODELS = {
   r201: '/models/weapons/r201.glb',
   devotion: '/models/weapons/devotion.glb',
   sigma: '/models/weapons/sigma.glb',
+  p90: '/models/weapons/p90.glb',
   mozambique: '/models/weapons/mozambique.glb',
   softball: '/models/weapons/softball.glb',
   molotov: '/models/weapons/molotov.glb',
