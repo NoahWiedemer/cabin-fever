@@ -22,13 +22,13 @@ A group of double agents escaped with a virus sample and are pinned down in an a
 
 | Difficulty | Rounds | Time limit | Unlocks |
 |---|---|---|---|
-| Easy | 10 | 30:00 | Upstairs opens at round 7 (Golden Punisher, balcony over the yard) |
-| Hard | 15 | 45:00 | Upstairs at 7, basement at 10 (interior stairs + outside cellar) |
-| Extreme | 20 | 60:00 | Upstairs at 7, basement at 10 |
+| Easy | 10 | 30:00 | Upstairs opens at round 4 (Golden Punisher, balcony over the yard) |
+| Hard | 15 | 45:00 | Upstairs at 4, basement at 10 (interior stairs + outside cellar) |
+| Extreme | 20 | 60:00 | Upstairs at 4, basement at 10 |
 
 **Endless** has no extraction, no time limit and no victory, so the run ends when the fireteam is wiped. The end screen shows the round you reached.
 - Difficulty still sets the horde's health, damage, count and speed.
-- The upstairs opens at round 7 and the basement at round 10 on every difficulty. The special weapons appear on their usual rounds.
+- The upstairs opens at round 4 and the basement at round 10 on every difficulty. The special weapons appear on their usual rounds.
 - Past round 20, zombie health keeps climbing, but wave size grows more slowly. Striker share, crusher count and speed are capped.
 - Every fifth round after 20 gets a "The horde grows stronger" banner. The HUD shows the round as `07/∞`.
 

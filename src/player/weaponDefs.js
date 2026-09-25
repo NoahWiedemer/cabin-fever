@@ -1,3 +1,5 @@
+import { UPSTAIRS_ROUND } from '../game/modes.js';
+
 // Weapon definitions (tuned for Fireteam survival: fast TTK on heads, meaningful recoil).
 // spread*: full cone in degrees (spreadPerShot = bloom per round, recovers ~0.2 s after you ease off).
 // recoilV / recoilH: aim kick per round in degrees (V up, H random left/right); nothing recovers while
@@ -157,6 +159,6 @@ export const WEAPONS = {
 export const SPECIAL_SPAWNS = [
   { round: 11, weapon: 'l96a1', spot: 'l96a1', banner: 'L96A1 BLACK-MAGNUM', where: 'in the basement' },
   { round: 13, weapon: 'm32', spot: 'm32', banner: 'M32 MGL', where: 'on the kitchen table' },
-  { round: 7, weapon: 'goldenPunisher', spot: 'goldenPunisher', banner: 'GOLDEN PUNISHER', where: 'upstairs by the bathroom' }, // with the upstairs (modes.js UPSTAIRS_ROUND)
+  { round: UPSTAIRS_ROUND, weapon: 'goldenPunisher', spot: 'goldenPunisher', banner: 'GOLDEN PUNISHER', where: 'upstairs by the bathroom' }, // appears as the upstairs opens
   { round: 19, weapon: 'chaingun', spot: 'chaingun', banner: 'CHAIN GUN', where: 'in the living room' },
 ];

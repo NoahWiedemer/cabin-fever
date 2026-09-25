@@ -22,15 +22,15 @@ export const MODES = {
 
 export const MODE_LIST = [MODES.cabinfever, MODES.endless];
 
-// Unlock rounds: the upstairs (bedrooms, the Golden Punisher, the balcony over the yard) after round 6 on
+// Unlock rounds: the upstairs (bedrooms, the Golden Punisher, the balcony over the yard) after round 3 on
 // every difficulty, the basement from round 10 on hard+. Endless opens both on the same rounds.
-export const UPSTAIRS_ROUND = 7;
+export const UPSTAIRS_ROUND = 4;
 export const BASEMENT_ROUND = 10;
 // rounds / minutes mirror game.js DIFF (Cabin Fever only; endless has neither).
 export const DIFFICULTIES = [
-  { id: 'easy', name: 'EASY', rounds: 10, minutes: 30, skulls: 1, desc: 'Fewer, weaker Infected. Upstairs opens at round 7.', edesc: 'Fewer, weaker Infected.' },
-  { id: 'hard', name: 'HARD', rounds: 15, minutes: 45, skulls: 2, desc: 'The real thing. Upstairs at 7, basement at 10.', edesc: 'The horde at full strength.' },
-  { id: 'extreme', name: 'EXTREME', rounds: 20, minutes: 60, skulls: 3, desc: 'Tougher, faster horde. Upstairs at 7, basement at 10.', edesc: 'Tougher, faster, hungrier Infected.' },
+  { id: 'easy', name: 'EASY', rounds: 10, minutes: 30, skulls: 1, desc: 'Fewer, weaker Infected. Upstairs opens at round 4.', edesc: 'Fewer, weaker Infected.' },
+  { id: 'hard', name: 'HARD', rounds: 15, minutes: 45, skulls: 2, desc: 'The real thing. Upstairs at 4, basement at 10.', edesc: 'The horde at full strength.' },
+  { id: 'extreme', name: 'EXTREME', rounds: 20, minutes: 60, skulls: 3, desc: 'Tougher, faster horde. Upstairs at 4, basement at 10.', edesc: 'Tougher, faster, hungrier Infected.' },
 ];
 
 /** Floors that open during a run: [{ round, name }]. */
