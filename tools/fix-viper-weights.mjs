@@ -69,7 +69,7 @@ const subtree = (i) => [i, ...kids(i).flatMap(subtree)];
 const leaves = joints.map((_, i) => i).filter((i) => !kids(i).length);
 const lo = Math.min(...JP.map((p) => p.y)), hi = Math.max(...JP.map((p) => p.y)), H = hi - lo;
 
-const legBones = new Set(), armLow = new Set(), knees = [], palms = [], handJoints = []; // handJoints: one list per side
+const legBones = new Set(), armLow = new Set(), knees = [], palms = [], handJoints = [], sleeveBones = []; // per side: handJoints, sleeveBones
 const lowest = (sx) => leaves.filter((i) => JP[i].x * sx > 0).sort((a, b) => JP[a].y - JP[b].y)[0];
 const legRoot = common(lowest(1), lowest(-1));
 for (const sx of [1, -1]) {
@@ -93,6 +93,7 @@ for (const sx of [1, -1]) {
   if (hand < 0) throw new Error('arm chain');
   subtree(c[fore]).forEach((i) => armLow.add(i)); // forearm, hand, palm, fingers
   handJoints.push(subtree(c[hand])); // wrist, palm, fingers: palm-distance seeds
+  sleeveBones.push(new Set(c.slice(k, hand))); // upper arm + forearm: the bones a sleeve wraps
   let palm = c[hand];
   while (kids(palm).length === 1) palm = kids(palm)[0];
   palms.push(palm);
@@ -218,11 +219,49 @@ for (const s of verts) {
   for (let k = 0; k < c.length; k++) for (const w of adj.get(c[k]).keys()) if (!compOf.has(w)) compOf.set(w, comps.length), c.push(w);
   comps.push(c);
 }
+// bone whose segment (joint -> child joint) passes closest to a vertex in the bind pose
+const segs = joints.flatMap((_, j) => (parent(j) < 0 ? [] : [[parent(j), new THREE.Line3(JP[parent(j)], JP[j])]]));
+const boneAt = (u) => {
+  let best = Infinity, bone = -1;
+  for (const [b, s] of segs) {
+    const d = s.closestPointToPoint(P[u], true, t).distanceToSquared(P[u]);
+    if (d < best) (best = d), (bone = b);
+  }
+  return bone;
+};
+// Where a glove (a seeded hand island) enters `piece`: through its sleeve (vertices whose nearest bone is this
+// arm's upper arm / forearm; never a thigh the hand happens to touch), at the tightest sleeve contact and at
+// every other cuff contact within 2.5 % H of it that the walk from the first would only reach the long way
+// round. The Striker's right sleeve has an inner layer (the arm under the suit) that meets the outer one only
+// at the shoulder, so a single contact left that forearm on the leg side of the divide. null: no sleeve contact.
+function cuffEntries(piece, glove, D, sleeve) {
+  const gaps = piece
+    .map((u) => {
+      let g = Infinity, via = -1;
+      for (const i of glove) {
+        const d = P[u].distanceToSquared(P[i]);
+        if (d < g) (g = d), (via = i);
+      }
+      return [Math.sqrt(g), u, via];
+    })
+    .sort((a, b) => a[0] - b[0]);
+  const cuff = [];
+  for (const e of gaps) {
+    if (cuff.length && e[0] > cuff[0][0] + 0.025 * H) break;
+    if (sleeve.has(boneAt(e[1]))) cuff.push(e);
+  }
+  if (!cuff.length) return null;
+  const [first, ...rest] = cuff.map(([g, u, via]) => [D.get(via) + g, u]);
+  const walk = geodesic([first]);
+  return [first, ...rest.filter(([d, u]) => d + 0.1 * H < walk.get(u))];
+}
 // Surface distance from the seeds. An island the surface walk can't reach is attached as a whole through its
 // closest contact with the pieces reached so far (a pouch through the belt it sits on, a glove through the
-// sleeve it is tucked into) and continues from there; the tightest contact is attached first.
-function surfaceDistance(seeds) {
+// sleeve it is tucked into) and continues from there; the tightest contact is attached first. sleeve (palm
+// walks): that arm's upper-arm / forearm bones, for pieces entered from a seeded island (see cuffEntries).
+function surfaceDistance(seeds, sleeve) {
   const D = geodesic(seeds);
+  const seeded = new Set(seeds.map((s) => compOf.get(Array.isArray(s) ? s[1] : s)));
   const pending = new Map(); // comp -> { gap², inner, outer }
   const closest = (cv, against, cur) => {
     for (const i of cv) for (const u of against) {
@@ -241,7 +280,9 @@ function surfaceDistance(seeds) {
     const b = pending.get(k);
     pending.delete(k);
     if (b.outer < 0) continue;
-    for (const [i, d] of geodesic([[D.get(b.outer) + Math.sqrt(b.gap), b.inner]])) D.set(i, d);
+    const from = compOf.get(b.outer);
+    const entries = sleeve && seeded.has(from) ? cuffEntries(comps[k], comps[from], D, sleeve) : null;
+    for (const [i, d] of geodesic(entries ?? [[D.get(b.outer) + Math.sqrt(b.gap), b.inner]])) D.set(i, d);
     for (const [c, bc] of pending) closest(comps[c], comps[k], bc);
   }
   return D;
@@ -251,7 +292,7 @@ function surfaceDistance(seeds) {
 // thigh can't seed the thigh). One walk per hand, then the nearer one: a hand that is its own mesh island
 // (Nadja's left hand, a glove) attaches through its own sleeve instead of being reached from the other hand
 // across the whole body, which left that forearm on the leg side of the divide.
-const dSide = palms.map((pm, k) => surfaceDistance([...new Set([...seedsNear([pm], 0.018 * H), ...seedsNear(handJoints[k], 0, 6)])]));
+const dSide = palms.map((pm, k) => surfaceDistance([...new Set([...seedsNear([pm], 0.018 * H), ...seedsNear(handJoints[k], 0, 6)])], sleeveBones[k]));
 const dPalm = new Map(verts.map((i) => [i, Math.min(...dSide.map((D) => D.get(i) ?? Infinity))]));
 const dKnee = surfaceDistance(seedsNear(knees, 0.06 * H));
 
