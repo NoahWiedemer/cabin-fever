@@ -497,14 +497,16 @@ export function buildLevel() {
   prop('papers', -0.1, 0.005, 2.0, 0.4);
   prop('bucket', -0.5, 0, 7.2, 0);
   // Kitchen ("the Alamo")
-  prop('counter', 6.5, 0, 1.45, Math.PI);
+  // sink counter against the back-room wall, fronts toward the room (x 5.5..7.5, basin at x ~7.0)
+  prop('counter', 6.5, 0, 1.45, 0);
   prop('stove', 3.3, 0, 7.2, Math.PI);
   prop('fridge', 11.1, 0, 7.1, -Math.PI / 2);
-  prop('table', 7.4, 0, 4.9, 0.05);
-  prop('chair', 6.4, 0, 5.4, 1.6);
-  prop('chair', 8.6, 0, 4.2, -0.9, { broken: true });
+  // table clear of the post at (7.0, 4.6)
+  prop('table', 8.9, 0, 5.2, 0.05);
+  prop('chair', 7.9, 0, 5.5, 1.6);
+  prop('chair', 9.9, 0, 4.4, -0.9, { broken: true });
   prop('cabinet', 11.3, 0, 1.9, -Math.PI / 2);
-  prop('bottles', 4.6, 0.92, 1.55, 0);
+  prop('bottles', 6.05, 0.92, 1.46, 0); // on the counter top, left of the basin
   // Back room (fortified workshop)
   prop('workbench', 11.1, 0, -5.8, -Math.PI / 2);
   prop('sandbags', 5.6, 0, -1.5, 0);
