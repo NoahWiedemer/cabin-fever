@@ -1,0 +1,9 @@
+node_modules
+dist
+.DS_Store
+.vercel
+.claude/
+# original model downloads + intermediate Blender exports (~400 MB; the game only needs the
+# optimized files in public/models, regenerated with `node tools/optimize-assets.mjs`)
+assets/source/*.glb
+assets/source/*.blend1
