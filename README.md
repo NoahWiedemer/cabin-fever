@@ -22,20 +22,26 @@ A group of double agents escaped with a virus sample and are pinned down in an a
 
 | Difficulty | Rounds | Time limit | Unlocks |
 |---|---|---|---|
-| Easy | 10 | 30:00 | — |
-| Hard | 15 | 45:00 | Basement opens at round 10 (interior stairs + outside cellar) |
-| Extreme | 20 | 60:00 | Basement at 10, upstairs at 16 |
+| Easy | 10 | 30:00 | Upstairs opens at round 7 (Golden Punisher, balcony over the yard) |
+| Hard | 15 | 45:00 | Upstairs at 7, basement at 10 (interior stairs + outside cellar) |
+| Extreme | 20 | 60:00 | Upstairs at 7, basement at 10 |
 
 **Endless** has no extraction, no time limit and no victory, so the run ends when the fireteam is wiped. The end screen shows the round you reached.
 - Difficulty still sets the horde's health, damage, count and speed.
-- The basement opens at round 10 and the upstairs at 16 on every difficulty. The special weapons appear on their usual rounds.
+- The upstairs opens at round 7 and the basement at round 10 on every difficulty. The special weapons appear on their usual rounds.
 - Past round 20, zombie health keeps climbing, but wave size grows more slowly. Striker share, crusher count and speed are capped.
 - Every fifth round after 20 gets a "The horde grows stronger" banner. The HUD shows the round as `07/∞`.
 
 - **Infected**
-  - **Mauler**: the standard infected (some of them are Smokers).
+  - **Mauler**: the standard infected (some of them are Smokers, some wear a gas mask).
   - **Boomer**: bloated. It explodes when it reaches you or dies, and shooting its gut sets it off.
   - **Mutant Dog**: from round 3. Dogs arrive in packs of 2 or 3. They are fast, pounce, and bite.
+  - **Biter**: a feral kid, from round 4, in packs of 3 to 5 (smaller and rarer on easy). It is small, fast and fragile, and its head is a small target.
+    - From 3–6 m it crouches and shrieks, then leaps at you. Shoot it in the air to knock it down, or sidestep so it tumbles.
+    - If the leap lands, it clings to your back and bites through your kevlar (8 HP/s on hard). You move at 60% and can't sprint or aim down sights.
+    - **Mash V** to shake it off (about 5 quick presses). It lands stunned for a second, which makes it an easy kill.
+    - Teammates' shots pry it off you and never hit you. Bots go for a latched Biter first, and a bot shakes one off its own back after about 3 s.
+    - Only one Biter latches onto a survivor at a time. The rest of the pack circles and waits.
   - **Striker**: female, in a white suit, from round 5. It is fast, leaps, and drops 3 shells that explode when it dies.
   - **Crusher**: a huge blue tank, from round 11. Its death leaves a blue acid cloud.
 - **Supply drops**
@@ -44,11 +50,11 @@ A group of double agents escaped with a virus sample and are pinned down in an a
   - White box: primary ammo.
 - **Between rounds** HP is restored, ammo is restocked and fallen teammates respawn. The **buy phase** follows and nothing opens by itself.
   - The gate to the **gun shop** in the cellar under the back room opens. A HUD waypoint points to the stairs.
-  - At the counter, tap **F** to open the shop overlay: weapons, upgrades, frags, Molotovs, kevlar, the ammo crate and the gas mask. Esc, F or Enter closes it.
+  - At the counter, tap **F** to open the shop overlay: weapons, upgrades, frags, Molotovs, barricade kits, kevlar, the ammo crate and the gas mask. Esc, F or Enter closes it.
   - **Hold F** for 1.2 s anywhere to ready up. A ring fills around the crosshair, and letting go early cancels it. A 3-second countdown follows (bots are always ready).
   - When the round starts the gate closes, and anyone still in the cellar is moved to the top of the stairs.
   - The mission clock is paused during the buy phase.
-- **Money**: every kill by anyone in the fireteam pays every member the same amount (mauler $60, striker $80, charger $90, crusher $400, +$20 for a headshot), plus a round-clear bonus of $250 + $50 × round. Everyone starts with $500 and spends from an own wallet; bots buy rifle damage upgrades.
+- **Money**: every kill by anyone in the fireteam pays every member the same amount (mauler $60, dog $70, biter $75, striker $80, charger $90, crusher $400, +$20 for a headshot), plus a round-clear bonus of $250 + $50 × round. Everyone starts with $500 and spends from an own wallet; bots buy rifle damage upgrades.
 - **Store arsenal**
   - Rifles: M4A1, M16A2 (3-round burst, modeled in Blender), R-201 Carbine, X-55 Devotion (LMG whose fire rate winds up), SIGMA-420 (heavy drum-fed LMG, 100 rounds).
   - Shotguns: M4 Super 90 (semi-auto), SPAS-12 (pump action).
@@ -60,6 +66,11 @@ A group of double agents escaped with a virus sample and are pinned down in an a
   - Round 13: M32 MGL (kitchen table)
   - Round 16: Golden Punisher (upstairs by the bathroom)
   - Round 19: Chain Gun (living room)
+- **Barricade kits** ($300 each, carry up to 3, from the gun shop) sit in their own slot (**5**). With the kit out, the free doorways around you show faint plank outlines. Aim at one within 2.5 m and hold **Mouse1**: about 1.2 s of hammering nails six planks across it and uses one kit. Holding it on a damaged barricade repairs it to full.
+  - Barricade spots: the front door, the back door, the kitchen wall hole, and the ground-floor interior doors (living room, storage room, storage passage, kitchen, back room and pantry). Once the basement opens, the basement door and the outside cellar door are added. You can't nail up a doorway while someone stands in it.
+  - A barricade stops the Infected and the fireteam, but bullets and grenades pass through the gaps. The Infected still path to it (some take another way in), claw at it with their normal attacks and hit anyone standing right behind it. Bots route around barricades.
+  - Barricades have 600 HP. Every sixth of that, a plank tears off and clatters to the floor, so you can see how much is left; at 0 the doorway is open again. A mauler takes about 25 s alone, a Crusher about 7 s, and a Boomer that blows up against it takes most of it down. Your own explosives only chip it, and the knife hacks it apart if you need to get through.
+  - Barricades last between rounds (Endless too) until they break. Fallen planks are swept away at the end of each round, and a new game starts with bare doorways.
 - **Toxic gas** hurts you and hides your view outside the house.
 - **Gas mask** ($600, from the gun shop): its filter holds 8 s of clean air, and each upgrade adds 4 s ($400 / $700 / $1,100, up to 20 s).
   - While the filter lasts, the gas does no damage and doesn't make you cough, and the green haze stays out of your eyes. You get a lens vignette and hear your breathing.
@@ -70,7 +81,7 @@ A group of double agents escaped with a virus sample and are pinned down in an a
 ## Controls
 
 WASD move · Shift sprint · Space jump · Ctrl/C crouch · Mouse1 fire · Mouse2 aim/scope · R reload ·
-1–4 / wheel switch (4 again: frag ↔ Molotov) · Q last weapon · G quick throw · E pick up · F flashlight (buy phase: tap F at the counter to open the gun shop, hold F to ready up) · Tab scoreboard · Esc pause / close the shop
+1–5 / wheel switch (4 again: frag ↔ Molotov; 5 = barricade kit, hold Mouse1 at a doorway to nail it up; empty slots are skipped) · Q last weapon · G quick throw · E pick up · V (mash) shake off a Biter · F flashlight (buy phase: tap F at the counter to open the gun shop, hold F to ready up) · Tab scoreboard · Esc pause / close the shop
 
 ## Code map
 
@@ -83,12 +94,14 @@ WASD move · Shift sprint · Space jump · Ctrl/C crouch · Mouse1 fire · Mouse
   - `levelBuilder.js`: static batching and baked grime.
   - `lighting.js`: pooled shadow-casting lamps, light cones, lightning.
   - `weather.js`: rain, storm sky and fog banks.
+  - `barricades.js`: the store barricades. It handles the ghost preview and nailing, the planks, colliders and loose debris, the Infected clawing at them, blast and knife damage, and the nav costs (the Infected pay extra to go through, the bots' fields are closed off). The spots are `barricadeSpots` in `level.js`.
   - Also procedural textures, props and the collision world.
 - `src/nav`: a multi-level grid with stair portals, plus flow fields for the horde.
 - `src/actors`
   - `rig.js`: skinned procedural humanoids and the `createCharacter` factory.
-  - `gltfCharacter.js`: rigged GLB bodies (L4D2 Coach, Ellis, Smoker, Boomer, the Meshy soldier, Viper and the mutant dog). A proxy skeleton with `rig.js` bone names is retargeted onto the model's joints, so one set of procedural animation drives both kinds of body. Valve and Mixamo joints are matched by name. Other skeletons, such as UniRig's `Bone_NNN`, are matched by hierarchy and joint position. Hit volumes are measured from the skinned mesh. If a GLB is missing, the procedural body is used instead.
+  - `gltfCharacter.js`: rigged GLB bodies (L4D2 Coach, Ellis and Boomer, the Scorpion soldier, Viper, the UniRig zombie in the Smoker slot, the gas-mask zombie, the Biter kid and the mutant dog). A proxy skeleton with `rig.js` bone names is retargeted onto the model's joints, so one set of procedural animation drives both kinds of body. Valve and Mixamo joints are matched by name. Other skeletons, such as UniRig's `Bone_NNN`, are matched by hierarchy and joint position. Hit volumes are measured from the skinned mesh. If a GLB is missing, the procedural body is used instead.
   - `zombie.js`: the Infected AI, animation and hit volumes.
+  - `biter.js`: the Biter, a `Zombie` subclass. It covers the skittering chase, the pounce, the latch, the shake-off and the stun, and has its own procedural poses.
   - `dogAnim.js`: procedural quadruped animation for the dog (trot and gallop, pounce, bite, death roll).
   - `jiggle.js`: spring-driven secondary motion for Viper's chest. `gltfCharacter.js` re-skins that region to two added bones.
   - `teammate.js`: the fireteam bots, including rifle aiming, two-bone arm IK and team lineups.
@@ -98,14 +111,17 @@ WASD move · Shift sprint · Space jump · Ctrl/C crouch · Mouse1 fire · Mouse
   - `gltfGuns.js`: GLB weapons that follow the Blender contract (see Assets). Blender-built guns get the procedural materials plus baked wear and AO; imported guns keep their textures.
   - `gltfArms.js`: the first-person gloved arms. A skinned GLB, mirrored for the left side, driven by two-bone IK with the wrist roll shared out down a forearm twist bone and grip-driven finger curl.
   - `gunSafe.js`: picks the GLB or the procedural model and falls back gracefully.
+  - `barricadeKit.js`: the barricade kit viewmodel (a claw hammer and a tied bundle of planks) and the plank geometry that the world barricades share.
 - `src/tools/viewer.js` (`/viewer.html`): the real viewmodel in a lit room. It covers every weapon, ADS, fire/reload/pump animations and a freeze-and-orbit mode for inspecting the hands.
-- `src/fx`: particles, decals, impacts, blood, explosions, casings and tracers.
+- `src/fx`: particles, decals, impacts, blood, explosions, casings and tracers. `latchView.js` is the first-person view with a Biter on your back: its GLB clawing in at the screen corners (arm IK on the viewmodel layer), a bite vignette and the shake-off prompt.
 - `src/game`: round and wave logic, scoring, projectiles and pickups. `modes.js` holds the game modes and difficulties that the menu briefing and the game share. `economy.js` holds the wallets and rewards, and `shop.js` the data-driven store catalog, upgrade math and purchases.
 - `src/ui`: the Combat Arms-style HUD, the menus (`menu.js`, and `menu.css` for the cinematic main menu), the menu music (`music.js`) and the between-round store (`store.js`, `store.css`).
 
 ## Assets
 
 GLB sources live in `assets/source/` and are not served (nor committed: the original downloads and intermediate `*_raw.glb` exports add up to ~400 MB; the optimized files in `public/models/` are). `node tools/optimize-assets.mjs [filter]` turns them into web-ready files in `public/models/`, using glTF-Transform (a dev dependency). It converts spec/gloss materials to metal/rough, resizes textures and re-encodes them as WebP, prunes unused data (keeping marker empties) and applies meshopt compression to everything except the skinned arms. `src/core/assetList.js` lists every model; they are preloaded during loading.
+
+UniRig auto-rigs tend to bleed hand and forearm weights onto the thighs, and sometimes hip weights onto the hands, wherever the two touch in the rest pose. `node tools/fix-viper-weights.mjs --model <name> [--dry] [--out file]` repairs that. It tells arm from leg by surface distance from the hands and the knees, strips the wrong influences and blends them back in from the neighbouring vertices. It keeps the untouched file as `<name>_orig.glb`. It has been applied to Viper, the Smoker and Crusher bodies, the gas-mask zombie, the Biter and the Striker.
 
 The Blender pipeline in `tools/blender/` is plain Python, run inside Blender (for example through the Blender MCP):
 

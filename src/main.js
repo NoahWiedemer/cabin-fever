@@ -10,6 +10,7 @@ import { Store } from './ui/store.js';
 import { MenuMusic } from './ui/music.js';
 import { generateAllTextures } from './world/textures.js';
 import { Game } from './game/game.js';
+import { renderPortraits } from './actors/portraits.js';
 
 installFogShader();
 
@@ -52,7 +53,10 @@ const menu = new Menu(document.getElementById('menu'), {
   },
   onQuit: () => {
     closeStore();
+    // a run abandoned after round 1 still goes on the local leaderboard
+    const run = game?.quitStats?.();
     game?.quit();
+    if (run) menu.recordRun(run);
     if (game) game.paused = false; // the menu camera keeps rolling
     started = false;
     inMenu = true;
@@ -72,13 +76,14 @@ const menu = new Menu(document.getElementById('menu'), {
   onSettingsChange: (s) => {
     Object.assign(settings, s);
     audio.setMasterVolume(settings.volume ?? 0.8);
-    music.setVolume(settings.volume ?? 0.8, settings.music ?? 0.6);
+    music.setVolume(settings.volume ?? 0.8, settings.music ?? 0.9);
     if (gr.qualityName !== settings.quality) gr.setQuality(settings.quality);
     hud.setFps(settings.showFps ? 0 : null);
   },
   onUiSound: (name) => audio.play(name, { volume: 0.5 }),
   // music loops on the main menu, fades out on deploy / pause / end screens
-  onMainMenu: (on) => (on ? music.play(1.5) : music.stop(1.5)),
+  // menu music is for the main menu only (the in-game soundtrack comes later): quick fade out
+  onMainMenu: (on) => (on ? music.play(1.5) : music.stop(0.5)),
   onShot: (name) => game?.setMenuShot(name),
 });
 
@@ -118,7 +123,7 @@ function closeShop() {
 }
 
 const settings = { ...menu.getSettings() };
-music.setVolume(settings.volume ?? 0.8, settings.music ?? 0.6);
+music.setVolume(settings.volume ?? 0.8, settings.music ?? 0.9);
 
 // Browsers keep audio locked until a user gesture: unlock the synth (menu sounds, thunder) on
 // the first click / key anywhere. The menu music retries its own play() on the same gesture.
@@ -161,8 +166,17 @@ async function boot() {
   game = new Game({ gr, audio, hud, input, settings });
   await game.load((f, label) => menu.setLoading(f, label));
   game.onShopOpen = openStore;
-  menu.setBots(game.bots.map((b) => b.name));
+  // fireteam picker portraits: every character rendered once, off screen
+  menu.setLoading(1, 'Briefing the fireteam');
+  await new Promise((r) => setTimeout(r, 0));
+  try {
+    menu.setPortraits(renderPortraits(game.bots));
+  } catch (e) {
+    console.warn('portraits failed', e);
+  }
   game.onGameOver = (stats) => {
+    // on the local leaderboard right away (even if the player quits before the end screen shows)
+    const placed = menu.recordRun(stats);
     setTimeout(() => {
       if (gameOverShown) return;
       gameOverShown = true;
@@ -171,7 +185,7 @@ async function boot() {
       input.unlock();
       hud.setVisible(false);
       game.running = false;
-      menu.showEnd(stats);
+      menu.showEnd({ ...stats, placed });
     }, 3500);
   };
   const resize = () => {
@@ -181,11 +195,11 @@ async function boot() {
   window.addEventListener('resize', resize);
   menu.hideLoading();
   menu.showMain();
+  store.warmup(); // bakes the gun store's 3D item thumbnails in idle time
   // debug handles (used for automated testing when rAF is throttled)
   window.__game = game;
   window.__store = store;
-  window.__music = music;
-  window.__step = (n = 1, dt = 1 / 60) => {
+  window.__music = music;  window.__step = (n = 1, dt = 1 / 60) => {
     for (let i = 0; i < n; i++) {
       game.update(dt);
       input.endFrame();
@@ -203,6 +217,8 @@ function loop(now) {
   last = now;
   if (dt > 0.1) dt = 0.1;
   if (!game) return;
+  // safety net: whatever path left the main menu (deploy, autoplay retry on the deploy click, ...)
+  if (music.want && !menu.onMainScreen) music.stop(0.5);
   fpsAcc += dt;
   fpsN++;
   if (fpsAcc > 0.5) {

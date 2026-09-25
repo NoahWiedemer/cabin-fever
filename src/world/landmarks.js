@@ -6,8 +6,9 @@ import { getGLB } from '../core/assets.js';
 import { MODELS } from '../core/assetList.js';
 import { CHURCH_POS, FLOOR } from './level.js';
 
-// fog density multiplier for far landmarks (1 = like everything else)
-const LANDMARK_FOG = 0.22;
+// fog density multiplier for far landmarks (1 = like everything else): most of the haze, so the
+// chapel sits inside the fog as a silhouette instead of looking pasted in front of it
+const LANDMARK_FOG = 0.75;
 
 function thinFog(material) {
   material.onBeforeCompile = (shader) => {
@@ -46,9 +47,9 @@ export function addLandmarks(scene) {
     if (m.map && 'emissive' in m) {
       m.emissive = new THREE.Color(0x3a4450);
       m.emissiveMap = m.map;
-      m.emissiveIntensity = 0.16;
+      m.emissiveIntensity = 0.07;
     }
-    m.envMapIntensity = 0.6;
+    m.envMapIntensity = 0.35;
     thinFog(m);
   });
   church.updateMatrixWorld(true);

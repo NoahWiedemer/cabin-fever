@@ -1,10 +1,12 @@
 // The Infected: Mauler (standard; some wear the L4D2 Smoker model), Boomer (type id 'charger':
 // explodes, weak spot on the gut), Striker (female, fast), Crusher (tank), Mutant Dog (quadruped
-// GLB, packs, pounce + bite; animated by dogAnim.js).
+// GLB, packs, pounce + bite; animated by dogAnim.js), Biter (small kid in packs that pounces and latches
+// onto your back; a Zombie subclass in biter.js).
 // AI (alert → chase via flow field / direct LOS → attack), procedural animation, hitboxes.
 import * as THREE from 'three';
 import { createCharacter } from './rig.js';
 import { poseDog, resetDog } from './dogAnim.js';
+import { RagdollSystem } from './ragdoll.js';
 import { clamp, lerp, damp, dampAngle, rand, rayCapsule, raySphere, wrapAngle } from '../core/utils.js';
 import { levelOf } from '../world/level.js';
 
@@ -12,13 +14,18 @@ import { levelOf } from '../world/level.js';
 // Optional: leap {min, max distance, vy, t, cd: [min, max], snd, pitch}, turn (yaw rate), height
 // (collision), eye (LOS height), pitch (voice), lunge (move factor while attacking), hitAt.
 export const ZOMBIE_TYPES = {
-  // body kinds cycle per instance (2 of 5 maulers use the Smoker GLB)
-  mauler: { name: 'Mauler', body: ['mauler', 'smoker', 'mauler2', 'mauler', 'smoker'], hp: 150, walk: 1.125, run: 3.87, dmg: 11, reach: 1.25, attackTime: 1.0, radius: 0.32, scale: 1.0, score: 100, mass: 1 },
+  // body kinds cycle per instance (2 of 7 maulers use the Smoker GLB, 2 of 7 the gas-mask GLB)
+  mauler: { name: 'Mauler', body: ['mauler', 'smoker', 'gasmask', 'mauler2', 'smoker', 'mauler', 'gasmask'], hp: 150, walk: 1.125, run: 3.87, dmg: 11, reach: 1.25, attackTime: 1.0, radius: 0.32, scale: 1.0, score: 100, mass: 1 },
   charger: { name: 'Boomer', body: ['boomer'], hp: 110, walk: 1.35, run: 4.5, dmg: 0, reach: 1.9, attackTime: 0.9, radius: 0.32, scale: 1.0, score: 150, mass: 1, explodes: true },
-  striker: { name: 'Striker', body: ['striker'], hp: 170, walk: 1.53, run: 5.31, dmg: 13, reach: 1.25, attackTime: 0.7, radius: 0.3, scale: 0.97, score: 200, mass: 0.8, leap: { min: 2.5, max: 6.5, vy: 5.2, t: 0.6, cd: [3, 5], snd: 'striker_shriek', pitch: 1.1 } },
-  crusher: { name: 'Crusher', body: ['crusher'], hp: 1500, walk: 1.35, run: 2.52, dmg: 34, reach: 1.9, attackTime: 1.5, radius: 0.55, scale: 1.4, score: 500, mass: 4, turn: 4 },
+  striker: { name: 'Striker', body: ['bomber'], hp: 170, walk: 1.53, run: 5.31, dmg: 13, reach: 1.25, attackTime: 0.7, radius: 0.3, scale: 0.97, score: 200, mass: 0.8, leap: { min: 2.5, max: 6.5, vy: 5.2, t: 0.6, cd: [3, 5], snd: 'striker_shriek', pitch: 1.1 } },
+  crusher: { name: 'Crusher', body: ['tank'], hp: 1500, walk: 1.35, run: 2.52, dmg: 34, reach: 1.9, attackTime: 1.5, radius: 0.55, scale: 1.4, score: 500, mass: 4, turn: 4 },
   dog: { name: 'Mutant Dog', body: ['dog'], hp: 90, walk: 1.375, run: 4.73, dmg: 8, reach: 1.1, attackTime: 0.55, radius: 0.36, scale: 1.0, score: 120, mass: 0.7, turn: 14, height: 1.0, eye: 0.75, pitch: 1.55, lunge: 0.6, hitAt: 0.5, leap: { min: 1.8, max: 4.5, vy: 3.4, t: 0.45, cd: [2.2, 3.8], snd: 'zombie_attack', pitch: 1.6 } },
+  // small feral kid in packs: ~42 % of a Mauler's hp, 1.3x its run; pounces and latches on (biter.js: the
+  // Biter class, its AI, pose and the latch). dmg / reach are its claw swipe when it can't pounce.
+  biter: { name: 'Biter', body: ['biter'], hp: 62, walk: 1.7, run: 5.0, dmg: 6, reach: 0.85, attackTime: 0.5, radius: 0.24, scale: 1.0, score: 150, mass: 0.45, turn: 16, height: 1.0, eye: 0.8, pitch: 1.75, lunge: 0.5, hitAt: 0.45 },
 };
+// type name -> Zombie subclass (a module that defines one registers it here, e.g. biter.js)
+export const ZOMBIE_CLASSES = {};
 
 export const PART_MULT = { head: 4.0, torso: 1.0, pelvis: 0.9, arm: 0.7, leg: 0.7, dynamite: 1.0, belly: 1.0 };
 
@@ -110,6 +117,8 @@ export class Zombie {
     this.active = true;
     this.alive = true;
     this.removed = false;
+    this.ragdoll = null; // ragdoll.js: set while the corpse is (or was) thrown as a ragdoll
+    this.lastPart = null;
     this.root.visible = true;
     this.root.position.copy(pos);
     this.root.rotation.set(0, Math.atan2(-pos.x, -pos.z), 0);
@@ -129,6 +138,7 @@ export class Zombie {
     this.target = null;
     this.attackT = -1;
     this.attackHit = false;
+    this.barricade = null; // the barricade this attack claws at (world/barricades.js)
     this.attackCooldown = 0;
     this.phase = Math.random() * 10;
     this.moveSpeed = 0;
@@ -181,6 +191,7 @@ export class Zombie {
     const dealt = Math.min(this.hp, amount);
     this.hp -= amount;
     this.lastHitBy = source;
+    this.lastPart = part;
     if (!this.alerted) this._alert(0.05);
     // flinch impulse (in local space)
     const k = clamp(amount / (this.maxHp * 0.25), 0.2, 1.5) / (this.type.mass ?? 1);
@@ -215,6 +226,8 @@ export class Zombie {
     this.deathArms = rand(0.6, 1.4);
     if (this.led) this.led.material.emissiveIntensity = 0;
     if (this.glow) for (const m of this.glow) m.emissiveIntensity = 0;
+    // some kills (most blasts) throw the body as a ragdoll instead of the fall below; it's dead either way
+    this.game.zombies?.ragdolls?.tryStart(this, dir, source, opts);
     this.game.onZombieKilled(this, { source, ...opts });
   }
 
@@ -354,6 +367,8 @@ export class Zombie {
         }
       }
       if (dist < reach * 0.8 && sameLevel) speed *= 0.2;
+      // an intact barricade in the way (world/barricades.js) gets clawed down first
+      if (this.attackT < 0 && this.attackCooldown <= 0) game.barricades?.engage(this, wantX, wantZ);
       // leap (Striker) / pounce (dog)
       const lp = this.type.leap;
       if (lp && alertedNow) {
@@ -398,7 +413,8 @@ export class Zombie {
 
     // face movement / target
     let faceYaw = this.yaw;
-    if (this.attackT >= 0 && tgt) faceYaw = Math.atan2(tgt.pos.x - pos.x, tgt.pos.z - pos.z);
+    if (this.attackT >= 0 && this.barricade) faceYaw = game.barricades.faceYaw(this.barricade, pos);
+    else if (this.attackT >= 0 && tgt) faceYaw = Math.atan2(tgt.pos.x - pos.x, tgt.pos.z - pos.z);
     else if (Math.hypot(wantX, wantZ) > 0.1) faceYaw = Math.atan2(wantX, wantZ);
     this.yaw = dampAngle(this.yaw, faceYaw, this.type.turn ?? 9, dt);
     this.root.rotation.y = this.yaw;
@@ -466,7 +482,8 @@ export class Zombie {
     const hitAt = this.type.hitAt ?? (this.typeName === 'crusher' ? 0.55 : 0.45);
     if (!this.attackHit && this.attackT >= hitAt) {
       this.attackHit = true;
-      if (tgt && tgt.alive && dist < this.type.reach + (tgt.radius ?? 0.3) + 0.45 && Math.abs(tgt.pos.y - this.pos.y) < 1.4) {
+      if (this.barricade) this.game.barricades?.hit(this.barricade, this);
+      else if (tgt && tgt.alive && dist < this.type.reach + (tgt.radius ?? 0.3) + 0.45 && Math.abs(tgt.pos.y - this.pos.y) < 1.4) {
         const dmg = this.type.dmg * (this.game.difficultyDamage ?? 1);
         tgt.takeDamage(dmg, this.pos, this);
         this.game.audio.play('impact_flesh', { position: tgt.pos, volume: 0.7 });
@@ -478,6 +495,7 @@ export class Zombie {
     }
     if (this.attackT >= 1) {
       this.attackT = -1;
+      this.barricade = null;
       this.attackCooldown = this.typeName === 'striker' ? 0.15 : this.quad ? 0.25 : 0.35;
     }
   }
@@ -485,10 +503,13 @@ export class Zombie {
   _updateDead(dt) {
     this.deathT += dt;
     this.corpseT += dt;
-    this.body.vel.x = damp(this.body.vel.x, 0, 5, dt);
-    this.body.vel.z = damp(this.body.vel.z, 0, 5, dt);
-    if (this.deathT < 1.2) this.game.world.moveBody(this.body, dt);
-    this.animate(dt);
+    if (!this.ragdoll) {
+      // canned fall (a ragdoll poses the skeleton itself, see ZombieManager.update)
+      this.body.vel.x = damp(this.body.vel.x, 0, 5, dt);
+      this.body.vel.z = damp(this.body.vel.z, 0, 5, dt);
+      if (this.deathT < 1.2) this.game.world.moveBody(this.body, dt);
+      this.animate(dt);
+    }
     const life = this.game.corpseTime ?? 7;
     if (this.corpseT > life) {
       const k = (this.corpseT - life) / 1.5;
@@ -705,16 +726,21 @@ export class ZombieManager {
   constructor(game, scene) {
     this.game = game;
     this.scene = scene;
-    this.pool = { mauler: [], charger: [], striker: [], crusher: [], dog: [] };
+    this.pool = { mauler: [], charger: [], striker: [], crusher: [], dog: [], biter: [] };
     this.list = [];
     this.hash = new Map();
     this.cell = 1.5;
+    this.ragdolls = new RagdollSystem(game);
   }
 
-  prewarm(counts = { mauler: 14, charger: 5, striker: 6, crusher: 3, dog: 7 }) {
+  _make(type) {
+    return new (ZOMBIE_CLASSES[type] ?? Zombie)(type, this.game);
+  }
+
+  prewarm(counts = { mauler: 14, charger: 5, striker: 6, crusher: 3, dog: 7, biter: 8 }) {
     for (const [type, n] of Object.entries(counts)) {
       for (let i = 0; i < n; i++) {
-        const z = new Zombie(type, this.game);
+        const z = this._make(type);
         z.root.visible = false;
         this.scene.add(z.root);
         this.pool[type].push(z);
@@ -732,7 +758,7 @@ export class ZombieManager {
       if (!q.active) z = q;
     }
     if (!z) {
-      z = new Zombie(type, this.game);
+      z = this._make(type);
       this.scene.add(z.root);
       this.pool[type].push(z);
     }
@@ -750,6 +776,7 @@ export class ZombieManager {
   clear() {
     for (const z of this.list) z.deactivate();
     this.list.length = 0;
+    this.ragdolls.clear();
   }
 
   _hashKey(x, z) {
@@ -801,6 +828,7 @@ export class ZombieManager {
     this._rebuildHash();
     ctx.separation = (z, out) => this.separation(z, out);
     for (const z of this.list) z.update(dt, ctx);
+    this.ragdolls.update(dt, ctx.world);
     // refresh bone matrices + hit volumes so hitscans this frame are accurate
     for (const z of this.list) {
       if (!z.active) continue;

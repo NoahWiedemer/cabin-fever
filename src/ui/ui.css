@@ -1235,6 +1235,13 @@
 .cf-molo .cf-gren-ico {
   color: #ffc58a;
 }
+.cf-gren.cf-barr {
+  margin-left: calc(var(--u) * -12);
+  border-color: rgba(222, 176, 118, 0.38);
+}
+.cf-barr .cf-gren-ico {
+  color: #e2bb86;
+}
 
 /* ---------------- scoreboard ---------------- */
 
@@ -2629,6 +2636,87 @@
 @media (prefers-reduced-motion: reduce) {
   .cf-bg-noise,
   .cf-bg-roll {
+    animation: none;
+  }
+}
+
+/* ---------------- Biter on your back (fx/latchView.js) ---------------- */
+
+.cf-latch {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  opacity: 0;
+  transition: opacity 0.14s;
+}
+.cf-latch.on {
+  opacity: 1;
+}
+.cf-latch-vig {
+  position: absolute;
+  inset: 0;
+  opacity: 0.55;
+  background:
+    radial-gradient(ellipse 30% 42% at 100% 12%, rgba(150, 0, 0, 0.55), transparent 70%),
+    radial-gradient(ellipse 64% 66% at 50% 46%, transparent 46%, rgba(125, 0, 0, 0.45) 74%, rgba(38, 0, 0, 0.93) 100%);
+}
+.cf-latch-box {
+  position: absolute;
+  left: 50%;
+  top: calc(50% + var(--u) * 74);
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(var(--u) * 9);
+}
+.cf-latch-t {
+  font-family: var(--f-stencil);
+  font-size: calc(var(--u) * 30);
+  letter-spacing: 0.08em;
+  color: #fff;
+  white-space: nowrap;
+  text-shadow: var(--ts-hud), 0 0 14px rgba(255, 40, 20, 0.65);
+  animation: cf-latch-throb 0.45s ease-in-out infinite alternate;
+}
+.cf-latch-t em {
+  font-family: var(--f-ui);
+  font-style: normal;
+  font-weight: 700;
+  font-size: 0.6em;
+  letter-spacing: 0.2em;
+  color: #ffd2c4;
+  vertical-align: 0.2em;
+}
+.cf-latch-t .cf-key {
+  font-size: 0.8em;
+  vertical-align: 0.1em;
+}
+.cf-latch-bar {
+  width: calc(var(--u) * 240);
+  height: calc(var(--u) * 9);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.62);
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+}
+.cf-latch-bar i {
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform: scaleX(0);
+  transform-origin: 0 50%;
+  background: linear-gradient(90deg, #ff5a2e, #ffd36a);
+  box-shadow: 0 0 10px rgba(255, 160, 60, 0.85);
+  transition: transform 0.06s linear;
+}
+@keyframes cf-latch-throb {
+  from { transform: scale(1); }
+  to { transform: scale(1.05); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cf-latch-t {
     animation: none;
   }
 }

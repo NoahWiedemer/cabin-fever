@@ -1483,6 +1483,76 @@ def('striker_shriek', { d: 1.4, v: 4, gain: 0.65, rev: 0.35, max: 3, jit: 0.04, 
   });
 });
 
+// ----- Biter (small feral kid): a short vocal tract (formants ~1.4x up), a high thin voice with grit
+
+// the pounce telegraph: a rising, ring-modulated child's screech that cuts off at the leap
+def('biter_shriek', { d: 0.8, v: 4, gain: 0.7, rev: 0.3, max: 3, jit: 0.05, ref: 4 }, (b) => {
+  const t = 0.005;
+  const dur = rnd(0.42, 0.55);
+  const base = rnd(620, 820);
+  const f0 = [[0, base * 0.55], [0.35, base * 1.05], [0.75, base * rnd(1.3, 1.5)], [1, base * 1.2]];
+  b.voice(t, dur, {
+    f0, jit: 0.06, jitRate: 34, vib: [rnd(11, 15), 0.05],
+    formants: vowel('e', 1.45, 1.3), formants2: vowel('ae', 1.5, 1.3),
+    breath: 0.9, fry: [rnd(70, 110), 0.35], drive: 7, attack: 0.05, release: 0.06,
+    lp: 9500, hp: 300, ring: [rnd(210, 320), 0.3], g: 1,
+  });
+  b.voice(t + 0.01, dur * 0.9, {
+    f0: f0.map(([x, y]) => [x, y * 2.01]), jit: 0.05, wave: 'triangle',
+    formants: [[3600, 3, 1], [5200, 4, 0.5]], breath: 0.4, drive: 2, attack: 0.08, release: 0.05, lp: 11000, g: 0.3,
+  });
+  b.nb(t, { kind: 'pink', type: 'bandpass', f: 2600, f2: 4200, q: 1.2, a: 0.03, h: dur * 0.6, d: dur * 0.3, g: 0.25 });
+});
+
+// alert / chase chatter: a wet, gargled snarl through clenched teeth
+def('biter_snarl', { d: 0.9, v: 5, gain: 0.55, rev: 0.25, max: 4, jit: 0.06 }, (b) => {
+  const t = 0.005;
+  const dur = rnd(0.35, 0.6);
+  const base = rnd(210, 300);
+  b.voice(t, dur, {
+    f0: [[0, base * 0.9], [0.3, base * 1.25], [0.7, base * 1.05], [1, base * 0.8]], jit: 0.12, jitRate: 40,
+    formants: vowel('e', 1.35, 1.1), formants2: vowel('uh', 1.35, 1.1),
+    breath: 0.8, fry: [rnd(35, 55), 0.85], drive: 12, attack: 0.02, release: 0.12, lp: 6500, hp: 150, sub: 0.15, g: 1,
+  });
+  b.gurgle(t + dur * 0.2, dur * 0.8, { rate: 55, f0: 260, f1: 900, g: 0.45 });
+  b.nb(t, { type: 'bandpass', f: rnd(3000, 4200), q: 2, a: 0.01, h: dur * 0.5, d: dur * 0.4, g: 0.18 }); // hiss through the teeth
+});
+
+// one bite while latched on: teeth into cloth and flesh (crunch + tear) under a muffled snarl
+def('biter_bite', { d: 0.55, v: 6, gain: 0.62, rev: 0.08, max: 4, jit: 0.05 }, (b) => {
+  const t = 0.004;
+  b.click(t, 0.5, 0.0012);
+  b.thump(t, { f0: 180, f1: 70, sweep: 0.03, d: 0.07, g: 0.6, drive: 2 });
+  b.nb(t, { kind: 'pink', type: 'bandpass', f: rnd(1100, 1600), q: 1.2, a: 0.002, d: 0.08, g: 0.8, drive: 3 });
+  b.crackle(t + 0.005, rnd(0.08, 0.12), 900, 0.7, b.fbus('bandpass', 2400, 0.9, 1));
+  b.scrape(t + 0.05, rnd(0.1, 0.16), { f0: rnd(1500, 2000), f1: rnd(700, 900), q: 1.5, g: 0.5, kind: 'pink' }); // tearing
+  b.gurgle(t + 0.04, rnd(0.15, 0.22), { rate: 70, f0: 300, f1: 1100, g: 0.5 });
+  const base = rnd(230, 300);
+  b.voice(t + 0.02, rnd(0.25, 0.34), {
+    f0: [[0, base * 1.1], [0.4, base * 0.95], [1, base * 0.7]], jit: 0.15, jitRate: 45,
+    formants: vowel('uh', 1.3, 1.1), breath: 0.9, fry: [rnd(40, 60), 0.9], drive: 10,
+    attack: 0.015, release: 0.1, lp: 3200, hp: 160, g: 0.55,
+  });
+});
+
+// shaken off: the kid slammed onto the floor (body thud, cloth, a winded yelp)
+def('biter_shake', { d: 0.8, v: 3, gain: 0.7, rev: 0.22, max: 3, jit: 0.04, ref: 3 }, (b) => {
+  const t = 0.006;
+  b.cloth(t, 0.1, { g: 0.5, f: 1300 });
+  const hit = t + 0.06;
+  b.thump(hit, { f0: 120, f1: 45, sweep: 0.07, a: 0.002, d: 0.24, g: 1.2, drive: 1.6 });
+  b.nb(hit, { kind: 'brown', type: 'lowpass', f: 500, a: 0.002, d: 0.2, g: 0.9 });
+  b.nb(hit, { type: 'bandpass', f: rnd(220, 280), q: 5, a: 0.001, d: 0.14, g: 0.5 });
+  b.nb(hit, { type: 'bandpass', f: 1800, q: 1, a: 0.0008, d: 0.03, g: 0.35 });
+  const base = rnd(520, 680);
+  b.voice(hit + 0.01, rnd(0.16, 0.22), {
+    f0: [[0, base * 1.2], [1, base * 0.7]], jit: 0.08, jitRate: 30,
+    formants: vowel('a', 1.4, 1.2), breath: 0.9, fry: [rnd(60, 90), 0.4], drive: 6,
+    attack: 0.006, release: 0.08, lp: 7000, hp: 250, g: 0.45,
+  });
+  b.rattle(hit + 0.02, 0.15, 3, { f: 2600, g: 0.1 });
+});
+
 def('crusher_roar', { d: 2.5, v: 3, gain: 0.9, rev: 0.4, max: 2, jit: 0.04, ref: 6 }, (b) => {
   const t = 0.02;
   const dur = rnd(1.6, 2.1);
@@ -1686,6 +1756,14 @@ def('countdown_tick', { d: 0.15, v: 1, gain: 0.35, rev: 0.05, max: 2, jit: 0 }, 
   b.nb(t, { type: 'bandpass', f: 1800, q: 6, a: 0.0005, d: 0.03, g: 0.4 });
 });
 
+// Striker charge timer: a hard little piezo beep (played faster and higher as the fuse runs down)
+def('charge_beep', { d: 0.09, v: 1, gain: 0.32, rev: 0.06, max: 6, jit: 0 }, (b) => {
+  const t = 0.002;
+  b.tone(t, 3150, { d: 0.055, g: 0.55 });
+  b.tone(t, 6300, { d: 0.03, g: 0.12 });
+  b.click(t, 0.25, 0.0008);
+});
+
 def('ui_click', { d: 0.08, v: 2, gain: 0.45, rev: 0, max: 3, jit: 0.02 }, (b) => {
   const t = 0.001;
   b.click(t, 0.5, 0.0008);
@@ -1718,6 +1796,56 @@ def('wood_creak', { d: 1.5, v: 4, gain: 0.85, rev: 0.3, max: 3, jit: 0.06 }, (b)
   const dur = rnd(0.5, 1.0);
   b.creak(t, dur, { f, g: 1, r0: rnd(18, 40), r1: rnd(50, 140), q: rnd(10, 16) });
   if (chance(0.5)) b.creak(t + dur + rnd(0.02, 0.1), rnd(0.15, 0.3), { f: f * rnd(1.1, 1.3), g: 0.6, r0: 60, r1: 30 });
+});
+
+// ===== Barricades (world/barricades.js) ======================================
+
+// hammer blow on a nail: steel tink over a knock through the board
+def('hammer_nail', { d: 0.45, v: 5, gain: 0.55, rev: 0.18, max: 4, jit: 0.05 }, (b) => {
+  const t = 0.002;
+  b.click(t, 0.9, 0.0012);
+  const f = rnd(2900, 3600);
+  b.modal(t, [[f, 0.5, 0.09], [f * 1.53, 0.3, 0.06], [f * 2.41, 0.18, 0.04], [rnd(5200, 6400), 0.12, 0.03]], 0.55);
+  b.nb(t, { type: 'bandpass', f: rnd(1400, 1900), q: 1.2, a: 0.0004, d: 0.025, g: 0.55 });
+  b.nb(t, { type: 'bandpass', f: rnd(380, 520), q: 7, a: 0.0008, d: 0.08, g: 0.8 });
+  b.thump(t, { f0: rnd(210, 250), f1: 120, sweep: 0.02, d: 0.06, g: 0.6 });
+});
+
+// a claw / fist slamming the planks: dull thud, the boards ring, a few splinters
+def('wood_bash', { d: 0.8, v: 5, gain: 0.7, rev: 0.25, max: 6, jit: 0.06, ref: 3 }, (b) => {
+  const t = 0.004;
+  b.click(t, 0.5, 0.002);
+  b.thump(t, { f0: rnd(120, 150), f1: 55, sweep: 0.05, d: 0.16, g: 1, drive: 1.5 });
+  b.nb(t, { kind: 'brown', type: 'lowpass', f: 500, a: 0.002, d: 0.14, g: 0.8 });
+  b.nb(t, { type: 'bandpass', f: rnd(260, 360), q: 7, a: 0.001, d: 0.16, g: 0.75 });
+  b.nb(t, { type: 'bandpass', f: rnd(700, 950), q: 9, a: 0.001, d: 0.09, g: 0.4 });
+  b.crackle(t + 0.005, 0.18, 300, 0.45, b.fbus('highpass', 2200, 0, 0.6));
+  if (chance(0.45)) b.creak(t + rnd(0.05, 0.12), rnd(0.12, 0.25), { f: rnd(500, 800), g: 0.35, r0: 70, r1: 30 });
+});
+
+// a board tearing off its nails: splintering crack, the nails screech out, a creak
+def('plank_break', { d: 1.1, v: 4, gain: 0.8, rev: 0.28, max: 4, jit: 0.05, ref: 4 }, (b) => {
+  const t = 0.004;
+  b.click(t, 0.9, 0.002);
+  b.crackle(t, 0.3, 700, 0.9, b.fbus('highpass', 1500, 0, 0.8), { pow: 1.4, w: 3 });
+  b.nb(t, { type: 'bandpass', f: rnd(1800, 2600), q: 1.1, a: 0.0006, d: 0.07, g: 0.7 });
+  b.nb(t, { type: 'bandpass', f: rnd(320, 440), q: 6, a: 0.001, d: 0.14, g: 0.8 });
+  b.thump(t, { f0: 170, f1: 70, sweep: 0.04, d: 0.12, g: 0.7 });
+  b.creak(t + rnd(0.01, 0.04), rnd(0.18, 0.32), { f: rnd(900, 1400), g: 0.5, r0: 140, r1: 50, q: 14 });
+  b.rattle(t + 0.02, 0.1, 2, { f: 3800, g: 0.15 });
+});
+
+// a loose board clattering onto the floor: one end, then the other, then a short rattle
+def('plank_drop', { d: 0.9, v: 5, gain: 0.5, rev: 0.22, max: 5, jit: 0.06 }, (b) => {
+  let t = 0.004;
+  for (let k = 0; k < 2; k++) {
+    b.click(t, 0.5, 0.0015);
+    b.thump(t, { f0: rnd(190, 240), f1: 110, sweep: 0.02, d: 0.07, g: k ? 0.55 : 0.8 });
+    b.nb(t, { type: 'bandpass', f: rnd(420, 620), q: 8, a: 0.0008, d: 0.1, g: k ? 0.5 : 0.75 });
+    b.nb(t, { type: 'bandpass', f: rnd(1100, 1500), q: 9, a: 0.0006, d: 0.05, g: 0.3 });
+    t += rnd(0.07, 0.16);
+  }
+  for (let k = 0; k < 3; k++) b.nb(t + rnd(0, 0.18), { type: 'bandpass', f: rnd(500, 900), q: 6, a: 0.0006, d: 0.04, g: rnd(0.1, 0.25) });
 });
 
 def('glass_break', { d: 1.3, v: 3, gain: 0.65, rev: 0.25, max: 3, jit: 0.04, ref: 3 }, (b) => {
@@ -2356,7 +2484,7 @@ export class AudioSystem {
     set(this._weatherLP.frequency, expLerp(this._maxCut, 1100, f));
     const A = this._ambNodes;
     if (A) {
-      set(A.rainOut.gain, 1 - f);
+      set(A.rainOut.gain, (1 - f) * 0.45); // outdoors: present, but under the gunfight (~-7 dB)
       set(A.rainIn.gain, f * 1.4);
       set(A.roof.gain, 0.12 + 0.88 * f);
       set(A.windIn.gain, 1 - 0.55 * f);

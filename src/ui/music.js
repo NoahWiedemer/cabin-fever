@@ -13,7 +13,7 @@ export class MenuMusic {
     this.target = 0;
     this.rate = 1;
     this.master = 0.8;
-    this.music = 0.7;
+    this.music = 0.9;
     this._timer = 0;
     this._last = 0;
     this._armed = false;

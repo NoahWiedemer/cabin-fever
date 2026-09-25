@@ -132,7 +132,7 @@ export class Effects {
   }
 
   // ------------------------------------------------------------------ blood
-  bloodHit(p, dir, { amount = 1, headshot = false, color = null } = {}) {
+  bloodHit(p, dir, { amount = 1, headshot = false, color = null, decals = true } = {}) {
     const n = Math.round((headshot ? 26 : 12) * amount);
     const base = color ?? [0.32, 0.012, 0.01];
     for (let i = 0; i < n; i++) {
@@ -145,6 +145,7 @@ export class Effects {
       _v.copy(dir).multiplyScalar(rand(0.3, 1.2)).add(new THREE.Vector3(rand(-0.3, 0.3), rand(-0.1, 0.3), rand(-0.3, 0.3)));
       this.smoke.emit(p.x, p.y, p.z, _v.x, _v.y, _v.z, { life: rand(0.35, 0.7), size: headshot ? rand(0.35, 0.55) : rand(0.2, 0.35), grow: 0.9, drag: 4, color: [base[0] * 1.2, base[1], base[2]], alpha: 0.75 });
     }
+    if (!decals) return;
     // decal: behind the target (wall) or on the floor below
     const hit = this.world.raycast(p.x, p.y, p.z, dir.x, dir.y, dir.z, 3.0, null, {});
     if (hit) {

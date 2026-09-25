@@ -281,6 +281,31 @@ const POSES = {
       o.hrx = 0.08;
     },
   },
+  // shot at: duck, hunch and cover the face with both forearms, peek out at the end
+  cower: {
+    dur: [1.7, 2.1],
+    w: [0, 0],
+    blend: 0.16,
+    fn(o, t) {
+      const k = hold(t, 0, 1.9, 0.12);
+      const peek = bump(t, 1.2, 1.9);
+      o.hy = -0.13 * k;
+      o.hz = -0.04 * k;
+      o.hrx = 0.28 * k;
+      o.sx = 0.16 * k;
+      o.cx = 0.12 * k;
+      o.nx = 0.1 * k;
+      o.ex = (0.3 - 0.35 * peek) * k;
+      o.look = peek;
+      for (const [a, s] of [[o.L, 1], [o.R, -1]]) {
+        a.rel = 'head';
+        a.t.set(s * 0.07, 0.02 - 0.05 * peek, 0.16);
+        a.along.set(-s * 0.55, 0.8, 0.1);
+        a.palm.set(0, 0, -1);
+        a.pole.set(s, -0.6, 0.2);
+      }
+    },
+  },
 };
 for (const k in POSES) POSES[k].name = k;
 const BASES = Object.values(POSES).filter((p) => p.base);
@@ -411,6 +436,19 @@ export function createShopkeeper(parent, opts) {
   const lookPt = V();
   let glance = glances[0], glanceT = 0, headYaw = 0, headPitch = 0, bodyYaw = 0;
   let breathT = rand(0, 5), shiftT = rand(0, 10);
+  // being shot: a sharp kick per body region (her frame) that springs back, on top of the cower pose
+  const kick = { head: 0, chest: 0, hips: 0, side: 0, t: 9 };
+  // hit volumes: [part, bone, second bone (segment midpoint) or null, radius, lift above the bone]
+  const HIT = [
+    ['head', 'head', null, 0.115, 0.075],
+    ['chest', 'chest', null, 0.17, 0.08],
+    ['belly', 'spine', null, 0.16, 0],
+    ['hips', 'hips', null, 0.17, 0],
+    ['armL', 'upperArmL', 'foreArmL', 0.065, 0],
+    ['armR', 'upperArmR', 'foreArmR', 0.065, 0],
+    ['foreL', 'foreArmL', 'handL', 0.055, 0],
+    ['foreR', 'foreArmR', 'handR', 0.055, 0],
+  ];
 
   function applyArm(a, s, w) {
     const upper = b['upperArm' + s], fore = b['foreArm' + s], hand = b['hand' + s];
@@ -451,6 +489,36 @@ export function createShopkeeper(parent, opts) {
     /** debug: force a pose (name) */
     force(name) {
       if (POSES[name]) enter(POSES[name]);
+    },
+    /** Nearest hit along a world ray within maxT: { t, part } or null. */
+    raycast(origin, dir, maxT) {
+      let best = null;
+      for (const [part, n0, n1, r, lift] of HIT) {
+        b[n0].getWorldPosition(_c);
+        if (n1) _c.add(b[n1].getWorldPosition(_u)).multiplyScalar(0.5);
+        _c.y += lift;
+        _u.subVectors(_c, origin);
+        const tca = _u.dot(dir);
+        const d2 = _u.lengthSq() - tca * tca;
+        if (d2 > r * r) continue;
+        const t = tca - Math.sqrt(r * r - d2);
+        if (t > 0 && t < maxT && (!best || t < best.t)) best = { t, part };
+      }
+      return best;
+    },
+    /** A bullet hit `part` travelling along world `dir`: flinch away from it and cower for a moment. */
+    hit(part, dir) {
+      root.getWorldQuaternion(_q).invert();
+      _a.copy(dir).applyQuaternion(_q); // her frame: +z forward, +x her left
+      const back = -_a.z; // + when shot from the front
+      const A = 0.32;
+      kick.t = 0;
+      kick.head = part === 'head' ? A * 1.3 * back : 0;
+      kick.chest = part === 'chest' ? A * back : 0;
+      kick.hips = part === 'belly' || part === 'hips' ? A * 0.8 : 0;
+      kick.side = (part.endsWith('L') ? 1 : part.endsWith('R') ? -1 : -_a.x) * A * 0.5;
+      if (st.pose !== POSES.cower) enter(POSES.cower);
+      else st.t = Math.min(st.t, 0.4); // keep her down while the shots keep coming
     },
     /**
      * ctx: { cam: world Vector3 (the customer's eyes), engaged: customer at the counter in the buy
@@ -500,6 +568,16 @@ export function createShopkeeper(parent, opts) {
       P.hry += 0.03 * ws;
       P.sz -= 0.025 * ws;
       P.cz -= 0.012 * ws;
+      // ---- flinch: t·e^(1 - t/τ) peaks at 1 after τ = 70 ms, then springs back
+      kick.t += dt;
+      const kf = kick.t < 1.2 ? (kick.t / 0.07) * Math.exp(1 - kick.t / 0.07) : 0;
+      P.ex -= kick.head * kf;
+      P.nx -= kick.head * 0.5 * kf;
+      P.cx -= kick.chest * kf;
+      P.sx -= kick.chest * 0.5 * kf;
+      P.hrx += kick.hips * kf;
+      P.cy += kick.side * kf;
+      P.ez += kick.side * 0.5 * kf;
       const nod = 0.22 * bump(nodT, 0, 0.45) + 0.1 * bump(nodT, 0.4, 0.8) + (st.pose === POSES.greet ? 0.25 * bump(st.t, 0.15, 0.7) : 0);
 
       // ---- look target: the customer's eyes, else a glance around the shop

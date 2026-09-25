@@ -33,6 +33,9 @@ const UPG = Object.fromEntries(UPGRADES.map((u) => [u.key, u]));
 export const GAS_MASK = { price: 600, base: 8, perLevel: 4, costs: [400, 700, 1100], recharge: 0.5 };
 export const maskCapacity = (level) => GAS_MASK.base + GAS_MASK.perLevel * (level | 0);
 
+// Barricade kit: planks + nails for one doorway (world/barricades.js), carried in slot 5.
+export const BARRICADE_KIT = { price: 300, max: 3 };
+
 // Equipment: `count`/`max` cap stacking, `give` applies one purchase. Items with `owned` are bought
 // once; their optional `upgrade` track is then bought from the same card.
 export const SHOP_EQUIPMENT = [
@@ -45,6 +48,12 @@ export const SHOP_EQUIPMENT = [
     key: 'molotov', name: 'MOLOTOV', type: 'INCENDIARY', icon: 'molotov', price: 350, max: 3, requires: 'molotov',
     count: (g) => g.weapons.molotovs ?? 0,
     give: (g) => { g.weapons.molotovs = (g.weapons.molotovs ?? 0) + 1; },
+  },
+  {
+    key: 'barricade', name: 'BARRICADE KIT', type: 'PLANKS + NAILS · BOARD UP A DOOR', icon: 'barricade',
+    price: BARRICADE_KIT.price, max: BARRICADE_KIT.max, requires: 'barricade',
+    count: (g) => g.weapons.barricades ?? 0,
+    give: (g) => { g.weapons.barricades = (g.weapons.barricades ?? 0) + 1; },
   },
   {
     key: 'armor', name: 'KEVLAR PLATES', type: '+50 AP · UP TO 200', icon: 'armor', price: 400, max: 200, unit: 'AP',
@@ -228,5 +237,5 @@ export function buyEquipment(game, key) {
   if (equipmentState(game, item).maxed) return { ok: false, msg: item.full ? 'ALREADY FULL' : `CARRYING MAX (${item.max})`, sound: 'dryfire' };
   if (!game.economy.spend(game.player, item.price)) return NO_CASH;
   item.give(game);
-  return { ok: true, msg: `${item.name} PURCHASED`, sound: key === 'ammo' || key === 'armor' ? 'pickup_ammo' : 'grenade_pin', cost: item.price };
+  return { ok: true, msg: `${item.name} PURCHASED`, sound: key === 'ammo' || key === 'armor' ? 'pickup_ammo' : key === 'barricade' ? 'plank_drop' : 'grenade_pin', cost: item.price };
 }

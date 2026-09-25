@@ -11,6 +11,10 @@ export const MODELS = {
   boomer: '/models/zombies/boomer.glb',
   smoker: '/models/zombies/smoker.glb',
   dog: '/models/zombies/dog.glb',
+  tank: '/models/zombies/tank.glb', // Crusher boss
+  bomber: '/models/zombies/bomber.glb', // Striker (gas mask, explosives)
+  gasmask: '/models/zombies/gasmask.glb', // Mauler body variant
+  biter: '/models/zombies/biter.glb', // Biter (small, pounces and latches on)
   // weapons
   m16a2: '/models/weapons/m16a2.glb',
   spas12: '/models/weapons/spas12.glb',

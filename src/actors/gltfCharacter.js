@@ -48,7 +48,16 @@ export const GLB_BODIES = {
   meshy: { url: MODELS.meshy, height: 1.78, armSpread: 0.12, fallback: 'soldier' },
   // bust: breast region enlarged by `enlarge` and re-skinned to two spring-driven jiggle bones (jiggle.js)
   viper: { url: MODELS.viper, height: 1.72, armSpread: 0.12, fallback: 'soldier2', bust: { enlarge: 0.3 } },
-  smoker: { url: MODELS.smoker, height: 1.95, armSpread: 0.1, fallback: 'mauler2' },
+  // UniRig zombie (assets/source/zombie.glb) in the smoker slot: a bit taller than a survivor
+  smoker: { url: MODELS.smoker, height: 1.86, armSpread: 0.12, fallback: 'mauler2' },
+  // UniRig zombie in a gas mask and fatigues: another Mauler body
+  gasmask: { url: MODELS.gasmask, height: 1.78, armSpread: 0.12, fallback: 'mauler' },
+  // the Biter: a feral kid (UniRig, modeled hunched; its canonical pose straightens it, biter.js crouches it again)
+  biter: { url: MODELS.biter, height: 1.1, armSpread: 0.16, fallback: 'mauler2' },
+  // the Crusher boss (zombie type scale 1.4 on top): heavy UniRig tank, arms held clear of the gut
+  // the Striker: gas-mask bomber that scatters three charges when it dies
+  bomber: { url: MODELS.bomber, height: 1.76, armSpread: 0.14, fallback: 'striker' },
+  tank: { url: MODELS.tank, height: 1.8, armSpread: 0.3, fallback: 'crusher' },
   boomer: { url: MODELS.boomer, height: 1.8, armSpread: 0.42, fallback: 'charger', belly: true, glow: 0xff7a30 },
   // quadruped: sized by body length (nose to tail); no procedural dog exists, so the fallback is a mauler body
   dog: { url: MODELS.dog, quad: true, length: 1.3, fallback: 'mauler' },
@@ -56,7 +65,7 @@ export const GLB_BODIES = {
   shopkeeper: { url: MODELS.shopkeeper, height: 1.76, armSpread: 0.1, fallback: 'soldier' },
 };
 // finger curl per joint (rad): a rifle grip for the survivors, a loose claw for the infected
-const CURL = { coach: 0.5, ellis: 0.5, meshy: 0.45, viper: 0.45, smoker: 0.3, boomer: 0.3, shopkeeper: 0.28 };
+const CURL = { coach: 0.5, ellis: 0.5, meshy: 0.45, viper: 0.45, smoker: 0.3, boomer: 0.3, tank: 0.35, bomber: 0.3, gasmask: 0.3, biter: 0.4, shopkeeper: 0.28 };
 
 const normName = (n) => n.replace(/(_\d+)+$/, '').replace(/[^a-z0-9]/gi, '').toLowerCase().replace(/^(valvebiped|mixamorig)/, '');
 
@@ -193,10 +202,16 @@ function topologyRig(holder, model, meshes) {
   const T = skeletonTools(holder, meshes);
   const { P, y, kids, path, common, below, leaves } = T;
   const lowest = (sx) => leaves.filter((b) => P.get(b).x * sx > 0).sort((a, b) => y(a) - y(b))[0];
-  // face +Z: toes ahead of their parents
+  // face +Z: toes ahead of the feet (foot = the first joint of the leg chain near the floor, toe = the next
+  // one; the Biter's tip joint curls back up behind its toe, so the leaf alone can point the wrong way)
   let toeL = lowest(1), toeR = lowest(-1);
   if (!toeL || !toeR) throw new Error('no legs');
-  if (P.get(toeL).z - P.get(toeL.parent).z + P.get(toeR).z - P.get(toeR.parent).z < 0) {
+  const toeAhead = (t) => {
+    const c = below(common(toeL, toeR), t);
+    const fi = c.findIndex((b) => y(b) < T.lo + 0.12 * (T.hi - T.lo));
+    return fi >= 0 && c[fi + 1] ? P.get(c[fi + 1]).z - P.get(c[fi]).z : P.get(t).z - P.get(t.parent).z;
+  };
+  if (toeAhead(toeL) + toeAhead(toeR) < 0) {
     model.rotation.y = Math.PI;
     T.measure();
     [toeL, toeR] = [lowest(1), lowest(-1)];
@@ -221,10 +236,12 @@ function topologyRig(holder, model, meshes) {
   const tipL = tip(1), tipR = tip(-1);
   const chestRoot = common(tipL, tipR);
   const fingers = {};
+  // clavicles: decided for both sides at once (the Biter's right one sits a little further out than its left)
+  const hasClav = [tipL, tipR].some((t) => Math.abs(P.get(below(chestRoot, t)[0]).x - P.get(chestRoot).x) < 0.045 * H);
   for (const [s, t] of [['L', tipL], ['R', tipR]]) {
     const c = below(chestRoot, t);
     let i = 0;
-    const clav = Math.abs(P.get(c[0]).x - P.get(chestRoot).x) < 0.045 * H ? c[i++] : null;
+    const clav = hasClav ? c[i++] : null;
     const far = (from, k) => c.findIndex((b, j) => j >= k && P.get(b).distanceTo(P.get(c[from])) > 0.09 * H);
     const fi = far(i, i + 1), hi2 = fi < 0 ? -1 : far(fi, fi + 1);
     if (hi2 < 0) throw new Error('arm chain');

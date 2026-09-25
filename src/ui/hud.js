@@ -102,6 +102,10 @@ const GRENADE_SVG =
 const MOLOTOV_SVG =
   '<svg class="cf-gren-ico" viewBox="0 0 32 36" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M10 17Q10 13.5 13 12.5L13.6 8L18.4 8L19 12.5Q22 13.5 22 17L22 33Q22 35 20 35L12 35Q10 35 10 33ZM13 20h6v8h-6zM13.4 8L12 3.5L14.6 5L16 1L17.6 4.6L20.4 3L18.6 8Z"/></svg>';
 
+// barricade kit: three nailed planks
+const BARRICADE_SVG =
+  '<svg class="cf-gren-ico" viewBox="0 0 32 36" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M2 5L30 3L30 10L2 12ZM4.5 7h2v2h-2ZM25.5 5.5h2v2h-2ZM2 15L30 16L30 23L2 22ZM4.5 17.5h2v2h-2ZM25.5 18.5h2v2h-2ZM3 27L29 25L29 32L3 34ZM5.5 29h2v2h-2ZM24.5 27.5h2v2h-2Z"/></svg>';
+
 const GASMASK_SVG =
   '<svg class="cf-mask-ico" viewBox="32 -4 64 44" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M44 5Q64 -3 84 5Q92 13 88 24Q85 30 76 32L52 32Q43 30 40 24Q36 13 44 5ZM48 13a7 7 0 1 0 14 0a7 7 0 1 0-14 0ZM66 13a7 7 0 1 0 14 0a7 7 0 1 0-14 0ZM57 33h14v6h-14ZM34 11L39 10L39 17L34 18ZM94 11L89 10L89 17L94 18Z"/></svg>';
 
@@ -244,6 +248,7 @@ const HUD_HTML = `
   <div class="cf-ammo-row">
     <div class="cf-gren">${GRENADE_SVG}<span class="cf-gren-x">×</span><b>0</b></div>
     <div class="cf-gren cf-molo cf-hide">${MOLOTOV_SVG}<span class="cf-gren-x">×</span><b>0</b></div>
+    <div class="cf-gren cf-barr cf-hide">${BARRICADE_SVG}<span class="cf-gren-x">×</span><b>0</b></div>
     <div class="cf-ammo"><b class="cf-mag">000</b><span class="cf-res">/000</span></div>
   </div>
   <div class="cf-bar cf-bar-mag"><div class="cf-bar-fill"></div><div class="cf-bar-ticks"></div></div>
@@ -317,9 +322,12 @@ export class HUD {
       grenNum: q('.cf-gren b'),
       molo: q('.cf-molo'),
       moloNum: q('.cf-molo b'),
+      barr: q('.cf-barr'),
+      barrNum: q('.cf-barr b'),
       vigMask: q('.cf-vig-mask'),
       hold: q('.cf-hold'),
       holdFg: q('.cf-hold .fg'),
+      holdL: q('.cf-hold span'),
       buy: q('.cf-buy'),
       buyS: q('.cf-buy-s'),
       interact: q('.cf-interact'),
@@ -514,6 +522,9 @@ export class HUD {
     const molo = Math.max(0, state.molotovs | 0);
     this._cls($.molo, 'cf-hide', 'moloHide', !molo);
     if (molo) this._text($.moloNum, 'molo', String(molo));
+    const barr = Math.max(0, state.barricades | 0);
+    this._cls($.barr, 'cf-hide', 'barrHide', !barr);
+    if (barr) this._text($.barrNum, 'barr', String(barr));
 
     /* reload hint */
     let hint = '';
@@ -780,13 +791,16 @@ export class HUD {
     if (this._set('buyS', html)) $.buyS.innerHTML = html;
   }
 
-  /** Hold-to-ready ring under the crosshair: progress 0..1 or null. */
-  setHold(p) {
+  /** Hold ring under the crosshair: progress 0..1 or null; `label` (HTML) replaces the ready-up hint. */
+  setHold(p, label = null) {
     const on = p != null;
     this._cls(this.$.hold, 'on', 'holdOn', on);
     if (!on) return;
     const v = Math.round(clamp(p, 0, 1) * 100);
     if (this._set('hold', v)) this.$.holdFg.style.strokeDashoffset = String(100 - v);
+    this._holdReady ??= this.$.holdL.innerHTML;
+    const html = label ?? this._holdReady;
+    if (this._set('holdL', html)) this.$.holdL.innerHTML = html;
   }
 
   /** Screen-space waypoint: { x, y, label, dist, edge, angle } or null. */

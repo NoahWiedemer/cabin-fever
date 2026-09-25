@@ -1,26 +1,54 @@
-// AI fireteam members: pick defensive posts near the player, engage visible infected with
-// rifles (real hitscan, tracers, muzzle flashes), reload, retreat when hurt, die and respawn.
+// AI fireteam members: pick defensive posts near the player, engage visible infected with their
+// signature guns (real hitscan, pellets, bursts, tracers, muzzle flashes), reload, retreat when hurt,
+// die and respawn. One Teammate per fireteam.js character, each with a fixed body and gun.
 import * as THREE from 'three';
 import { createCharacter } from './rig.js';
-import { buildThirdPersonWeapon } from '../player/gunSafe.js';
+import { buildBotWeapon } from '../player/gunSafe.js';
 import { clamp, damp, dampAngle, rand, coneDirection, lerp, wrapAngle } from '../core/utils.js';
 import { levelOf } from '../world/level.js';
 import { WEAPONS } from '../player/weaponDefs.js';
+import { FIRETEAM } from './fireteam.js';
 
-const NAMES = ['NightOwl', 'Kr4ken', 'Hollow_Point', 'BlackMamba', 'Vortex7', 'Sgt.Rusty'];
 const _v = new THREE.Vector3();
 const _d = new THREE.Vector3();
 const _steer = { dirX: 0, dirZ: 0, portal: null, portalTo: null, dist: 0 };
+const DEG = Math.PI / 180;
 
-const BOT_WEAPON = { ...WEAPONS.m4a1, damage: 19, penetration: 0, falloff: [25, 70, 0.55] };
-// GLB bodies (procedural soldiers if missing), picked by team size so every model gets a slot and a
-// full team always has Viper: 3 bots Coach, Ellis, Viper · 2 bots Viper, Meshy · 1 bot Viper
-const LINEUPS = { 1: ['viper'], 2: ['viper', 'meshy'], 3: ['coach', 'ellis', 'viper'] };
+// Signature guns: rpm, burst size, wind-up, pellets, mags and reloads come from weaponDefs.js; damage
+// is about half the player's and tuned so each gun sustains roughly the old M4 bot's ~60 DPS (all
+// hits, reloads included) in its own way. shots: rounds per trigger pull [min, max] (burst guns:
+// bursts per volley), pause: s between trigger pulls, aim: aim error scale, head: headshot attempt
+// chance, spread: pellet cone (deg), range: engagement distance (m), vol / pitch: fire sound.
+const BOT_GUNS = {
+  // Soldier · the old bot rifle: bursts of 3-6
+  m4a1: { damage: 18, falloff: [25, 70, 0.55], shots: [3, 6], pause: [0.5, 1.0], aim: 1, tracer: 0.55, flash: 0.9, sound: 'm4_fire', vol: 0.75, pitch: 1 },
+  // Ellis · 3-round bursts, one or two per volley: the most accurate, best at range
+  m16a2: { damage: 19, falloff: [35, 100, 0.65], shots: [1, 2], burstGap: 0.3, pause: [0.55, 1.0], aim: 0.8, head: 0.26, tracer: 0.6, flash: 0.9, sound: 'm4_fire', vol: 0.75, pitch: 0.93 },
+  // Scorpion · fast carbine, longer bursts of lighter rounds
+  r201: { damage: 16, falloff: [30, 90, 0.6], shots: [4, 7], pause: [0.5, 0.95], aim: 0.9, tracer: 0.55, flash: 0.85, sound: 'm4_fire', vol: 0.7, pitch: 1.08 },
+  // Viper · LMG: long strings that wind up from 480 to 960 rpm, light rounds that punch through one body
+  devotion: { damage: 10, penetration: 1, falloff: [35, 100, 0.65], shots: [10, 20], pause: [0.35, 0.7], aim: 1.15, tracer: 0.5, flash: 1.0, sound: 'lmg_fire', vol: 0.62, pitch: 1 },
+  // Coach · pump shotgun: 9 pellets, slow pump cadence, shell-by-shell reloads, only engages up close
+  spas12: { damage: 12, falloff: [9, 32, 0.35], shots: [1, 1], pause: [0.75, 0.95], aim: 0.85, spread: 2.0, range: 22, flash: 1.35, sound: 'shotgun_fire', vol: 0.8, pitch: 1 },
+};
 
-// rifle hold, in gun space (x right, y up, -z muzzle): stock pocket → grip, wrist targets and hand frames
+/** weaponDefs entry with the bot damage model on top (what game.hitscan reads) + the bot tuning in .bot */
+function botGun(id) {
+  const def = WEAPONS[id] ?? WEAPONS.m4a1;
+  const g = BOT_GUNS[def.id] ?? BOT_GUNS.m4a1;
+  return { ...def, damage: g.damage, penetration: g.penetration ?? 0, falloff: g.falloff, bot: g };
+}
+
+// fire sounds of all bots share a rate limit per sound, so a full team firing doesn't flood the mixer
+const _sfxAt = new Map();
+
+// rifle hold, in gun space (x right, y up, -z muzzle): stock pocket → grip, wrist targets and hand frames.
+// Tuned on the M4A1; other guns shift the wrists by how far their grip markers sit from the M4's (REF_*).
 const GRIP_FWD = 0.25; // grip ahead of the shoulder pocket (≈ butt-to-grip length)
 const WRIST_R = new THREE.Vector3(0.025, -0.075, 0.09);
 const WRIST_L = new THREE.Vector3(-0.035, -0.07, -0.21);
+const REF_R = new THREE.Vector3(0, -0.005, -0.018);
+const REF_L = new THREE.Vector3(0, 0.049, -0.331);
 const ALONG_R = new THREE.Vector3(-0.1, 0.35, -0.93).normalize();
 const PALM_R = new THREE.Vector3(-1, 0, 0);
 const ALONG_L = new THREE.Vector3(0.2, 0.2, -0.96).normalize();
@@ -99,10 +127,12 @@ export class Teammate {
   constructor(game, index) {
     this.game = game;
     this.index = index;
-    this.name = NAMES[index % NAMES.length];
-    this.rank = [3, 4, 2, 5][index % 4];
+    const c = (this.character = FIRETEAM[index % FIRETEAM.length]);
+    this.id = c.id;
+    this.name = c.name;
+    this.rank = c.rank;
     this.chars = new Map(); // kind -> character, each body built once
-    this._wear(LINEUPS[3][index % 3]);
+    this._wear(c.body);
     this.body = {
       pos: this.root.position,
       vel: new THREE.Vector3(),
@@ -113,23 +143,41 @@ export class Teammate {
       gravity: 18,
     };
     this.radius = 0.3;
-    // rifle in the right hand
+    // signature gun in the right hand
+    this.weapon = botGun(c.weapon);
+    this.weaponName = c.gun;
+    let w;
     try {
-      this.gun = buildThirdPersonWeapon('m4a1');
+      w = buildBotWeapon(this.weapon.id);
     } catch (e) {
-      this.gun = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.08, 0.7), new THREE.MeshStandardMaterial({ color: 0x111111 }));
+      const root = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.08, 0.7), new THREE.MeshStandardMaterial({ color: 0x111111 }));
+      root.position.z = -0.25;
+      w = { root, muzzle: new THREE.Vector3(0, 0.03, -0.6), rightHand: REF_R.clone(), leftHand: REF_L.clone(), stock: 0.1 };
     }
+    this.gun = w.root;
+    // dense GLB guns (tens of thousands of triangles) skip the shadow pass: a gun's shadow is barely visible
+    let tris = 0;
+    this.gun.traverse((o) => {
+      if (o.isMesh) tris += (o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count) / 3;
+    });
     this.gun.traverse((o) => {
       if (o.isMesh) {
-        o.castShadow = true;
+        o.castShadow = tris < 20000;
         o.receiveShadow = true;
       }
     });
-    // the rifle is posed in character space along the aim (muzzle = -Z); both hands are IK'd onto it
+    // hold: the M4-tuned wrists shifted onto this gun's grip markers; long stocks push the grip forward
+    this.hold = {
+      gripFwd: Math.max(GRIP_FWD, Math.min(0.3, w.stock)),
+      wristR: WRIST_R.clone().add(w.rightHand).sub(REF_R),
+      wristL: WRIST_L.clone().add(w.leftHand).sub(REF_L),
+    };
+    // the gun is posed in character space along the aim (muzzle = -Z); both hands are IK'd onto it
     this.gunHolder = new THREE.Group();
     this.gunHolder.add(this.gun);
     this.mesh.add(this.gunHolder);
-    this.muzzleLocal = new THREE.Vector3(0, 0.03, -0.62);
+    this.muzzleLocal = w.muzzle.clone();
+    this.ejectLocal = new THREE.Vector3(0.02, 0.05, Math.max(-0.25, w.muzzle.z * 0.2));
     this.stats = { kills: 0, deaths: 0, headshots: 0, score: 0 };
     this.alive = false;
   }
@@ -169,7 +217,6 @@ export class Teammate {
   }
 
   spawn(pos, yaw = 0) {
-    this._wear(LINEUPS[clamp(this.game.config?.teammates ?? 3, 1, 3)][this.index] ?? LINEUPS[3][this.index % 3]);
     this.alive = true;
     this.root.visible = true;
     this.body.pos.copy(pos);
@@ -182,10 +229,14 @@ export class Teammate {
     this.ready = 0;
     this.hp = 100;
     this.ap = 60;
-    this.mag = 30;
+    this.mag = this.weapon.mag;
     this.reloadT = 0;
     this.cooldown = 0;
     this.burst = 0;
+    this.volley = 0;
+    this.spin = 0; // wind-up (LMG): rounds of the current string
+    this.lastShotT = -9;
+    this.pumpT = 0;
     this.target = null;
     this.targetT = 0;
     this.post = null;
@@ -260,19 +311,20 @@ export class Teammate {
     if (this.targetT <= 0) {
       this.targetT = rand(0.25, 0.45);
       let best = null, bd = Infinity;
+      const range = this.weapon.bot.range ?? 26;
       for (const z of game.zombies.list) {
-        if (!z.alive) continue;
+        if (!z.alive || z.latchHost === this) continue; // a Biter on its own back gets shaken off, not shot
         const d = z.pos.distanceTo(pos);
-        if (d > 26 || d >= bd) continue;
+        if (d > range) continue;
+        // a Biter latched onto anyone comes first (shots on it never hurt its host), then Boomers (they must
+        // die before they get close), then the fast dogs and Biters
+        const score = d * (z.latchHost ? 0.15 : z.typeName === 'charger' ? 0.5 : z.typeName === 'dog' || z.typeName === 'biter' ? 0.75 : 1);
+        if (score >= bd) continue;
         if (Math.abs(z.pos.y - pos.y) > 2.5) continue;
         const cy = z.hipsWorld ? z.hipsWorld.y : z.pos.y + 1.2;
         if (!game.world.lineOfSight(pos.x, pos.y + 1.5, pos.z, z.pos.x, cy, z.pos.z)) continue;
-        // prefer Boomers (they must die before they get close), then the fast dogs
-        const score = d * (z.typeName === 'charger' ? 0.5 : z.typeName === 'dog' ? 0.75 : 1);
-        if (score < bd) {
-          bd = score;
-          best = z;
-        }
+        bd = score;
+        best = z;
       }
       this.target = best;
     }
@@ -321,6 +373,7 @@ export class Teammate {
       }
     }
     const b = this.body;
+    if (this.latchedBy) speed *= 0.6; // a Biter on the back (biter.js)
     b.vel.x = damp(b.vel.x, wantX * speed, 10, dt);
     b.vel.z = damp(b.vel.z, wantZ * speed, 10, dt);
     const before = _v.copy(pos);
@@ -347,46 +400,130 @@ export class Teammate {
     this.root.rotation.y = this.yaw;
 
     this.cooldown -= dt;
+    const w = this.weapon;
+    const g = w.bot;
+    if (this.pumpT > 0 && (this.pumpT -= dt) <= 0) this._cycle();
     if (this.reloadT > 0) {
       this.reloadT -= dt;
-      if (this.reloadT <= 0) this.mag = 30;
+      if (this.reloadT <= 0) this._reloadStep();
     } else if (this.target && this.cooldown <= 0) {
       const aimErr = Math.abs(wrapAngle(faceYaw - this.yaw));
       if (aimErr < 0.15) {
-        if (this.burst <= 0) this.burst = Math.floor(rand(3, 7));
+        // a trigger pull: shots[] rounds (burst guns: shots[] bursts of def.burst)
+        if (this.burst <= 0) {
+          this.burst = Math.floor(rand(g.shots[0], g.shots[1] + 1)) * (w.mode === 'burst' ? w.burst || 3 : 1);
+          this.volley = 0;
+        }
         this._shoot();
         this.burst--;
-        this.cooldown = this.burst > 0 ? 60 / 650 : rand(0.5, 1.0);
-        if (this.mag <= 0) {
-          this.reloadT = 2.4;
-          game.audio.play('m4_reload', { position: pos, volume: 0.5 });
-        }
+        this.volley++;
+        // inside a trigger pull the frame overshoot carries over, so the rate matches the rpm at any frame rate
+        this.cooldown = this.burst > 0 ? Math.max(this.cooldown, -dt) + this._interval() : rand(g.pause[0], g.pause[1]);
+        if (this.mag <= 0) this._startReload();
       }
+    } else if (!this.target && this.mag < w.mag * 0.5 && game.time - this.lastShotT > 1.5) {
+      this._startReload(); // top up during a lull
     }
     this.crouch = damp(this.crouch, this.target && this.moveSpeed < 0.5 && this.index % 2 === 0 ? 1 : 0, 4, dt);
     this.recoil = damp(this.recoil, 0, 14, dt);
     this._animate(dt);
   }
 
+  /** delay to the next round of a trigger pull: burst gap, wound-up LMG rate or the plain rpm */
+  _interval() {
+    const w = this.weapon;
+    if (w.mode === 'burst' && this.volley % (w.burst || 3) === 0) return w.bot.burstGap ?? 0.3;
+    const wind = w.rampRpm ? Math.min(1, this.spin / (w.rampShots ?? 12)) : 0;
+    return 60 / (w.rpm + ((w.rampRpm ?? w.rpm) - w.rpm) * wind);
+  }
+
+  _startReload() {
+    const w = this.weapon;
+    this.burst = 0;
+    if (w.reloadType === 'shell') {
+      this.reloadT = (w.reloadStart ?? 0.3) + (w.shellTime ?? 0.45);
+      return;
+    }
+    this.reloadT = this.mag > 0 ? w.reload ?? 2.4 : w.reloadEmpty ?? w.reload ?? 2.4;
+    this.game.audio.play('m4_reload', { position: this.pos, volume: 0.5, pitch: w.mag > 60 ? 0.85 : 1 });
+  }
+
+  /** a mag reload completes; a shotgun loads one shell and goes on unless it has enough to fight */
+  _reloadStep() {
+    const w = this.weapon;
+    if (w.reloadType !== 'shell') {
+      this.mag = w.mag;
+      return;
+    }
+    this.mag = Math.min(w.mag, this.mag + 1);
+    this.game.audio.play('shotgun_insert', { position: this.pos, volume: 0.35 });
+    // keep loading unless something is in its face and there are a few shells to meet it with
+    const close = this.target && this.target.alive && this.target.pos.distanceTo(this.pos) < 6;
+    if (this.mag < w.mag && !(close && this.mag >= 3)) this.reloadT = w.shellTime ?? 0.45;
+    else {
+      this.cooldown = Math.max(this.cooldown, w.reloadEnd ?? 0.4);
+      this.pumpT = (w.reloadEnd ?? 0.4) * 0.5;
+      this.pumpShell = false;
+    }
+  }
+
+  /** pump-action cycle after a shot: rack sound + the spent shell */
+  _cycle() {
+    const game = this.game;
+    game.audio.play('shotgun_pump', { position: this.pos, volume: 0.42 });
+    if (this.pumpShell !== false) {
+      this.root.updateMatrixWorld(true);
+      game.fx.shell('shotgun', this.gun.localToWorld(_v.copy(this.ejectLocal)), new THREE.Vector3(rand(-1, 1), 2.2, rand(-1, 1)));
+    }
+    this.pumpShell = true;
+  }
+
+  /** positional fire sound, rate-limited across the whole fireteam per sound */
+  _fireSound(pos) {
+    const g = this.weapon.bot;
+    const now = this.game.time;
+    const last = _sfxAt.get(g.sound) ?? -Infinity;
+    if (now - last < 0.055 && now >= last) return;
+    _sfxAt.set(g.sound, now);
+    this.game.audio.play(g.sound, { position: pos, volume: g.vol ?? 0.75, pitch: (g.pitch ?? 1) * (1 + rand(-0.025, 0.025)) });
+  }
+
   _shoot() {
     const game = this.game;
+    const w = this.weapon;
+    const g = w.bot;
+    const pellets = w.pellets > 1 ? w.pellets : 1;
     this.mag--;
-    this.recoil = 1;
+    this.recoil = pellets > 1 ? 1.8 : w.rampRpm ? 0.7 : 1;
+    if (game.time - this.lastShotT > 0.6) this.spin = 0; // the LMG spins down between strings
+    this.spin++;
+    this.lastShotT = game.time;
     this.root.updateMatrixWorld(true);
     const muzzle = this.gun.localToWorld(this.muzzleLocal.clone());
     const tp = this.target.hipsWorld || this.target.pos;
     const eye = _v.set(this.pos.x, this.pos.y + 1.5, this.pos.z);
     const aim = new THREE.Vector3(tp.x, (this.target.hipsWorld ? tp.y : tp.y + 1.2) + rand(-0.1, 0.35), tp.z);
-    if (Math.random() < 0.18) aim.y += 0.4; // occasional headshot attempt
+    if (Math.random() < (g.head ?? 0.18)) aim.y += 0.4; // occasional headshot attempt
     _d.copy(aim).sub(eye).normalize();
     const dist = aim.distanceTo(eye);
-    const err = (2.2 + dist * 0.09) * (Math.PI / 180);
+    const err = (2.2 + dist * 0.09) * (g.aim ?? 1) * DEG;
     const dir = coneDirection(_d, err, new THREE.Vector3());
-    game.hitscan(eye.clone(), dir, BOT_WEAPON, this, { tracerFrom: Math.random() < 0.55 ? muzzle : null, bot: true });
-    game.fx.muzzleWorld(muzzle, dir, 0.9);
-    game.audio.play('m4_fire', { position: muzzle, volume: 0.75 });
+    const origin = eye.clone();
+    if (pellets > 1) {
+      // buckshot: pellets spread around the aim point, two of them draw tracers
+      const pd = new THREE.Vector3();
+      for (let i = 0; i < pellets; i++) {
+        coneDirection(dir, (g.spread ?? 2) * DEG, pd);
+        game.hitscan(origin, pd, w, this, { tracerFrom: i < 2 ? muzzle : null, bot: true, pellet: i });
+      }
+    } else {
+      game.hitscan(origin, dir, w, this, { tracerFrom: Math.random() < (g.tracer ?? 0.55) ? muzzle : null, bot: true });
+    }
+    game.fx.muzzleWorld(muzzle, dir, g.flash ?? 0.9);
+    this._fireSound(muzzle);
     if (this.jiggle) this.jiggle.kick(-dir.x * 0.24, 0.28, -dir.z * 0.24); // recoil
-    if (Math.random() < 0.3) game.fx.shell('rifle', muzzle.clone().add(new THREE.Vector3(0, 0, 0)), new THREE.Vector3(rand(-1, 1), 2, rand(-1, 1)));
+    if (w.mode === 'pump') this.pumpT = 0.26;
+    else if (Math.random() < 0.3) game.fx.shell(w.shell ?? 'rifle', this.gun.localToWorld(_v.copy(this.ejectLocal)), new THREE.Vector3(rand(-1, 1), 2, rand(-1, 1)));
     game.alertNoise(this.pos, 25);
   }
 
@@ -424,16 +561,17 @@ export class Teammate {
     _gq.copy(this.root.quaternion).multiply(_qa.setFromEuler(_eu.set(-pitch, Math.PI, 0)));
     // stock pocket: just inside the right shoulder joint
     b.upperArmR.getWorldPosition(_G);
-    _G.add(_T.set(-0.06, 0.04, this.recoil * 0.035 - GRIP_FWD).applyQuaternion(_gq));
+    const hold = this.hold;
+    _G.add(_T.set(-0.06, 0.04, this.recoil * 0.035 - hold.gripFwd).applyQuaternion(_gq));
     this.gunHolder.position.copy(this.mesh.worldToLocal(_T.copy(_G)));
     this.gunHolder.quaternion.copy(this.mesh.getWorldQuaternion(_qb).invert().multiply(_gq));
     const h = this.hands;
     // right hand on the pistol grip, elbow out and down
-    _T.copy(WRIST_R).applyQuaternion(_gq).add(_G);
+    _T.copy(hold.wristR).applyQuaternion(_gq).add(_G);
     _pole.set(-0.7, -1, -0.3).applyQuaternion(this.root.quaternion);
     reach(b.upperArmR, b.foreArmR, b.handR, _T, _pole, _aw.copy(ALONG_R).applyQuaternion(_gq), _pw.copy(PALM_R).applyQuaternion(_gq), h.R);
-    // left hand under the handguard
-    _T.copy(WRIST_L).applyQuaternion(_gq).add(_G);
+    // left hand under the handguard (on the pump / LMG shroud: wherever the gun's leftHand marker says)
+    _T.copy(hold.wristL).applyQuaternion(_gq).add(_G);
     _pole.set(0.3, -1, -0.1).applyQuaternion(this.root.quaternion);
     reach(b.upperArmL, b.foreArmL, b.handL, _T, _pole, _aw.copy(ALONG_L).applyQuaternion(_gq), _pw.copy(PALM_L).applyQuaternion(_gq), h.L);
   }
@@ -455,5 +593,28 @@ export class Teammate {
   hide() {
     this.alive = false;
     this.root.visible = false;
+  }
+
+  /**
+   * Standing pose for the menu portrait (actors/portraits.js): at the origin facing +Z, gun at a relaxed
+   * low ready. Only valid while the bot is out of play (it leaves the fight state untouched otherwise).
+   */
+  posePortrait(ready = 0.55) {
+    this.target = null;
+    this.reloadT = 0;
+    this.moveSpeed = 0;
+    this.phase = 0;
+    this.crouch = 0;
+    this.recoil = 0;
+    this.aimPitch = 0;
+    this.ready = ready;
+    this.yaw = 0;
+    this.root.position.set(0, 0, 0);
+    this.root.rotation.set(0, 0, 0);
+    this.mesh.position.set(0, 0, 0);
+    if (this.gunHolder.parent !== this.mesh) this.mesh.add(this.gunHolder);
+    this.root.updateMatrixWorld(true);
+    this._animate(0);
+    this.root.updateMatrixWorld(true);
   }
 }

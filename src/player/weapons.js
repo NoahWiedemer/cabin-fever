@@ -15,10 +15,12 @@ export class WeaponSystem {
     this.game = game;
     this.player = player;
     this.vm = viewmodel;
-    this.slots = [null, 'm9', 'knife', 'm67'];
+    this.slots = [null, 'm9', 'knife', 'm67', 'barricade'];
     this.ammo = {};
     this.grenades = 2;
     this.molotovs = 0;
+    this.barricades = 0; // store barricade kits (slot 5; world/barricades.js does the building)
+    this.buildT = null; // seconds into nailing one up (viewmodel hammer swing), set by world/barricades.js
     this.burstLeft = 0;
     this.cur = 0;
     this.prev = 1;
@@ -44,13 +46,15 @@ export class WeaponSystem {
   }
 
   reset(primaryId = 'm4a1') {
-    this.slots = [primaryId, 'm9', 'knife', 'm67'];
+    this.slots = [primaryId, 'm9', 'knife', 'm67', 'barricade'];
     this.owned = new Set([primaryId, 'm9']); // store inventory
     this.upgrades = {}; // id -> { dmg, mag, reload, rate } (replaced, never mutated)
     this.ammo = {};
     for (const id of this.slots) this._initAmmo(id);
     this.grenades = 2;
     this.molotovs = 0;
+    this.barricades = 0;
+    this.buildT = null;
     this.burstLeft = 0;
     this.cur = 0;
     this.prev = 1;
@@ -160,7 +164,7 @@ export class WeaponSystem {
       force = true;
     }
     if (slot === this.cur && !force) return;
-    if (slot === 3 && !this._pickThrowable()) {
+    if ((slot === 3 && !this._pickThrowable()) || (slot === 4 && !(this.barricades > 0))) {
       this.game.audio.play('dryfire', { volume: 0.4 });
       return;
     }
@@ -204,12 +208,14 @@ export class WeaponSystem {
       if (input.hit('Digit2')) this.switchTo(1);
       if (input.hit('Digit3')) this.switchTo(2);
       if (input.hit('Digit4')) this.switchTo(3);
+      if (input.hit('Digit5')) this.switchTo(4);
       if (input.hit('KeyQ')) this.switchTo(this.prev);
       if (input.wheel !== 0 && this.state !== 'throw') {
+        // empty throwable / barricade slots are skipped
         let s = this.cur;
-        for (let i = 0; i < 4; i++) {
-          s = (s + (input.wheel > 0 ? 1 : 3)) % 4;
-          if (s !== 3 || this.grenades + this.molotovs > 0) break;
+        for (let i = 0; i < 5; i++) {
+          s = (s + (input.wheel > 0 ? 1 : 4)) % 5;
+          if (s === 3 ? this.grenades + this.molotovs > 0 : s === 4 ? this.barricades > 0 : true) break;
         }
         this.switchTo(s);
       }
@@ -312,7 +318,7 @@ export class WeaponSystem {
 
     // ADS: eases toward the target (fast start, settled in ~adsTime, out a bit quicker); the linear
     // floor lands it exactly, so full ADS accuracy arrives on time
-    const canAds = d.mode !== 'melee' && d.mode !== 'grenade' && (this.state === 'idle' || this.state === 'bolt' || this.state === 'draw') && !(d.scope && this.state === 'bolt');
+    const canAds = d.mode !== 'melee' && d.mode !== 'grenade' && d.mode !== 'build' && (this.state === 'idle' || this.state === 'bolt' || this.state === 'draw') && !(d.scope && this.state === 'bolt') && !p.latchedBy; // no aiming with a Biter on your back
     this.adsWanted = altDown && canAds;
     const adsTime = d.adsTime ?? 0.2;
     const adsGoal = this.adsWanted ? 1 : 0;
@@ -532,9 +538,15 @@ export class WeaponSystem {
       coneDirection(_fwd, spreadDeg * DEG * 0.5, _dir);
       game.launchProjectile(d, origin.clone().addScaledVector(_fwd, 0.4), _dir.clone(), p);
     } else {
+      const dealt = game.hitAccum;
       for (let i = 0; i < d.pellets; i++) {
         coneDirection(_fwd, spreadDeg * DEG * 0.5, _dir);
         game.hitscan(origin, _dir, d, p, { tracerFrom: tracer || (d.pellets > 1 && i < 3) ? _muzzle : null, pellet: i });
+      }
+      // accuracy for the after-action report: a shot (all its pellets) hits if it damaged anything
+      if (p.stats) {
+        p.stats.shots = (p.stats.shots ?? 0) + 1;
+        if (game.hitAccum > dealt) p.stats.hits = (p.stats.hits ?? 0) + 1;
       }
     }
 
@@ -587,7 +599,7 @@ export class WeaponSystem {
       ammo: a ? a.mag : d.mode === 'grenade' ? this.grenades : 0,
       magSize: a ? d.mag : 1,
       reserve: a ? a.reserve : 0,
-      showAmmo: d.mode !== 'melee',
+      showAmmo: d.mode !== 'melee' && d.mode !== 'build',
       reloading: this.state === 'reload' || this.state === 'shellReload',
     };
   }

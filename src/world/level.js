@@ -653,6 +653,26 @@ export function buildLevel() {
     { level: 0, rect: [4.0, 9.5, -7.8, -6.3] },
   ];
 
+  // Doorways the store's barricade kit can board up (src/world/barricades.js). The openings of the
+  // walls above: axis = the wall's run ('x': wall along x, normal ±z), c = wall centre line, t = wall
+  // thickness, a..b = opening along the wall, y0..y1 = sill / top. `requires`: only after that unlock;
+  // `portal`: reached via that stair portal (the doorway itself is inside a nav block); `side`: the
+  // face the planks always go on (+1 = +normal). The balcony door is left out: the infected never
+  // come in that way.
+  const barricadeSpots = [
+    { id: 'front', name: 'FRONT DOOR', level: 1, axis: 'x', c: southC, t: TE, a: -7.15, b: -5.85, y0: 0, y1: DOOR_H },
+    { id: 'back', name: 'BACK DOOR', level: 1, axis: 'x', c: northC, t: TE, a: -0.6, b: 0.75, y0: 0, y1: DOOR_H },
+    { id: 'kitchenHole', name: 'KITCHEN WALL HOLE', level: 1, axis: 'z', c: eastC, t: TE, a: 3.4, b: 5.6, y0: 0, y1: 2.05 },
+    { id: 'livingHall', name: 'LIVING ROOM DOOR', level: 1, axis: 'z', c: -1, t: TI, a: 3.0, b: 4.6, y0: 0, y1: 2.3 },
+    { id: 'storageHall', name: 'STORAGE ROOM DOOR', level: 1, axis: 'z', c: -1, t: TI, a: -4.6, b: -3.2, y0: 0, y1: 2.2 },
+    { id: 'livingStorage', name: 'STORAGE PASSAGE', level: 1, axis: 'x', c: -1, t: TI, a: -9.0, b: -7.6, y0: 0, y1: 2.2 },
+    { id: 'hallKitchen', name: 'KITCHEN DOOR', level: 1, axis: 'z', c: 2.4, t: TI, a: 4.2, b: 5.6, y0: 0, y1: 2.2 },
+    { id: 'hallBack', name: 'BACK ROOM DOOR', level: 1, axis: 'z', c: 2.4, t: TI, a: -6.8, b: -5.4, y0: 0, y1: 2.2 },
+    { id: 'kitchenBack', name: 'PANTRY DOOR', level: 1, axis: 'x', c: 1, t: TI, a: 7.8, b: 9.3, y0: 0, y1: 2.2 },
+    { id: 'basementDoor', name: 'BASEMENT DOOR', level: 1, axis: 'z', c: -3.75, t: TI, a: -7.62, b: -6.28, y0: 0, y1: 2.15, requires: 'basement', portal: 'basementInterior', side: 1 },
+    { id: 'cellar', name: 'CELLAR DOOR', level: 0, axis: 'z', c: -12 + TE / 2, t: TE, a: -3.0, b: -1.6, y0: FLOOR.basement, y1: FLOOR.basement + 2.6, requires: 'basement', portal: 'cellar', side: 1 },
+  ];
+
   // radar outline (ground floor walls)
   radarSegments.push(
     [-12, -8, 12, -8], [12, -8, 12, 8], [12, 8, -12, 8], [-12, 8, -12, -8],
@@ -718,6 +738,7 @@ export function buildLevel() {
   const inGasZone = (x, y, z) => {
     if (x > -13.3 && x < 13.6 && z > -9.9 && z < 9.0) return false;
     if (x > -9.8 && x < -3.2 && z > 8 && z < 11.4) return false;
+    if (x > 3.7 && x < 11.3 && z > 7.9 && z < 9.8 && y > 3.0) return false; // balcony: a clean-air firing spot over the yard
     if (x > -17.5 && x < -11 && z > -3.3 && z < -1.3 && y < -0.3) return false; // cellar stairwell
     return true;
   };
@@ -730,6 +751,7 @@ export function buildLevel() {
     spawnPoints,
     portals,
     navBlocks,
+    barricadeSpots,
     radarSegments,
     specialSpots,
     defensePosts,

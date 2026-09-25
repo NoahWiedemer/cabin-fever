@@ -8,6 +8,7 @@ import { buildWeaponModel } from '../player/gunSafe.js';
 import { WEAPONS } from '../player/weaponDefs.js';
 import { SHOP_WEAPONS, SHOP_EQUIPMENT } from '../game/shop.js';
 import { buildProp } from './propsSafe.js';
+import { gasMask, kevlarVest } from './gearModels.js';
 import { getMaterial } from './materials.js';
 import { getGLB } from '../core/assets.js';
 import { MODELS } from '../core/assetList.js';
@@ -88,52 +89,6 @@ function neonTex(text, color) {
     g.strokeStyle = '#ffffff';
     g.strokeText(text, w / 2, h / 2);
   });
-}
-
-// ---------------------------------------------------------------- small procedural items
-const matCache = {};
-const mat = (key, params) => (matCache[key] ??= new THREE.MeshStandardMaterial(params));
-
-function gasMask() {
-  const g = new THREE.Group();
-  const rubber = mat('maskRubber', { color: 0x1d2019, roughness: 0.85 });
-  const face = new THREE.Mesh(new THREE.SphereGeometry(0.1, 20, 14), rubber);
-  face.scale.set(0.95, 1.15, 0.7);
-  g.add(face);
-  const glass = mat('maskGlass', { color: 0x223030, roughness: 0.08, metalness: 0.2 });
-  for (const s of [-1, 1]) {
-    const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.036, 0.02, 20), glass);
-    lens.rotation.x = Math.PI / 2;
-    lens.position.set(s * 0.043, 0.03, 0.062);
-    g.add(lens);
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.038, 0.007, 8, 20), mat('maskRing', { color: 0x333333, metalness: 0.8, roughness: 0.4 }));
-    ring.position.copy(lens.position);
-    g.add(ring);
-  }
-  const filter = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.05, 0.07, 20), mat('maskFilter', { color: 0x4b5436, roughness: 0.6 }));
-  filter.rotation.x = Math.PI / 2 - 0.5;
-  filter.position.set(0, -0.07, 0.08);
-  g.add(filter);
-  return g;
-}
-
-function kevlarVest() {
-  const g = new THREE.Group();
-  const fab = mat('vestFabric', { color: 0x3d4230, roughness: 0.95 });
-  const body = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.5, 0.12), fab);
-  g.add(body);
-  for (const s of [-1, 1]) {
-    const strap = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.14, 0.1), fab);
-    strap.position.set(s * 0.13, 0.31, 0);
-    g.add(strap);
-  }
-  const pouchMat = mat('vestPouch', { color: 0x343927, roughness: 0.95 });
-  for (let i = -1; i <= 1; i++) {
-    const pouch = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.13, 0.05), pouchMat);
-    pouch.position.set(i * 0.12, -0.12, 0.08);
-    g.add(pouch);
-  }
-  return g;
 }
 
 // ---------------------------------------------------------------- build

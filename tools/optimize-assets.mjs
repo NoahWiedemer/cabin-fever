@@ -15,7 +15,11 @@ export const ASSETS = [
   ['coach_l4d2_with_rigging.glb', 'characters/coach.glb', 1024],
   ['ellis_l4d2.glb', 'characters/ellis.glb', 1024],
   ['left_4_dead_2_-_boomer_with_rig.glb', 'zombies/boomer.glb', 1024],
-  ['left_4_dead_2_-_smoker_with_rig.glb', 'zombies/smoker.glb', 1024],
+  ['striker.glb', 'zombies/bomber.glb', 1024], // UniRig gas-mask bomber: the Striker body (drops 3 charges on death)
+  ['tank.glb', 'zombies/tank.glb', 1024], // UniRig blue tank: the Crusher boss body
+  ['zombie.glb', 'zombies/smoker.glb', 1024], // UniRig zombie (replaced the L4D2 smoker), bones mapped by topology
+  ['gasmask_zombie.glb', 'zombies/gasmask.glb', 1024], // UniRig gas-mask zombie: a Mauler body variant (weights: fix-viper-weights)
+  ['biter.glb', 'zombies/biter.glb', 1024], // UniRig "smallbiterzombie" kid: the Biter (weights: fix-viper-weights)
   ['left_4_dead_2_-_charger_with_rig.glb', 'zombies/charger.glb', 1024],
   ['Mutant_dog.glb', 'zombies/dog.glb', 1024], // UniRig quadruped, bones mapped by topology
   ['Meshy_AI_Character_output.glb', 'characters/meshy.glb', 1024], // UniRig skeleton, bones mapped by topology

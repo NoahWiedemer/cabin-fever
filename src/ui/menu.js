@@ -6,8 +6,10 @@
  */
 
 import './menu.css';
-import { ensureUiFonts, esc, weaponSvg } from './hud.js';
+import { ensureUiFonts, esc, weaponSvg, weaponKind } from './hud.js';
 import { MODE_LIST, MODES, DIFFICULTIES, THREATS, unlocksFor } from '../game/modes.js';
+import { FIRETEAM, FIRETEAM_IDS, FIRETEAM_BY_ID, LEGACY_LINEUPS, normalizeFireteam } from '../actors/fireteam.js';
+import * as LB from './leaderboard.js';
 
 const LS_SETTINGS = 'cabinfever.settings.v1';
 const LS_LOADOUT = 'cabinfever.loadout.v1';
@@ -18,17 +20,19 @@ const DEFAULT_SETTINGS = Object.freeze({
   fov: 90,
   quality: 'high',
   volume: 0.8,
-  music: 0.6,
+  music: 0.9,
   showFps: false,
+  rev: 2, // settings revision (2: louder music default)
 });
 
 const QUALITIES = ['low', 'medium', 'high', 'ultra'];
 
 // main-menu views → camera shot behind them (game.js MENU_SHOTS)
-const VIEWS = { home: 'title', play: 'porch', settings: 'interior', controls: 'interior', credits: 'interior' };
+const VIEWS = { home: 'title', play: 'porch', leaderboard: 'interior', settings: 'interior', controls: 'interior', credits: 'interior' };
 
 const NAV = [
   ['play', 'PLAY', 'Mode · difficulty · fireteam'],
+  ['leaderboard', 'LEADERBOARD', 'Your best runs'],
   ['settings', 'SETTINGS', 'Mouse · video · audio'],
   ['controls', 'CONTROLS', 'Keyboard & mouse'],
   ['credits', 'CREDITS', 'The people and tools behind it'],
@@ -49,11 +53,13 @@ const CONTROLS = [
   [['MOUSE 1'], 'Fire'],
   [['MOUSE 2'], 'Aim / scope'],
   [['R'], 'Reload'],
-  [['1', '–', '4', '/', 'WHEEL'], 'Switch weapon'],
+  [['1', '–', '5', '/', 'WHEEL'], 'Switch weapon'],
   [['4'], 'Again: frag ↔ Molotov'],
+  [['5'], 'Barricade kit · hold Mouse 1 at a doorway'],
   [['Q'], 'Last weapon'],
   [['G'], 'Quick throw'],
   [['E'], 'Pick up'],
+  [['V'], 'Mash: shake off a Biter'],
   [['F'], 'Flashlight · gun shop counter'],
   [['HOLD F'], 'Buy phase: ready up'],
   [['TAB'], 'Scoreboard'],
@@ -64,6 +70,7 @@ const TIPS = [
   'Headshots are worth bonus points — and bonus cash.',
   'Every kill by your fireteam pays everyone. Spend it in the cellar gun shop between rounds.',
   'A gas mask from the gun shop lets you breathe outside for a while. Upgrade the filter for longer.',
+  'Barricade kits from the gun shop board up a doorway. You can still shoot through the gaps between the planks.',
   'Stick with your fireteam. Infected flank lone survivors.',
   'Stay out of the green gas. It hurts more than it looks.',
   'Mutant dogs hunt in packs from round 3. Listen for them.',
@@ -117,21 +124,42 @@ function sanitizeSettings(s) {
     o.quality = QUALITIES.includes(s.quality) ? s.quality : o.quality;
     o.volume = clamp(n(s.volume, o.volume), 0, 1);
     o.music = clamp(n(s.music, o.music), 0, 1);
+    // saves from before rev 2 that still hold the old, too quiet default get the new one
+    if ((s.rev ?? 1) < 2 && s.music === 0.6) o.music = DEFAULT_SETTINGS.music;
     o.showFps = !!s.showFps;
   }
   return o;
 }
 
-/** Last setup. Older saves also carry `primary`; it's dropped (everyone gets the standard kit). */
+/**
+ * Last setup. Older saves also carry `primary`; it's dropped (everyone gets the standard kit). The
+ * fireteam is a list of character ids; saves from the 0-3 size picker keep the characters that size
+ * used to field (1 = Viper, 2 = Viper + Scorpion, 3 = Coach, Ellis, Viper).
+ */
 function sanitizeLoadout(c) {
-  const o = { mode: 'cabinfever', difficulty: 'hard', teammates: 3 };
+  const o = { mode: 'cabinfever', difficulty: 'hard', fireteam: FIRETEAM_IDS.slice() };
   if (c && typeof c === 'object') {
     if (MODES[c.mode]) o.mode = c.mode;
     if (DIFFICULTIES.some((d) => d.id === c.difficulty)) o.difficulty = c.difficulty;
-    if (Number.isInteger(c.teammates)) o.teammates = clamp(c.teammates, 0, 3);
+    const team = normalizeFireteam(c.fireteam);
+    if (team) o.fireteam = team;
+    else if (Number.isInteger(c.teammates)) o.fireteam = LEGACY_LINEUPS[clamp(c.teammates, 0, 3)].slice();
   }
   return o;
 }
+
+const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+const fmtDate = (ms) => {
+  const d = new Date(ms);
+  return Number.isFinite(d.getTime()) ? `${pad(d.getDate(), 2)} ${MONTHS[d.getMonth()]} ${d.getFullYear()}` : '—';
+};
+const fmtStamp = (ms) => {
+  try {
+    return new Date(ms).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  } catch (_) {
+    return '';
+  }
+};
 
 const pad = (n, w) => String(Math.max(0, Math.floor(Number(n) || 0))).padStart(w, '0');
 const fmtTime = (sec) => {
@@ -160,7 +188,8 @@ export class Menu {
     this._panels = [];
     this._current = null;
     this._view = 'home';
-    this._bots = ['NightOwl', 'Kr4ken', 'Hollow_Point'];
+    this._portraits = {}; // character id -> rendered portrait (data URL), set once the game has loaded
+    this._lb = { mode: this.config.mode, difficulty: this.config.difficulty }; // leaderboard filter
     this._saveTimer = 0;
     this._tipTimer = 0;
     this._countRaf = 0;
@@ -187,8 +216,9 @@ export class Menu {
     return { ...this.settings };
   }
 
-  showMain() {
-    this._setView('home', { instant: true });
+  showMain(view = 'home') {
+    if (view === 'leaderboard') this._renderBoard();
+    this._setView(view, { instant: true });
     this._show('main');
   }
 
@@ -203,10 +233,32 @@ export class Menu {
     this.showClickToPlay(false);
   }
 
-  /** Teammate display names for the fireteam picker. */
-  setBots(names) {
-    if (Array.isArray(names) && names.length) this._bots = names.map(String);
-    this._syncConfig();
+  /** Character portraits ({ id: image URL }, actors/portraits.js) for the fireteam cards and the leaderboard. */
+  setPortraits(map) {
+    this._portraits = map && typeof map === 'object' ? { ...map } : {};
+    for (const card of this.$main.mates) {
+      const url = this._portraits[card.dataset.mate];
+      const img = card.querySelector('img');
+      if (!url || !img) continue;
+      img.src = url;
+      card.classList.add('has-pic');
+    }
+    if (this._view === 'leaderboard') this._renderBoard();
+  }
+
+  /**
+   * Keep a finished run on the local leaderboard (game.js runStats()). Returns the placement
+   * ({ rank, best, key, record }) or null; the end screen shows it, the leaderboard highlights it.
+   */
+  recordRun(stats) {
+    let placed = null;
+    try {
+      placed = LB.recordRun(stats, this._name());
+    } catch (err) {
+      console.error('[menu] leaderboard record failed', err);
+    }
+    if (placed?.record) this._lb = { mode: placed.record.mode, difficulty: placed.record.difficulty };
+    return placed;
   }
 
   /** Lightning 0..1 from the game: brightens the title and flashes the sky. */
@@ -237,11 +289,13 @@ export class Menu {
     this._tipTimer = 0;
   }
 
-  showEnd({ victory = false, endless = false, mode, score = 0, kills = 0, headshots = 0, rounds = 0, roundReached = 0, maxRounds = 0, timeSeconds = 0 } = {}) {
+  showEnd({ victory = false, endless = false, mode, difficulty, outcome, score = 0, kills = 0, headshots = 0, accuracy = null, rounds = 0, roundReached = 0, maxRounds = 0, timeSeconds = 0, fireteam, team, placed = null } = {}) {
     const E = this.$end;
-    const diff = DIFFICULTIES.find((d) => d.id === this.config.difficulty);
+    const diff = DIFFICULTIES.find((d) => d.id === (difficulty ?? this.config.difficulty));
     const m = MODES[mode] || MODES[this.config.mode] || MODES.cabinfever;
     endless = endless || !!m.endless;
+    const ids = normalizeFireteam(fireteam) ?? [];
+    const solo = Array.isArray(fireteam) && !ids.length;
     E.root.classList.toggle('victory', !!victory);
     E.root.classList.toggle('defeat', !victory);
     E.kicker.textContent = `${m.endless ? 'ENDLESS' : 'FIRETEAM'} - ${diff ? diff.name : 'HARD'}  ·  AFTER-ACTION REPORT`;
@@ -249,13 +303,41 @@ export class Menu {
     E.title.setAttribute('data-text', E.title.textContent);
     E.text.textContent = victory
       ? 'Extraction arrived at dawn.'
-      : endless
-        ? `Your fireteam held out until round ${Math.max(1, roundReached | 0)}.`
-        : 'Your fireteam was overrun.';
+      : outcome === 'timeout'
+        ? 'The clock ran out before extraction.'
+        : endless
+          ? `${solo ? 'You' : 'Your fireteam'} held out until round ${Math.max(1, roundReached | 0)}.`
+          : solo
+            ? 'You were overrun.'
+            : 'Your fireteam was overrun.';
     E.epi.style.display = victory ? '' : 'none';
     E.roundsLbl.textContent = endless ? 'ROUND REACHED' : 'ROUNDS SURVIVED';
     E.rounds.textContent = endless ? pad(roundReached, 2) : `${pad(rounds, 2)}/${pad(maxRounds, 2)}`;
     E.time.textContent = fmtTime(timeSeconds);
+    E.acc.textContent = accuracy == null || !isFinite(accuracy) ? '—' : `${Math.round(clamp(accuracy, 0, 1) * 100)}%`;
+    // local leaderboard placement
+    this._endBoard = placed?.record ? { mode: placed.record.mode, difficulty: placed.record.difficulty } : { mode: m.id, difficulty: diff?.id ?? 'hard' };
+    const where = `${m.name} · ${diff ? diff.name : 'HARD'}`;
+    E.rank.hidden = !placed?.rank;
+    E.rank.classList.toggle('best', !!placed?.best);
+    if (placed?.rank) {
+      E.rankT.textContent = placed.best ? 'NEW HIGH SCORE' : `RANKED #${placed.rank}`;
+      E.rankS.textContent = placed.best ? `#1 on your ${where} leaderboard` : `on your ${where} leaderboard`;
+    }
+    // the fireteam that went in: portrait chips with each bot's kills
+    const byId = new Map((Array.isArray(team) ? team : []).map((t) => [t.id, t]));
+    E.team.innerHTML = ids.length
+      ? `<span class="cf-end-team-h">FIRETEAM</span>` +
+        ids
+          .map((id) => {
+            const c = FIRETEAM_BY_ID[id];
+            const t = byId.get(id);
+            return `<span class="cf-end-mate">${this._avatar(id)}<b>${esc(c.name)}</b><small>${t ? `${t.kills | 0} KILLS` : esc(c.gun)}</small></span>`;
+          })
+          .join('')
+      : solo
+        ? '<span class="cf-end-team-h">SOLO RUN</span>'
+        : '';
     this._show('end');
 
     // count-up animation for the big numbers
@@ -277,6 +359,11 @@ export class Menu {
       if (k < 1) this._countRaf = requestAnimationFrame(step);
     };
     this._countRaf = requestAnimationFrame(step);
+  }
+
+  /** True while the main menu (home / play / leaderboard / settings ...) is the visible screen. */
+  get onMainScreen() {
+    return this._current === 'main';
   }
 
   showClickToPlay(on) {
@@ -353,7 +440,7 @@ export class Menu {
       <button class="cf-mm-mode" data-sfx data-mode="${m.id}">
         <span class="cf-mm-mode-emb">${EMBLEMS[m.id] || ''}</span>
         <span class="cf-mm-mode-txt">
-          <span class="cf-mm-mode-k">${m.kicker}<b>${m.tag}</b></span>
+          <span class="cf-mm-mode-k">${m.kicker}</span>
           <span class="cf-mm-mode-n">${m.name}</span>
           <span class="cf-mm-mode-d">${esc(m.tagline)}</span>
         </span>
@@ -369,13 +456,22 @@ export class Menu {
       </button>`
     ).join('');
 
-    const teamHtml = [0, 1, 2, 3]
-      .map(
-        (n) => `<button class="cf-mm-team-b" data-sfx data-team="${n}">
-          <span class="cf-mm-team-ico">${n === 0 ? '<span class="cf-mm-solo">SOLO</span>' : HELMET.repeat(n)}</span>
-          <span class="cf-mm-team-n">${n}</span></button>`
-      )
-      .join('');
+    // fireteam picker: one toggle card per character, portrait filled in by setPortraits()
+    const mateHtml = FIRETEAM.map(
+      (c, i) => `<button class="cf-mm-mate" data-sfx data-mate="${c.id}" aria-pressed="false" style="--i:${i}">
+          <span class="cf-mm-mate-pic"><span class="cf-mm-mate-ph">${HELMET}</span><img alt="" draggable="false"></span>
+          <span class="cf-mm-mate-chk" aria-hidden="true"></span>
+          <span class="cf-mm-mate-txt">
+            <span class="cf-mm-mate-n">${esc(c.name)}</span>
+            <span class="cf-mm-mate-w"><i>${weaponSvg(weaponKind(c.gun))}</i>${esc(c.gun)}</span>
+          </span>
+        </button>`
+    ).join('');
+
+    const lbModeHtml = MODE_LIST.map((m) => `<button data-sfx data-lb-mode="${m.id}"><i>${EMBLEMS[m.id] || ''}</i>${m.name}</button>`).join('');
+    const lbDiffHtml = DIFFICULTIES.map(
+      (d) => `<button data-sfx data-lb-diff="${d.id}"><span class="cf-mm-skulls">${SKULL.repeat(d.skulls)}</span>${d.name}<em data-lb-count></em></button>`
+    ).join('');
 
     const kitHtml = KIT.map(
       ([icon, name, kind]) => `<span class="cf-mm-kit-i"><span class="cf-mm-kit-ico ${icon}">${weaponSvg(icon)}</span><b>${name}</b><small>${kind}</small></span>`
@@ -422,9 +518,14 @@ export class Menu {
                   <div class="cf-mm-diffs" data-row data-group>${diffHtml}</div>
                 </div>
                 <div class="cf-mm-step">
-                  <div class="cf-mm-step-h"><b>03</b>FIRETEAM <small>AI TEAMMATES</small></div>
-                  <div class="cf-mm-team" data-row data-group>${teamHtml}</div>
-                  <div class="cf-mm-roster"></div>
+                  <div class="cf-mm-step-h"><b>03</b>FIRETEAM</div>
+                  <div class="cf-mm-mates" data-row data-group data-multi>${mateHtml}</div>
+                  <div class="cf-mm-team-bar">
+                    <span class="cf-mm-team-qs" data-row data-group data-multi>
+                      <button class="cf-mm-team-q" data-sfx data-team-set="all">ALL</button>
+                      <button class="cf-mm-team-q" data-sfx data-team-set="none">SOLO</button>
+                    </span>
+                  </div>
                 </div>
               </div>
               <aside class="cf-mm-brief">
@@ -442,6 +543,33 @@ export class Menu {
                 </div>
               </aside>
               <button class="cf-mm-deploy" data-sfx data-row><span>DEPLOY</span><i class="cf-mm-arrows"><b></b><b></b><b></b></i></button>
+            </div>
+          </section>
+
+          <section class="cf-mm-view cf-mm-lb" data-view="leaderboard">
+            ${head('LEADERBOARD', 'LOCAL RECORDS')}
+            <div class="cf-mm-lb-bar">
+              <div class="cf-mm-lb-filters">
+                <div class="cf-mm-lb-tabs cf-mm-lb-modes" data-row data-group>${lbModeHtml}</div>
+                <div class="cf-mm-lb-tabs cf-mm-lb-diffs" data-row data-group>${lbDiffHtml}</div>
+              </div>
+              <label class="cf-mm-lb-name">
+                <small>CALLSIGN</small>
+                <span class="cf-mm-lb-name-f"><input type="text" data-row data-name maxlength="${LB.NAME_MAX}" spellcheck="false" autocomplete="off" autocapitalize="off" enterkeyhint="done" placeholder="${LB.DEFAULT_NAME}"><i class="cf-mm-lb-saved">SAVED</i></span>
+              </label>
+            </div>
+            <div class="cf-panel cf-mm-lb-panel">
+              <div class="cf-mm-lb-cap"><span class="cf-mm-lb-title"></span><span class="cf-mm-lb-meta"></span></div>
+              <div class="cf-mm-lb-table" role="table" aria-label="Leaderboard">
+                <div class="cf-mm-lb-row cf-mm-lb-hdr" role="row"><span>#</span><span>CALLSIGN</span><span class="r">SCORE</span><span class="r">ROUND</span><span class="r">KILLS</span><span class="r c-hs">HS</span><span class="r c-acc">ACC</span><span class="r c-time">TIME</span><span class="c-team">FIRETEAM</span><span class="r">DATE</span></div>
+                <div class="cf-mm-lb-rows" data-row tabindex="0"></div>
+              </div>
+              <div class="cf-mm-lb-empty">
+                <span class="cf-mm-lb-empty-ico">${EMBLEMS.cabinfever}</span>
+                <b>NO RECORDS YET</b>
+                <span class="cf-mm-lb-empty-t"></span>
+                <button class="cf-btn cf-btn-primary" data-sfx data-go="play" data-row><span>PLAY</span></button>
+              </div>
             </div>
           </section>
 
@@ -480,29 +608,169 @@ export class Menu {
       views: Object.fromEntries([...el.querySelectorAll('[data-view]')].map((v) => [v.dataset.view, v])),
       modes: [...el.querySelectorAll('[data-mode]')],
       diffs: [...el.querySelectorAll('[data-diff]')],
-      teams: [...el.querySelectorAll('[data-team]')],
-      roster: q('.cf-mm-roster'),
+      mates: [...el.querySelectorAll('[data-mate]')],
+      teamSets: [...el.querySelectorAll('[data-team-set]')],
       briefT: q('.cf-mm-brief-t'),
       briefD: q('.cf-mm-brief-d'),
       facts: q('.cf-mm-facts'),
       threats: q('.cf-mm-threats'),
+      lb: {
+        modes: [...el.querySelectorAll('[data-lb-mode]')],
+        diffs: [...el.querySelectorAll('[data-lb-diff]')],
+        name: q('[data-name]'),
+        saved: q('.cf-mm-lb-saved'),
+        panel: q('.cf-mm-lb-panel'),
+        title: q('.cf-mm-lb-title'),
+        meta: q('.cf-mm-lb-meta'),
+        rows: q('.cf-mm-lb-rows'),
+        emptyT: q('.cf-mm-lb-empty-t'),
+      },
     };
 
     el.addEventListener('click', (e) => {
       const t = e.target;
       const go = t.closest('[data-go]');
-      if (go) return this._setView(go.dataset.go, { kbd: e.detail === 0 });
+      if (go) {
+        if (go.dataset.go === 'leaderboard') this._renderBoard(this.config.mode, this.config.difficulty);
+        return this._setView(go.dataset.go, { kbd: e.detail === 0 });
+      }
       const m = t.closest('[data-mode]');
       if (m) return this._setConfig('mode', m.dataset.mode);
       const d = t.closest('[data-diff]');
       if (d) return this._setConfig('difficulty', d.dataset.diff);
-      const tm = t.closest('[data-team]');
-      if (tm) return this._setConfig('teammates', Number(tm.dataset.team));
+      const mate = t.closest('[data-mate]');
+      if (mate) return this._toggleMate(mate.dataset.mate);
+      const set = t.closest('[data-team-set]');
+      if (set) return this._setConfig('fireteam', set.dataset.teamSet === 'all' ? FIRETEAM_IDS.slice() : []);
+      const lm = t.closest('[data-lb-mode]');
+      if (lm) return this._renderBoard(lm.dataset.lbMode, this._lb.difficulty);
+      const ld = t.closest('[data-lb-diff]');
+      if (ld) return this._renderBoard(this._lb.mode, ld.dataset.lbDiff);
       if (t.closest('.cf-mm-deploy')) this._deploy();
     });
 
+    this._bindName();
     this._buildSettings(q('.cf-mm-set-body'));
     this._syncConfig();
+  }
+
+  /* ---------------- fireteam picker ---------------- */
+
+  _toggleMate(id) {
+    const on = new Set(this.config.fireteam);
+    if (on.has(id)) on.delete(id);
+    else on.add(id);
+    this._setConfig('fireteam', normalizeFireteam([...on]));
+  }
+
+  /** small round portrait of a character (initial when the portraits aren't rendered) */
+  _avatar(id) {
+    const c = FIRETEAM_BY_ID[id];
+    if (!c) return '';
+    const url = this._portraits[id];
+    return `<i class="cf-av" title="${esc(c.name)} · ${esc(c.gun)}">${url ? `<img src="${url}" alt="">` : esc(c.name[0])}</i>`;
+  }
+
+  /* ---------------- leaderboard ---------------- */
+
+  _name() {
+    if (this._playerName == null) this._playerName = LB.getPlayerName();
+    return this._playerName;
+  }
+
+  _bindName() {
+    const L = this.$main.lb;
+    const input = L.name;
+    input.value = this._name();
+    let t = 0;
+    const commit = (flash) => {
+      const n = LB.setPlayerName(input.value);
+      const changed = n !== this._playerName;
+      this._playerName = n;
+      if (flash && changed) {
+        L.saved.classList.remove('on');
+        void L.saved.offsetWidth;
+        L.saved.classList.add('on');
+      }
+    };
+    input.addEventListener('input', () => {
+      clearTimeout(t);
+      t = setTimeout(() => commit(true), 500);
+    });
+    input.addEventListener('blur', () => {
+      clearTimeout(t);
+      commit(true);
+      input.value = this._name(); // show the cleaned-up name (or the default when left empty)
+    });
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        clearTimeout(t);
+        commit(true);
+        input.value = this._name();
+        this._sfx('ui_click');
+      }
+      // typing stays in the field: the game's key tracker would swallow Space / Ctrl combos.
+      // Esc and Up / Down still reach the menu navigation.
+      if (e.key !== 'Escape' && e.key !== 'ArrowUp' && e.key !== 'ArrowDown') e.stopPropagation();
+    });
+  }
+
+  /** (Re)draw the leaderboard for a mode × difficulty (defaults: the current filter). */
+  _renderBoard(mode = this._lb.mode, difficulty = this._lb.difficulty) {
+    const L = this.$main.lb;
+    if (!MODES[mode]) mode = 'cabinfever';
+    if (!DIFFICULTIES.some((d) => d.id === difficulty)) difficulty = 'hard';
+    const switched = mode !== this._lb.mode || difficulty !== this._lb.difficulty;
+    this._lb = { mode, difficulty };
+    const m = MODES[mode];
+    const diff = DIFFICULTIES.find((d) => d.id === difficulty);
+    let runs = [];
+    let sum = { counts: {}, last: null };
+    try {
+      runs = LB.topRuns(mode, difficulty);
+      sum = LB.summary();
+    } catch (err) {
+      console.error('[menu] leaderboard read failed', err);
+    }
+    for (const b of L.modes) b.classList.toggle('sel', b.dataset.lbMode === mode);
+    for (const b of L.diffs) {
+      b.classList.toggle('sel', b.dataset.lbDiff === difficulty);
+      const n = sum.counts[LB.boardKey(mode, b.dataset.lbDiff)] ?? 0;
+      b.querySelector('[data-lb-count]').textContent = n ? String(n) : '';
+    }
+    if (document.activeElement !== L.name) L.name.value = this._name();
+    L.title.innerHTML = `${m.name} <em>·</em> ${diff.name}`;
+    L.meta.textContent = runs.length ? `${runs.length} RUN${runs.length === 1 ? '' : 'S'} · BEST ${pad(runs[0].score, 6)}` : 'NO RUNS';
+    L.panel.classList.toggle('empty', !runs.length);
+    L.emptyT.innerHTML = m.endless
+      ? `Hold out in <b>${m.name} · ${diff.name}</b> and your best runs land here.`
+      : `Finish a <b>${m.name} · ${diff.name}</b> run (or quit after round 1) to set the first score.`;
+    const maxR = m.endless ? null : diff.rounds;
+    L.rows.innerHTML = runs
+      .map((r, i) => {
+        const last = r.id === sum.last;
+        const acc = r.accuracy == null ? '—' : `${Math.round(r.accuracy * 100)}%`;
+        const team = r.team.length ? r.team.map((id) => this._avatar(id)).join('') : '<small>SOLO</small>';
+        const round = maxR ? `${pad(r.round, 2)}<small>/${maxR}</small>` : pad(r.round, 2);
+        return `<div class="cf-mm-lb-row${last ? ' last' : ''}${i < 3 ? ` top top${i + 1}` : ''}" role="row">
+          <span class="c-rank">${pad(i + 1, 2)}</span>
+          <span class="c-name"><b>${esc(r.name)}</b>${last ? '<em>LATEST</em>' : ''}<small class="o-${r.outcome}">${LB.OUTCOMES[r.outcome]}</small></span>
+          <span class="r c-score">${pad(r.score, 6)}</span>
+          <span class="r c-round">${round}</span>
+          <span class="r">${r.kills}</span>
+          <span class="r c-hs">${r.headshots}</span>
+          <span class="r c-acc">${acc}</span>
+          <span class="r c-time">${fmtTime(r.time)}</span>
+          <span class="c-team">${team}</span>
+          <span class="r c-date" title="${esc(fmtStamp(r.date))}">${fmtDate(r.date)}</span>
+        </div>`;
+      })
+      .join('');
+    if (switched) L.rows.scrollTop = 0;
+    // bring the latest run into view (next frame: the view may only just have been shown)
+    const hi = L.rows.querySelector('.last');
+    if (hi) requestAnimationFrame(() => hi.scrollIntoView?.({ block: 'nearest' }));
   }
 
   _setView(view, { kbd = false, instant = false } = {}) {
@@ -531,9 +799,14 @@ export class Menu {
     }, 260);
   }
 
-  _focusView() {
+  /** keyboard rows of the current view that are actually shown (the leaderboard hides its table or empty state) */
+  _rows() {
     const v = this.$main.views[this._view];
-    const rows = [...v.querySelectorAll('[data-row]')];
+    return [...v.querySelectorAll('[data-row]')].filter((r) => r.getClientRects().length > 0);
+  }
+
+  _focusView() {
+    const rows = this._rows();
     const first = rows.find((r) => !r.classList.contains('cf-mm-back')) || rows[0];
     this._focusRow(first);
   }
@@ -555,25 +828,40 @@ export class Menu {
       return;
     }
     const k = e.key;
+    if (k === ' ' && document.activeElement?.tagName === 'BUTTON' && this.root.contains(document.activeElement)) {
+      // Space presses the focused button (the game's key tracker cancels the browser's own Space activation)
+      e.preventDefault();
+      if (!e.repeat) document.activeElement.click();
+      return;
+    }
     if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(k)) return;
     const a = document.activeElement;
-    if (a?.tagName === 'INPUT') return; // sliders use the arrows themselves
-    const view = this.$main.views[this._view];
-    const rows = [...view.querySelectorAll('[data-row]')];
+    // sliders use the arrows themselves; a text field keeps left / right for its caret
+    if (a?.tagName === 'INPUT' && (a.type !== 'text' || k === 'ArrowLeft' || k === 'ArrowRight')) return;
+    const rows = this._rows();
     if (!rows.length) return;
     e.preventDefault();
     const row = rows.find((r) => r === a || r.contains(a));
     if (!row) return this._focusRow(rows.find((r) => !r.classList.contains('cf-mm-back')) || rows[0]);
     if ((k === 'ArrowLeft' || k === 'ArrowRight') && row.hasAttribute('data-group')) {
-      // move inside an option group and select
+      // move inside an option group: selects it (radio groups) or just moves (toggle groups: Enter / Space toggles)
       const btns = [...row.querySelectorAll('button')];
       const i = btns.indexOf(a);
       const next = btns[clamp(i + (k === 'ArrowRight' ? 1 : -1), 0, btns.length - 1)];
       if (next && next !== a) {
         next.focus();
-        next.click();
+        if (row.hasAttribute('data-multi')) this._sfx('ui_hover');
+        else next.click();
       }
       return;
+    }
+    // the leaderboard table scrolls with Up / Down first, then hands focus on
+    if (row === this.$main.lb.rows && (k === 'ArrowUp' || k === 'ArrowDown')) {
+      const down = k === 'ArrowDown';
+      if (down ? row.scrollTop + row.clientHeight < row.scrollHeight - 1 : row.scrollTop > 0) {
+        row.scrollTop += down ? 44 : -44;
+        return;
+      }
     }
     const i = rows.indexOf(row);
     const next = rows[clamp(i + (k === 'ArrowDown' || k === 'ArrowRight' ? 1 : -1), 0, rows.length - 1)];
@@ -614,27 +902,29 @@ export class Menu {
     for (const b of M.diffs) {
       b.classList.toggle('sel', b.dataset.diff === c.difficulty);
       const d = DIFFICULTIES.find((x) => x.id === b.dataset.diff);
-      b.querySelector('[data-diff-sub]').textContent = mode.endless ? d.horde : `${d.rounds} ROUNDS`;
+      b.querySelector('[data-diff-sub]').textContent = mode.endless ? '' : `${d.rounds} ROUNDS`;
     }
-    for (const b of M.teams) b.classList.toggle('sel', Number(b.dataset.team) === c.teammates);
-    M.roster.innerHTML =
-      c.teammates === 0
-        ? '<span class="solo">Going in alone. Every kill is yours, so is every mistake.</span>'
-        : this._bots
-            .slice(0, c.teammates)
-            .map((n) => `<span>${HELMET}${esc(n)}</span>`)
-            .join('');
+    // fireteam cards
+    const team = normalizeFireteam(c.fireteam) ?? [];
+    for (const b of M.mates) {
+      const on = team.includes(b.dataset.mate);
+      b.classList.toggle('sel', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
+    for (const b of M.teamSets) b.classList.toggle('sel', b.dataset.teamSet === 'all' ? team.length === FIRETEAM.length : !team.length);
 
     // briefing
     M.briefT.innerHTML = `${mode.name} <em>·</em> ${diff.name}`;
     M.briefD.textContent = `${mode.desc} ${mode.endless ? diff.edesc : diff.desc}`;
     const unlocks = unlocksFor(mode.id, diff.id);
+    const names = team.map((id) => FIRETEAM_BY_ID[id].name.toUpperCase());
     const facts = [
       ['ROUNDS', mode.endless ? '∞' : String(diff.rounds)],
       ['TIME LIMIT', mode.endless ? 'NONE' : `${diff.minutes}:00`],
       ['FLOORS', unlocks.length ? unlocks.map((u) => `${u.name} R${u.round}`).join(' · ') : 'GROUND FLOOR ONLY', 'wide'],
+      [team.length ? `FIRETEAM · YOU + ${team.length}` : 'FIRETEAM', team.length ? names.join(' · ') : 'SOLO · NO BACKUP', 'wide'],
     ];
-    M.facts.innerHTML = facts.map(([k, v, cls]) => `<span class="${cls || ''}"><small>${k}</small><b>${v}</b></span>`).join('');
+    M.facts.innerHTML = facts.map(([k, v, cls]) => `<span class="${cls || ''}"><small>${k}</small><b>${esc(v)}</b></span>`).join('');
     const last = mode.endless ? Infinity : diff.rounds;
     M.threats.innerHTML =
       '<div class="cf-mm-threats-h">THREAT TIMELINE</div>' +
@@ -811,12 +1101,16 @@ export class Menu {
             <div class="cf-stat cf-stat-score"><label>FINAL SCORE</label><b class="cf-e-score">000000</b></div>
             <div class="cf-stat"><label>KILLS</label><b class="cf-e-kills">0</b></div>
             <div class="cf-stat"><label>HEADSHOTS</label><b class="cf-e-hs">0</b></div>
+            <div class="cf-stat"><label>ACCURACY</label><b class="cf-e-acc">—</b></div>
             <div class="cf-stat"><label class="cf-e-rounds-l">ROUNDS SURVIVED</label><b class="cf-e-rounds">00/00</b></div>
             <div class="cf-stat"><label>TIME</label><b class="cf-e-time">00:00</b></div>
           </div>
+          <div class="cf-end-rank" hidden><b></b><span></span></div>
+          <div class="cf-end-team"></div>
           <p class="cf-end-epi">Prolonged exposure to the toxic gas has consequences...</p>
           <div class="cf-end-btns">
             <button class="cf-btn cf-btn-primary" data-sfx data-act="again"><span>PLAY AGAIN</span></button>
+            <button class="cf-btn" data-sfx data-act="board"><span>LEADERBOARD</span></button>
             <button class="cf-btn" data-sfx data-act="menu"><span>MAIN MENU</span></button>
           </div>
         </div>
@@ -835,6 +1129,11 @@ export class Menu {
       rounds: q('.cf-e-rounds'),
       roundsLbl: q('.cf-e-rounds-l'),
       time: q('.cf-e-time'),
+      acc: q('.cf-e-acc'),
+      rank: q('.cf-end-rank'),
+      rankT: q('.cf-end-rank b'),
+      rankS: q('.cf-end-rank span'),
+      team: q('.cf-end-team'),
     };
     q('.cf-end-btns').addEventListener('click', (e) => {
       const b = e.target.closest('[data-act]');
@@ -842,6 +1141,14 @@ export class Menu {
       if (b.dataset.act === 'again') {
         this._call('onPlayAgain');
         if (this._current === 'end') this._show(null);
+      } else if (b.dataset.act === 'board') {
+        // back to the menu, straight onto this run's board with the run highlighted
+        this._call('onQuit');
+        if (this._current === 'end') {
+          const B = this._endBoard ?? this._lb;
+          this._lb = { mode: B.mode, difficulty: B.difficulty };
+          this.showMain('leaderboard');
+        }
       } else {
         this._call('onQuit');
         if (this._current === 'end') this.showMain();

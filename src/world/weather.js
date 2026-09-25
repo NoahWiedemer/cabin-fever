@@ -79,17 +79,19 @@ void main() {
   float len = 0.45 + aSeed.w * 0.35;
   vec3 dir = normalize(vec3(0.9 * 0.08, -1.0, 0.35 * 0.08));
   vec3 wp = p - dir * len * position.y;
-  // camera-facing width
+  // camera-facing width, never thinner than ~1 px (far drops would alias away), dimmed to match
   vec3 toCam = normalize(uCam - wp);
   vec3 side = normalize(cross(dir, toCam));
-  wp += side * position.x * 0.012;
-  vA = 1.0;
+  float camDist = length(uCam - wp);
+  float w = max(0.012, camDist * 0.0012);
+  wp += side * position.x * w;
+  vA = 0.012 / w;
   if (inRect(p.xz, uRoofA) && p.y < 9.5) vA = 0.0;
   if (inRect(p.xz, uRoofB) && p.y < 3.2) vA = 0.0;
   if (inRect(p.xz, uRoofC) && p.y < 3.3) vA = 0.0;
   if (p.y < -0.6) vA = 0.0;
   float dist = length(wp - uCam);
-  vA *= smoothstep(0.6, 2.5, dist) * (1.0 - smoothstep(12.0, 18.0, dist));
+  vA *= smoothstep(1.5, 4.5, dist) * (1.0 - smoothstep(16.0, 26.0, dist)); // no fat streaks right at the lens
   vV = position.y;
   gl_Position = projectionMatrix * viewMatrix * vec4(wp, 1.0);
 }
@@ -102,7 +104,7 @@ uniform float uBright;
 void main() {
   if (vA < 0.01) discard;
   float a = vA * (1.0 - vV) * vV * 4.0;
-  gl_FragColor = vec4(vec3(0.55, 0.62, 0.72) * a * (uBright + uFlash * 1.8), 1.0);
+  gl_FragColor = vec4(vec3(0.55, 0.62, 0.72) * a * (uBright + uFlash * 0.45), 1.0);
 }
 `;
 
@@ -334,6 +336,7 @@ export class Weather {
       transparent: true,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide, // the streak quads wind away from the camera: single-sided they were all culled
     });
     this.rain = new THREE.Mesh(rg, this.rainMat);
     this.rain.frustumCulled = false;
@@ -479,7 +482,8 @@ export class Weather {
   update(dt, camPos, lightning, fogColor, dawn = 0) {
     this.time += dt;
     this.skyMat.uniforms.uDawn.value = dawn;
-    this.rainMat.uniforms.uBright.value = 0.5 * (1 - dawn * 0.7);
+    // additive streaks go through bloom + AgX: a little goes a long way
+    this.rainMat.uniforms.uBright.value = 0.065 * (1 - dawn * 0.7);
     const t = this.time;
     this.skyMat.uniforms.uTime.value = t;
     this.skyMat.uniforms.uFlash.value = lightning;

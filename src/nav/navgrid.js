@@ -22,6 +22,10 @@ export class NavGrid {
     this.navBlocks = navBlocks;
     this.agentR = opts.agentRadius ?? 0.3;
     this.maxStep = opts.maxStep ?? 0.5;
+    // optional extra cost (in cells) of entering a cell, Infinity = closed (world/barricades.js):
+    // `cost` for the default field the infected follow, `fieldCost` for makeField fields (bots)
+    this.cost = null;
+    this.fieldCost = null;
     this.rasterize();
     // portal lookup
     this.portalAt = new Map();
@@ -177,8 +181,9 @@ export class NavGrid {
   }
 
   /** sources: [{level, x, z, y}] — compute distance field from all of them. */
-  compute(sources, distArr = null) {
+  compute(sources, distArr = null, cost = this.cost) {
     const dist = distArr || this.dist;
+    const C = cost || (this._zero ??= new Float32Array(this.N));
     dist.fill(Infinity);
     this.heapSize = 0;
     for (const s of sources) {
@@ -197,6 +202,12 @@ export class NavGrid {
     }
     const nx = this.nx, per = this.per, walk = this.walk;
     const D = Math.SQRT2;
+    const relax = (j, nd) => {
+      if (nd < dist[j]) {
+        dist[j] = nd;
+        this._push(j, nd);
+      }
+    };
     while (this.heapSize > 0) {
       const i = this._pop();
       const d = dist[i];
@@ -213,15 +224,15 @@ export class NavGrid {
       const E = ix < nx - 1 && walk[i + 1] && Math.abs(FY[i + 1] - fy) < MS;
       const S = iz > 0 && walk[i - nx] && Math.abs(FY[i - nx] - fy) < MS;
       const Nn = iz < this.nz - 1 && walk[i + nx] && Math.abs(FY[i + nx] - fy) < MS;
-      if (W && d + 1 < dist[i - 1]) { dist[i - 1] = d + 1; this._push(i - 1, d + 1); }
-      if (E && d + 1 < dist[i + 1]) { dist[i + 1] = d + 1; this._push(i + 1, d + 1); }
-      if (S && d + 1 < dist[i - nx]) { dist[i - nx] = d + 1; this._push(i - nx, d + 1); }
-      if (Nn && d + 1 < dist[i + nx]) { dist[i + nx] = d + 1; this._push(i + nx, d + 1); }
+      if (W) relax(i - 1, d + 1 + C[i - 1]);
+      if (E) relax(i + 1, d + 1 + C[i + 1]);
+      if (S) relax(i - nx, d + 1 + C[i - nx]);
+      if (Nn) relax(i + nx, d + 1 + C[i + nx]);
       // diagonals (no corner cutting)
-      if (W && S && walk[i - nx - 1] && Math.abs(FY[i - nx - 1] - fy) < MS && d + D < dist[i - nx - 1]) { dist[i - nx - 1] = d + D; this._push(i - nx - 1, d + D); }
-      if (E && S && walk[i - nx + 1] && Math.abs(FY[i - nx + 1] - fy) < MS && d + D < dist[i - nx + 1]) { dist[i - nx + 1] = d + D; this._push(i - nx + 1, d + D); }
-      if (W && Nn && walk[i + nx - 1] && Math.abs(FY[i + nx - 1] - fy) < MS && d + D < dist[i + nx - 1]) { dist[i + nx - 1] = d + D; this._push(i + nx - 1, d + D); }
-      if (E && Nn && walk[i + nx + 1] && Math.abs(FY[i + nx + 1] - fy) < MS && d + D < dist[i + nx + 1]) { dist[i + nx + 1] = d + D; this._push(i + nx + 1, d + D); }
+      if (W && S && walk[i - nx - 1] && Math.abs(FY[i - nx - 1] - fy) < MS) relax(i - nx - 1, d + D + C[i - nx - 1]);
+      if (E && S && walk[i - nx + 1] && Math.abs(FY[i - nx + 1] - fy) < MS) relax(i - nx + 1, d + D + C[i - nx + 1]);
+      if (W && Nn && walk[i + nx - 1] && Math.abs(FY[i + nx - 1] - fy) < MS) relax(i + nx - 1, d + D + C[i + nx - 1]);
+      if (E && Nn && walk[i + nx + 1] && Math.abs(FY[i + nx + 1] - fy) < MS) relax(i + nx + 1, d + D + C[i + nx + 1]);
       // portals
       const ps = this.portalAt.get(i);
       if (ps) {
@@ -342,11 +353,11 @@ export class NavGrid {
   /** Separate distance field toward fixed sources (e.g. a defensive post). */
   makeField(sources) {
     const arr = new Float32Array(this.N);
-    this.compute(sources, arr);
+    this.compute(sources, arr, this.fieldCost);
     return {
       dist: arr,
       steer: (level, x, z, out) => this.steer(level, x, z, out, arr),
-      recompute: () => this.compute(sources, arr),
+      recompute: () => this.compute(sources, arr, this.fieldCost),
     };
   }
 }

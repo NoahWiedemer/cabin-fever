@@ -6,7 +6,10 @@ import { Lighting } from '../world/lighting.js';
 import { Weather } from '../world/weather.js';
 import { NavGrid } from '../nav/navgrid.js';
 import { ZombieManager, ZOMBIE_TYPES, PART_MULT } from '../actors/zombie.js';
+import '../actors/biter.js'; // registers the Biter class with the zombie manager
+import { LatchView } from '../fx/latchView.js';
 import { Teammate } from '../actors/teammate.js';
+import { FIRETEAM, LEGACY_LINEUPS, normalizeFireteam } from '../actors/fireteam.js';
 import { prebuildCharacters } from '../actors/rig.js';
 import { Effects } from '../fx/effects.js';
 import { Player } from '../player/player.js';
@@ -16,7 +19,7 @@ import { WEAPONS, SPECIAL_SPAWNS } from '../player/weaponDefs.js';
 import { Projectiles } from './projectiles.js';
 import { Pickups } from './pickups.js';
 import { Economy, killReward, roundBonus } from './economy.js';
-import { MODES } from './modes.js';
+import { MODES, UPSTAIRS_ROUND } from './modes.js';
 import { GAS_MASK, maskCapacity } from './shop.js';
 import { FLAG_NOBULLET, SURF } from '../world/collision.js';
 import { Shake, clamp, rand, pick, damp } from '../core/utils.js';
@@ -25,11 +28,13 @@ import { preloadGLBs } from '../core/assets.js';
 import { GLB_URLS } from '../core/assetList.js';
 import { addLandmarks } from '../world/landmarks.js';
 import { buildGunShop } from '../world/gunshop.js';
+import { Barricades } from '../world/barricades.js';
 
 const DIFF = {
-  easy: { label: 'EASY', rounds: 10, hp: 0.8, dmg: 0.65, count: 0.75, time: 30 * 60, speed: 0.95 },
-  hard: { label: 'HARD', rounds: 15, hp: 1.0, dmg: 1.0, count: 1.0, time: 45 * 60, speed: 1.0 },
-  extreme: { label: 'EXTREME', rounds: 20, hp: 1.2, dmg: 1.25, count: 1.25, time: 60 * 60, speed: 1.06 },
+  // biters: share of Biter packs in a wave, pack: largest Biter pack
+  easy: { label: 'EASY', rounds: 10, hp: 0.8, dmg: 0.65, count: 0.75, time: 30 * 60, speed: 0.95, biters: 0.6, pack: 4 },
+  hard: { label: 'HARD', rounds: 15, hp: 1.0, dmg: 1.0, count: 1.0, time: 45 * 60, speed: 1.0, biters: 1, pack: 5 },
+  extreme: { label: 'EXTREME', rounds: 20, hp: 1.2, dmg: 1.25, count: 1.25, time: 60 * 60, speed: 1.06, biters: 1.25, pack: 5 },
 };
 
 const _hit = {};
@@ -111,23 +116,25 @@ export class Game {
     await preloadGLBs(GLB_URLS, (f) => progress?.(0.78 + f * 0.04, 'Loading models'));
     addLandmarks(scene);
     this.gunshop = buildGunShop(scene, this.level, this.world);
+    this.barricades = new Barricades(this, scene);
 
     await step(0.82, 'Infecting soldiers');
     prebuildCharacters();
     this.fx = new Effects(scene, this.world, this.lighting, this.audio);
     this.zombies = new ZombieManager(this, scene);
     this.zombies.prewarm();
+    this.latchView = new LatchView(this); // first person with a Biter on your back
     this.weather.onDripSplash = (p) => this.fx.dripSplash(p);
 
     await step(0.88, 'Cleaning weapons');
     this.player = new Player(this, this.camera);
     this.viewmodel = new Viewmodel(scene);
-    this.viewmodel.prewarm(['m4a1', 'm4super90', 'm9', 'knife', 'm67']);
+    this.viewmodel.prewarm(['m4a1', 'm4super90', 'm9', 'knife', 'm67', 'barricade']);
     this.weapons = new WeaponSystem(this, this.player, this.viewmodel);
     this.projectiles = new Projectiles(this, scene);
     this.pickups = new Pickups(this, scene);
-    this.bots = [];
-    for (let i = 0; i < 3; i++) {
+    this.bots = []; // one per fireteam.js character (fixed body + signature gun); start() spawns the picked ones
+    for (let i = 0; i < FIRETEAM.length; i++) {
       const b = new Teammate(this, i);
       b.hide();
       scene.add(b.root);
@@ -291,15 +298,15 @@ export class Game {
     }
 
     this.player.spawn(this.level.playerSpawn, Math.PI);
-    this.player.stats = { kills: 0, deaths: 0, headshots: 0, score: 0 };
+    this.player.stats = { kills: 0, deaths: 0, headshots: 0, score: 0, shots: 0, hits: 0 };
     this.weapons.reset(config.primary || 'm4a1');
     this.team = [this.player];
-    const n = clamp(config.teammates ?? 3, 0, 3);
-    for (let i = 0; i < 3; i++) {
-      const b = this.bots[i];
-      if (i < n) {
-        const sp = this.level.defensePosts[i + 1].pos.clone();
-        b.spawn(sp, Math.PI);
+    // exactly the picked characters; old saves / debug configs may still give a count
+    const picked = normalizeFireteam(config.fireteam) ?? LEGACY_LINEUPS[clamp(Math.round(config.teammates ?? 3), 0, 3)];
+    let k = 0;
+    for (const b of this.bots) {
+      if (picked.includes(b.id)) {
+        b.spawn(this._botSpawn(k++), Math.PI);
         b.stats = { kills: 0, deaths: 0, headshots: 0, score: 0 };
         this.team.push(b);
       } else b.hide();
@@ -312,10 +319,57 @@ export class Game {
     this.maskActive = false;
     this.maskBreathT = 0;
     this.gunshop?.setOpen(false);
+    this.barricades?.reset();
     if (this.endless) this.hud.banner('ENDLESS · CABIN FEVER', 'No extraction is coming. Hold out as long as you can', 3.2, 'normal');
     else this.hud.banner('FIRETEAM · CABIN FEVER', 'Hold the farmhouse until extraction arrives', 3.2, 'normal');
     this.audio.startAmbience();
     this._updateNav(true);
+  }
+
+  /** k-th bot's start spot: the defense posts after the player's; past those, a clear spot next to one */
+  _botSpawn(k) {
+    const posts = this.level.defensePosts;
+    const n = Math.max(1, posts.length - 1);
+    const p = posts[1 + (k % n)]?.pos.clone() ?? this.level.playerSpawn.clone();
+    if (k < n) return p;
+    for (let i = 0; i < 8; i++) {
+      const a = k * 2.4 + (i * Math.PI) / 4;
+      const x = p.x + Math.cos(a) * 0.9, z = p.z + Math.sin(a) * 0.9;
+      const g = this.world.groundHeight(x, z, 0.3, p.y + 0.3);
+      if (Math.abs(g - p.y) < 0.1 && this.world.lineOfSight(p.x, p.y + 1, p.z, x, g + 1, z)) return new THREE.Vector3(x, g, z);
+    }
+    return p;
+  }
+
+  /** Stats of a run abandoned mid-way (null before round 1 or once it is over): the leaderboard keeps those too. */
+  quitStats() {
+    if (!this.running || !(this.round >= 1) || this.state === 'victory' || this.state === 'defeat') return null;
+    return this.runStats('quit');
+  }
+
+  /** What the end screen and the local leaderboard record about the current run. */
+  runStats(outcome) {
+    const ps = this.player.stats;
+    const shots = ps.shots ?? 0;
+    return {
+      outcome, // 'victory' | 'overrun' | 'timeout' | 'quit'
+      victory: outcome === 'victory',
+      mode: this.mode.id,
+      endless: this.endless,
+      difficulty: Object.keys(DIFF).find((k) => DIFF[k] === this.diff) ?? 'hard',
+      score: this.score,
+      kills: ps.kills,
+      headshots: ps.headshots,
+      shots,
+      hits: ps.hits ?? 0,
+      accuracy: shots > 0 ? Math.min(1, (ps.hits ?? 0) / shots) : null,
+      rounds: outcome === 'victory' ? this.round : Math.max(0, this.round - 1),
+      roundReached: this.round,
+      maxRounds: this.endless ? null : this.maxRounds,
+      timeSeconds: Math.round(this.elapsed),
+      fireteam: this.team.filter((m) => !m.isPlayer).map((m) => m.id),
+      team: this.team.filter((m) => !m.isPlayer).map((m) => ({ id: m.id, name: m.name, kills: m.stats.kills, deaths: m.stats.deaths })),
+    };
   }
 
   quit() {
@@ -343,7 +397,9 @@ export class Game {
     const chargers = r >= 2 ? Math.max(1, Math.round(total * 0.11)) : 0;
     for (let i = 0; i < chargers; i++) list.push('charger');
     const dogs = r >= 3 ? Math.max(2, Math.round(total * 0.18)) : 0;
-    while (list.length < total - dogs) list.push('mauler');
+    // Biters from round 4, in packs of 3-5 (rarer and at most 4 to a pack on easy)
+    const biters = r >= 4 ? Math.max(3, Math.round(total * Math.min(0.16, 0.08 + (r - 4) * 0.01) * (d.biters ?? 1))) : 0;
+    while (list.length < total - dogs - biters) list.push('mauler');
     // shuffle, but keep crushers in the second half of the wave
     for (let i = list.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
@@ -353,6 +409,19 @@ export class Game {
     for (let left = dogs; left > 0; ) {
       const n = left <= 3 ? left : 2 + (Math.random() < 0.5 ? 1 : 0);
       list.splice(Math.floor(Math.random() * (list.length + 1)), 0, ...Array(n).fill('dog'));
+      left -= n;
+    }
+    const maxPack = d.pack ?? 5;
+    for (let left = biters; left > 0; ) {
+      let n = Math.min(left, 3 + Math.floor(Math.random() * (maxPack - 2)));
+      if (left - n > 0 && left - n < 3) n = left - 3 >= 3 ? left - 3 : left; // no stragglers under 3
+      let i = 0; // not inside a dog pack, not touching another Biter pack (_spawnOne releases a whole run)
+      for (let k = 0; k < 12; k++) {
+        i = Math.floor(Math.random() * (list.length + 1));
+        const nb = (t) => t === 'biter' || t === 'crusher'; // crushers are sorted out below: they can't separate packs
+        if (!nb(list[i - 1]) && !nb(list[i]) && !(list[i - 1] === 'dog' && list[i] === 'dog')) break;
+      }
+      list.splice(i, 0, ...Array(n).fill('biter'));
       left -= n;
     }
     list.sort((a, b) => (a === 'crusher' ? 1 : 0) - (b === 'crusher' ? 1 : 0));
@@ -372,7 +441,7 @@ export class Game {
     this.roundTotal = this.toSpawn.length;
     this.spawnT = 1.5;
     this.hud.setCountdown(null);
-    let sub = this.round === 3 ? 'Mutant dogs are hunting in packs' : this.round === 5 ? 'Strikers have joined the horde' : this.round === 11 ? 'Crushers incoming — watch for the acid' : this.round === this.maxRounds ? 'Final wave — survive until dawn' : 'The infected are coming';
+    let sub = this.round === 3 ? 'Mutant dogs are hunting in packs' : this.round === 4 ? 'Biters hunt in packs · mash V to shake one off your back' : this.round === 5 ? 'Strikers have joined the horde' : this.round === 11 ? 'Crushers incoming — watch for the acid' : this.round === this.maxRounds ? 'Final wave — survive until dawn' : 'The infected are coming';
     const milestone = this.endless && this.round > 20 && this.round % 5 === 0;
     if (milestone) sub = 'The horde grows stronger';
     this.hud.banner(`ROUND ${this.round}`, sub, 3, this.round === this.maxRounds || milestone ? 'danger' : 'normal');
@@ -441,13 +510,13 @@ export class Game {
         this.audio.play('wood_creak', { volume: 1 });
       }, 3300);
     }
-    if (next >= 16 && this.maxRounds >= 20 && !this.unlocked.upstairs) {
+    if (next >= UPSTAIRS_ROUND && !this.unlocked.upstairs) {
       this.unlocked.upstairs = true;
       this.level.unlock('upstairsBarricade');
       for (const p of this.level.portals) if (p.id === 'upstairs') p.enabled = true;
       this.postFields.clear();
       this.shopNews.push('THE UPSTAIRS IS OPEN');
-      setTimeout(() => this.hud.banner('THE UPSTAIRS IS OPEN', 'Watch the stairs', 3, 'danger'), 3300);
+      setTimeout(() => this.hud.banner('THE UPSTAIRS IS OPEN', 'A special weapon waits upstairs · the balcony overlooks the yard · watch the stairs', 3.5, 'danger'), 3300);
     }
   }
 
@@ -513,18 +582,7 @@ export class Game {
     this.audio.play(victory ? 'victory' : 'defeat', { volume: 1 });
     const sub = victory ? 'Extraction arrived at dawn' : this.endless ? `Your fireteam fell in round ${this.round}` : 'Your fireteam was overrun';
     this.hud.banner(victory ? 'MISSION COMPLETE' : 'MISSION FAILED', sub, 4, victory ? 'success' : 'danger');
-    this.onGameOver?.({
-      victory,
-      mode: this.mode.id,
-      endless: this.endless,
-      score: this.score,
-      kills: this.player.stats.kills,
-      headshots: this.player.stats.headshots,
-      rounds: victory ? this.round : Math.max(0, this.round - 1),
-      roundReached: this.round,
-      maxRounds: this.endless ? null : this.maxRounds,
-      timeSeconds: Math.round(this.elapsed),
-    });
+    this.onGameOver?.(this.runStats(victory ? 'victory' : !this.endless && this.timeLeft <= 0 ? 'timeout' : 'overrun'));
   }
 
   _spawnOne(type) {
@@ -546,10 +604,10 @@ export class Game {
     const hpMult = this.diff.hp * (1 + 0.065 * (r - 1));
     const spd = this.diff.speed * (1 + 0.01 * Math.min(r - 1, 30));
     this.zombies.spawn(type, pos, r, hpMult, spd);
-    // the rest of a dog pack queued right behind comes in with its leader
-    while (type === 'dog' && this.toSpawn[0] === 'dog' && this.zombies.aliveCount < this.maxAlive) {
+    // the rest of a dog / Biter pack queued right behind comes in with its leader
+    while ((type === 'dog' || type === 'biter') && this.toSpawn[0] === type && this.zombies.aliveCount < this.maxAlive) {
       this.toSpawn.shift();
-      this.zombies.spawn('dog', best.clone().add(new THREE.Vector3(rand(-2, 2), 0.05, rand(-2, 2))), r, hpMult, spd);
+      this.zombies.spawn(type, best.clone().add(new THREE.Vector3(rand(-2, 2), 0.05, rand(-2, 2))), r, hpMult, spd);
     }
   }
 
@@ -557,7 +615,11 @@ export class Game {
   hitscan(origin, dir, def, shooter, opts = {}) {
     const maxT = 160;
     const wall = this.world.raycast(origin.x, origin.y, origin.z, dir.x, dir.y, dir.z, maxT, bulletFilter, _hit);
-    const wallT = wall ? wall.t : maxT;
+    let wallT = wall ? wall.t : maxT;
+    // the shop clerk stops a bullet like a wall would, but flinches and ducks instead of taking damage
+    const keeper = this.gunshop?.keeper;
+    const kHit = keeper && origin.y < -0.5 ? keeper.raycast(origin, dir, wallT) : null;
+    if (kHit) wallT = kHit.t;
     const wallBox = wall ? wall.box : null;
     const wn = wall ? _n.set(wall.nx, wall.ny, wall.nz).clone() : null;
     const hits = this.zombies.raycastAll(origin, dir, wallT);
@@ -593,7 +655,12 @@ export class Game {
       mul *= 0.65;
     }
     const end = new THREE.Vector3().copy(origin).addScaledVector(dir, endT);
-    if (!stoppedByZombie && wall) {
+    if (!stoppedByZombie && kHit) {
+      keeper.hit(kHit.part, dir);
+      // no decals: they'd be static in the world while she moves (and she isn't wounded)
+      this.fx.bloodHit(end, dir, { amount: 0.3, decals: false });
+      this.audio.play('impact_flesh', { position: end, volume: 0.55 });
+    } else if (!stoppedByZombie && wall) {
       this.fx.impact(end, wn, wallBox.surface, { silent: opts.pellet > 1 || opts.bot && Math.random() < 0.6 });
     }
     if (opts.tracerFrom) {
@@ -639,6 +706,7 @@ export class Game {
       this.shake.add(0.12);
       return;
     }
+    if (this.barricades?.melee(eye, fwd, range, damage)) return; // hacking at a barricade
     const hit = this.world.raycast(eye.x, eye.y, eye.z, fwd.x, fwd.y, fwd.z, range, bulletFilter, _hit);
     if (hit) {
       const pt = eye.clone().addScaledVector(fwd, hit.t);
@@ -715,6 +783,7 @@ export class Game {
 
   explode(pos, radius, damage, source, opts = {}) {
     this.fx.explosion(pos, opts.scale ?? 1);
+    this.barricades?.explosion(pos, radius, damage, source, opts);
     // camera shake by distance
     const dp = this.player.pos.distanceTo(pos);
     this.shake.add(clamp(1.2 - dp / 22, 0, 1) * (opts.scale ?? 1));
@@ -728,7 +797,7 @@ export class Game {
       const k = Math.max(0, 1 - d / radius);
       const dmg = damage * (0.25 + 0.75 * k) * (los ? 1 : 0.3) * (zombie.typeName === 'crusher' ? 0.8 : 1.25);
       const dir = zombie.pos.clone().sub(pos).setY(0.3).normalize();
-      const res = zombie.damage(dmg, 'torso', dir, source, { weapon: opts.weapon ?? 'explosion', explosion: true });
+      const res = zombie.damage(dmg, 'torso', dir, source, { weapon: opts.weapon ?? 'explosion', explosion: true, blast: k });
       zombie.body.vel.addScaledVector(dir, 6 * k / (zombie.type.mass ?? 1));
       if (source && source.isPlayer) {
         this.hitAccum += res.dealt ?? 0;
@@ -770,6 +839,7 @@ export class Game {
       const immediate = info.dynamiteShot || info.selfDestruct || info.explosion;
       const pos = z.pos.clone();
       const boom = () => {
+        z.ragdoll?.anchor(pos); // a thrown Boomer pops where its body is now
         this.explode(pos, 4.8, 170, info.selfDestruct ? null : src, { scale: 1.1, weapon: 'charger' });
         this.fx.gore(pos.clone().add(new THREE.Vector3(0, 1.0, 0)), 1);
         z.deactivate();
@@ -789,9 +859,9 @@ export class Game {
         z.removed = true;
       }, 300);
     }
-    if (z.typeName !== 'charger') this.fx.bloodPoolAt(z.pos);
+    if (z.typeName !== 'charger' && !z.ragdoll) this.fx.bloodPoolAt(z.pos); // ragdolls pool where they land
     this.audio.play(z.typeName === 'crusher' ? 'crusher_roar' : 'zombie_death', { position: z.pos, volume: 0.8, pitch: z.typeName === 'crusher' ? 0.7 : 1 });
-    if (!info.selfDestruct) setTimeout(() => this.audio.play('bodyfall', { position: z.pos, volume: 0.7 }), 650);
+    if (!info.selfDestruct && !z.ragdoll) setTimeout(() => this.audio.play('bodyfall', { position: z.pos, volume: 0.7 }), 650);
 
     // drops
     const r = Math.random();
@@ -822,7 +892,7 @@ export class Game {
       src.stats.kills++;
       if (headshot) src.stats.headshots++;
       src.stats.score += Math.round(z.type.score * mult);
-      this.hud.addKill({ killer: src.name, victim, weapon: 'M4A1', headshot });
+      this.hud.addKill({ killer: src.name, victim, weapon: src.weaponName ?? 'M4A1', headshot });
     } else if (info.selfDestruct) {
       this.hud.addKill({ killer: victim, victim: 'Self', weapon: 'EXPLOSION', headshot: false });
     }
@@ -955,6 +1025,7 @@ export class Game {
     this.projectiles.update(dt);
     this.pickups.update(dt, player, input.locked ? input : null);
     this.level.update(dt);
+    this.barricades?.update(dt, player.alive && input.locked ? input : null);
     this.gunshop?.update(dt, this);
 
     // defeat check: entire team down
@@ -997,6 +1068,7 @@ export class Game {
     if (player.alive) {
       this.viewmodel.update(dt, { camera: this.camera, vmCamera: this.gr.vmCamera, player, weapons: this.weapons, mouseDX: input.dx, mouseDY: input.dy });
     }
+    this.latchView?.update(dt);
 
     // combo timer & score popups for hits
     this.comboT -= dt;
@@ -1087,6 +1159,7 @@ export class Game {
         reserve: info.reserve,
         grenades: w.grenades,
         molotovs: w.molotovs,
+        barricades: w.barricades,
         cash: this.economy.cash(player),
         showAmmo: info.showAmmo && w.def.mode !== 'grenade',
         reloading: info.reloading,
@@ -1111,9 +1184,10 @@ export class Game {
     // buy phase: panel, hold-to-ready ring, shop prompt and a waypoint to the cellar stairs
     const buy = this.state === 'shop';
     hud.setBuyPhase?.(buy && !this.shopOpen ? { next: this.round + 1, gunshop: !!this.gunshop } : null);
-    hud.setHold?.(buy && this.fHold != null && this.fHold > 0.15 ? this.fHold / READY_HOLD : null);
+    const readyHold = buy && this.fHold != null && this.fHold > 0.15;
+    hud.setHold?.(readyHold ? this.fHold / READY_HOLD : this.barricades?.hold ?? null, readyHold ? null : this.barricades?.holdLabel);
     const canShop = this.canShop();
-    hud.setInteract?.(canShop && this.gunshop ? 'Press [F] to open the GUN SHOP' : null);
+    hud.setInteract?.(canShop && this.gunshop ? 'Press [F] to open the GUN SHOP' : this.barricades?.prompt ?? null);
     let wp = null;
     const ent = this.gunshop?.entrance;
     if (buy && !this.shopOpen && ent && player.alive && !canShop && ent.distanceTo(player.pos) > 2.5) {

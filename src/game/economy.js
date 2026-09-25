@@ -1,17 +1,17 @@
 // Team economy: every fireteam member (player + bots) has an own wallet, but every payout goes
 // to all of them in equal amounts (a teammate's kill pays you the same as your own).
-// Bots spend their cash on damage upgrades for their rifle between rounds.
+// Bots spend their cash on damage upgrades for their signature gun between rounds.
 
 export const ECON = {
   start: 500,
-  kill: { mauler: 60, charger: 90, boomer: 90, striker: 80, crusher: 400, dog: 70 },
+  kill: { mauler: 60, charger: 90, boomer: 90, striker: 80, crusher: 400, dog: 70, biter: 75 },
   killDefault: 60,
   headshot: 20,
   roundBase: 250,
   roundPer: 50,
 };
 
-// bot rifle damage upgrades (max one level per buy phase): cost of level n+1, damage gain per level
+// bot signature-gun damage upgrades (max one level per buy phase): cost of level n+1, damage gain per level
 export const BOT_DMG = { costs: [800, 1500, 2400, 3500, 5000], perLevel: 0.12 };
 
 export function killReward(typeName, headshot) {
@@ -77,7 +77,7 @@ export class Economy {
     for (const w of this.wallets.values()) w.round = { kills: 0, bonus: 0, count: 0 };
   }
 
-  /** Each bot buys its next rifle damage level if it can afford it. Returns [{ bot, level }]. */
+  /** Each bot buys its next damage level for its signature gun if it can afford it. Returns [{ bot, level }]. */
   botsShop() {
     const bought = [];
     for (const [m, w] of this.wallets) {

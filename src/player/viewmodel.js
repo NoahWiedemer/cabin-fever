@@ -209,9 +209,15 @@ export class Viewmodel {
     this.drawT = state === 'quick' ? 0.6 : 0;
     this.anim = null;
     this._resetParts(m);
-    // long guns: move the elbows until forearm and hand line up (no kinked wrists); pistols are held
-    // close to the face, where a straight forearm would lift the elbow into view
-    if (this.arms?.config?.straighten) this.arms.config.alignWrist = def.slot === 1 ? 0.5 : { right: 0.9, left: 0.8 };
+    if (this.arms?.config?.straighten) {
+      const c = this.arms.config, pistol = def.slot === 1;
+      // long guns: move the elbows until forearm and hand line up (no kinked wrists); pistols are held
+      // close to the face, where a straight forearm would lift the elbow into view
+      c.alignWrist = pistol ? 0.5 : { right: 0.9, left: 0.8 };
+      // pistols: the support arm comes up steeply from below, so only the cupping hand shows
+      c.shoulders.left.set(...(pistol ? [-0.06, -0.62, 0.02] : [-0.14, -0.34, 0.05]));
+      c.poles.left.set(...(pistol ? [-0.2, -1, 0.15] : [-1, -0.55, 0]));
+    }
     // attach flash & proxies
     if (m.muzzle) m.muzzle.add(this.flashGroup);
     if (m.rag) m.rag.add(this.ragFlame);
@@ -583,6 +589,26 @@ export class Viewmodel {
         if (f > 0.14) m.root.visible = f > 0.45; // grenade leaves the hand
         pos.y -= smoothstep(0.25, 0.45, f) * 0.3;
       }
+    } else if (def.mode === 'build' && weapons.buildT != null) {
+      // nailing a barricade (world/barricades.js): the planks are pressed to the doorway and the
+      // hammer winds up, strikes at 72 % of each beat (the nail sound) and recoils
+      const t = weapons.buildT;
+      const k = smoothstep(0, 0.15, t);
+      pos.x -= 0.03 * k;
+      pos.y += 0.035 * k;
+      pos.z -= 0.07 * k;
+      rx += 0.14 * k;
+      const S = weapons.buildStrike ?? 0.3;
+      const f = (t % S) / S;
+      const swing = f < 0.62 ? smoothstep(0, 0.62, f) : f < 0.74 ? 1 - 1.25 * smoothstep(0.62, 0.74, f) : -0.25 * (1 - smoothstep(0.74, 1, f));
+      if (P.hammer && m.rest.hammer) {
+        P.hammer.rotation.x = m.rest.hammer.rot.x + swing * 0.6 * k;
+        P.hammer.position.y = m.rest.hammer.pos.y + swing * 0.04 * k;
+        P.hammer.position.z = m.rest.hammer.pos.z + swing * 0.02 * k;
+      }
+      if (P.bundle && m.rest.bundle) P.bundle.position.z = m.rest.bundle.pos.z - 0.05 * k;
+      pos.y -= pulse(f, 0.72, 0.75, 0.75, 0.86) * 0.006 * k; // the blow jolts the hands
+      m.root.visible = true;
     } else if (st === 'idle') {
       m.root.visible = true;
     }

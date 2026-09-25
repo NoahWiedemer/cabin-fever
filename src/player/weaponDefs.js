@@ -120,6 +120,11 @@ export const WEAPONS = {
     damage: 55, radius: 3.0, fireTime: 7, throwSpeed: 13.5, moveMul: 1.05,
     hip: [0.15, -0.3, -0.44], hipRot: [-0.4, 0.25, -0.12], drawTime: 0.3,
   },
+  barricade: {
+    // store kit, slot 5 (world/barricades.js): hold fire at a doorway to nail planks across it
+    id: 'barricade', name: 'BARRICADE KIT', slot: 4, model: 'barricade', mode: 'build', moveMul: 1.0,
+    hip: [0.17, -0.18, -0.4], hipRot: [0.04, 0.06, 0], drawTime: 0.35,
+  },
   m32: {
     id: 'm32', name: 'M32 MGL', slot: 0, model: 'm32', mode: 'semi', rpm: 150,
     projectile: 'grenade40', damage: 330, radius: 5.5, velocity: 46, pellets: 1, penetration: 0,
@@ -152,6 +157,6 @@ export const WEAPONS = {
 export const SPECIAL_SPAWNS = [
   { round: 11, weapon: 'l96a1', spot: 'l96a1', banner: 'L96A1 BLACK-MAGNUM', where: 'in the basement' },
   { round: 13, weapon: 'm32', spot: 'm32', banner: 'M32 MGL', where: 'on the kitchen table' },
-  { round: 16, weapon: 'goldenPunisher', spot: 'goldenPunisher', banner: 'GOLDEN PUNISHER', where: 'upstairs by the bathroom' },
+  { round: 7, weapon: 'goldenPunisher', spot: 'goldenPunisher', banner: 'GOLDEN PUNISHER', where: 'upstairs by the bathroom' }, // with the upstairs (modes.js UPSTAIRS_ROUND)
   { round: 19, weapon: 'chaingun', spot: 'chaingun', banner: 'CHAIN GUN', where: 'in the living room' },
 ];

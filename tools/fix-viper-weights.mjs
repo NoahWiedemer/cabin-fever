@@ -16,14 +16,17 @@
 //
 //   node tools/fix-viper-weights.mjs          # reads Viper_orig.glb (backs up Viper.glb on first run), writes Viper.glb
 //   node tools/fix-viper-weights.mjs --dry    # report only
+//   node tools/fix-viper-weights.mjs --model zombie   # any other UniRig character in assets/source
+//   ... --out /tmp/x.glb                               # write elsewhere (to inspect the result first)
 // then: node tools/optimize-assets.mjs viper
 import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { copyFileSync, existsSync } from 'node:fs';
 import * as THREE from 'three';
 
-const SRC = 'assets/source/Viper.glb';
-const ORIG = 'assets/source/Viper_orig.glb';
+const MODEL = process.argv.includes('--model') ? process.argv[process.argv.indexOf('--model') + 1] : 'Viper';
+const SRC = `assets/source/${MODEL}.glb`;
+const ORIG = `assets/source/${MODEL}_orig.glb`;
 const dry = process.argv.includes('--dry');
 
 if (!existsSync(ORIG) && !dry) {
@@ -66,7 +69,7 @@ const subtree = (i) => [i, ...kids(i).flatMap(subtree)];
 const leaves = joints.map((_, i) => i).filter((i) => !kids(i).length);
 const lo = Math.min(...JP.map((p) => p.y)), hi = Math.max(...JP.map((p) => p.y)), H = hi - lo;
 
-const legBones = new Set(), armLow = new Set(), knees = [], palms = [];
+const legBones = new Set(), armLow = new Set(), knees = [], palms = [], handJoints = [];
 const lowest = (sx) => leaves.filter((i) => JP[i].x * sx > 0).sort((a, b) => JP[a].y - JP[b].y)[0];
 const legRoot = common(lowest(1), lowest(-1));
 for (const sx of [1, -1]) {
@@ -80,14 +83,16 @@ for (const sx of [1, -1]) {
 path(legRoot).forEach((i) => legBones.add(i)); // pelvis: never drives a hand
 const tip = (sx) => leaves.filter((i) => JP[i].y > lo + 0.35 * H).sort((a, b) => (JP[b].x - JP[a].x) * sx)[0];
 const chestRoot = common(tip(1), tip(-1));
+// clavicles: decided for both sides at once (the Biter's right one sits a little further out than its left)
+const hasClav = [1, -1].some((sx) => Math.abs(JP[below(chestRoot, tip(sx))[0]].x - JP[chestRoot].x) < 0.045 * H);
 for (const sx of [1, -1]) {
   const c = below(chestRoot, tip(sx));
-  let k = 0;
-  if (Math.abs(JP[c[0]].x - JP[chestRoot].x) < 0.045 * H) k++; // clavicle
+  const k = hasClav ? 1 : 0;
   const far = (from, s) => c.findIndex((i, j) => j >= s && JP[i].distanceTo(JP[c[from]]) > 0.09 * H);
   const fore = far(k, k + 1), hand = fore < 0 ? -1 : far(fore, fore + 1);
   if (hand < 0) throw new Error('arm chain');
   subtree(c[fore]).forEach((i) => armLow.add(i)); // forearm, hand, palm, fingers
+  handJoints.push(...subtree(c[hand])); // wrist, palm, fingers: palm-distance seeds
   let palm = c[hand];
   while (kids(palm).length === 1) palm = kids(palm)[0];
   palms.push(palm);
@@ -177,8 +182,10 @@ function geodesic(seeds) {
     return top;
   };
   for (const s of seeds) {
-    D.set(s, 0);
-    push([0, s]);
+    const [d0, v0] = Array.isArray(s) ? s : [0, s];
+    if (d0 >= (D.get(v0) ?? Infinity)) continue;
+    D.set(v0, d0);
+    push([d0, v0]);
   }
   while (heap.length) {
     const [d, u] = pop();
@@ -192,9 +199,58 @@ function geodesic(seeds) {
   }
   return D;
 }
-const seedsNear = (bones, r) => verts.filter((i) => bones.some((b) => P[i].distanceTo(JP[b]) < r));
-const dPalm = geodesic(seedsNear(palms, 0.018 * H));
-const dKnee = geodesic(seedsNear(knees, 0.06 * H));
+// seeds: the vertices within r of each joint plus its `min` nearest (a joint can sit deeper inside the mesh
+// than r: the Biter's hand tip is ~3 cm under the skin, which left one arm without seeds and unclassified)
+const seedsNear = (bones, r, min = 8) => [
+  ...new Set(
+    bones.flatMap((b) => {
+      const near = verts.filter((i) => P[i].distanceTo(JP[b]) < r);
+      return near.length >= min ? near : verts.slice().sort((a, c) => P[a].distanceTo(JP[b]) - P[c].distanceTo(JP[b])).slice(0, min);
+    })
+  ),
+];
+// connected surface pieces: the body plus loose islands (gloves, wrist cuffs, belt pouches, straps)
+const compOf = new Map(), comps = [];
+for (const s of verts) {
+  if (compOf.has(s)) continue;
+  const c = [s];
+  compOf.set(s, comps.length);
+  for (let k = 0; k < c.length; k++) for (const w of adj.get(c[k]).keys()) if (!compOf.has(w)) compOf.set(w, comps.length), c.push(w);
+  comps.push(c);
+}
+// Surface distance from the seeds. An island the surface walk can't reach is attached as a whole through its
+// closest contact with the pieces reached so far (a pouch through the belt it sits on, a glove through the
+// sleeve it is tucked into) and continues from there; the tightest contact is attached first.
+function surfaceDistance(seeds) {
+  const D = geodesic(seeds);
+  const pending = new Map(); // comp -> { gap², inner, outer }
+  const closest = (cv, against, cur) => {
+    for (const i of cv) for (const u of against) {
+      const d = P[i].distanceToSquared(P[u]);
+      if (d < cur.gap) (cur.gap = d), (cur.inner = i), (cur.outer = u);
+    }
+    return cur;
+  };
+  const reached = verts.filter((i) => D.has(i));
+  comps.forEach((cv, k) => {
+    if (!D.has(cv[0])) pending.set(k, closest(cv, reached, { gap: Infinity, inner: -1, outer: -1 }));
+  });
+  while (pending.size) {
+    let k = -1;
+    for (const [c, b] of pending) if (k < 0 || b.gap < pending.get(k).gap) k = c;
+    const b = pending.get(k);
+    pending.delete(k);
+    if (b.outer < 0) continue;
+    for (const [i, d] of geodesic([[D.get(b.outer) + Math.sqrt(b.gap), b.inner]])) D.set(i, d);
+    for (const [c, bc] of pending) closest(comps[c], comps[k], bc);
+  }
+  return D;
+}
+// palm seeds + the few vertices nearest every wrist / finger joint (always the hand's own outer surface, also
+// when a glove's inner layer is what lies closest to the palm joint; no radius, so a hand resting against a
+// thigh can't seed the thigh)
+const dPalm = surfaceDistance([...new Set([...seedsNear(palms, 0.018 * H), ...seedsNear(handJoints, 0, 6)])]);
+const dKnee = surfaceDistance(seedsNear(knees, 0.06 * H));
 
 // ---- strip + fill
 const W0 = new Map(verts.map((i) => [i, influences(i)]));
@@ -228,6 +284,19 @@ const strip = (m, bad) => {
 // x = (1 - f) * own clean weights + f * mean of the neighbours: vertices that were mostly arm take their
 // weights from the surrounding thigh / pelvis, lightly touched ones keep their own mix (Gauss-Seidel)
 const own = new Map([...forbidden].map(([i, bad]) => [i, strip(W0.get(i), bad)]));
+// a vertex left with nothing (a loose cuff or pouch weighted 100 % to the hand, whose neighbours are all
+// stripped too) starts from the weights of the nearest clean vertex and blends with its neighbours
+const clean = verts.filter((i) => !forbidden.has(i));
+for (const [i, bad] of forbidden) {
+  if (own.get(i).size) continue;
+  let best = Infinity, bu = -1;
+  for (const u of clean) {
+    const d = P[i].distanceToSquared(P[u]);
+    if (d < best && ![...W0.get(u).keys()].some((j) => bad.has(j))) (best = d), (bu = u);
+  }
+  if (bu >= 0) own.set(i, strip(W0.get(bu), bad));
+  frac.set(i, 0.5);
+}
 const X = new Map(own);
 const weightsOf = (i) => X.get(i) ?? W0.get(i);
 for (let it = 0; it < 300; it++) {
@@ -272,8 +341,9 @@ console.log(`leg vertices with forearm/hand/finger weight: ${stats.legVerts} · 
 console.log(`largest stripped share ${(stats.maxCut * 100).toFixed(0)} % · ${changed} vertex records rewritten`);
 console.log('affected region (bind pose, m):', ['min', 'max'].map((k) => stats.box[k].toArray().map((x) => x.toFixed(2)).join(' ')).join(' .. '));
 console.log('stripped influences per bone:', Object.entries(stats.cut).sort((a, b) => b[1] - a[1]).map(([k, c]) => `${k}×${c}`).join(' '));
+const OUT = process.argv.includes('--out') ? process.argv[process.argv.indexOf('--out') + 1] : SRC;
 if (dry) console.log('--dry: nothing written');
 else {
-  await io.write(SRC, doc);
-  console.log(`wrote ${SRC}`);
+  await io.write(OUT, doc);
+  console.log(`wrote ${OUT}`);
 }

@@ -53,6 +53,7 @@ export class Player {
     this.stats = { kills: 0, deaths: 0, headshots: 0, score: 0 };
     this.lastY = 0;
     this.flashlight = false;
+    this.latchedBy = null; // a Biter clinging to your back (biter.js): slower, no sprint, no ADS
   }
 
   get pos() {
@@ -78,6 +79,7 @@ export class Player {
     this.recoilYaw = 0;
     this.punchFov = 0;
     this.punchRoll = 0;
+    this.latchedBy = null;
   }
 
   /**
@@ -110,7 +112,8 @@ export class Player {
       dmg -= absorbed;
     }
     this.hp -= dmg;
-    this.damageFlash = Math.min(1, this.damageFlash + 0.35 + amount / 60);
+    // opts.quiet: steady damage ticks (a Biter's bites) skip the grunt and flash only lightly
+    this.damageFlash = Math.min(1, this.damageFlash + (opts.quiet ? 0.12 : 0.35) + amount / 60);
     if (fromPos) {
       const a = Math.atan2(fromPos.x - this.pos.x, fromPos.z - this.pos.z);
       // relative to view: 0 = in front
@@ -119,7 +122,7 @@ export class Player {
       this.game.hud?.damage(-rel, amount);
     }
     this.game.shake.add(Math.min(0.5, amount / 50));
-    if (Math.random() < 0.7) this.game.audio.play('player_hurt', { volume: 0.8 });
+    if (!opts.quiet && Math.random() < 0.7) this.game.audio.play('player_hurt', { volume: 0.8 });
     if (this.hp <= 0) {
       this.hp = 0;
       this.alive = false;
@@ -201,9 +204,10 @@ export class Player {
     const fw = (input.down('KeyW') ? 1 : 0) - (input.down('KeyS') ? 1 : 0);
     const st = (input.down('KeyD') ? 1 : 0) - (input.down('KeyA') ? 1 : 0);
     // Shift sprints (+40%) while moving and standing
-    const sprinting = (input.down('ShiftLeft') || input.down('ShiftRight')) && (fw !== 0 || st !== 0) && !this.crouching && !this.noSprint;
+    const sprinting = (input.down('ShiftLeft') || input.down('ShiftRight')) && (fw !== 0 || st !== 0) && !this.crouching && !this.noSprint && !this.latchedBy;
     this.sprinting = sprinting;
     let speed = this.crouching ? 2.0 : 5.1 * (sprinting ? 1.4 : 1);
+    if (this.latchedBy) speed *= 0.6;
     speed *= weapons?.def?.moveMul ?? 1;
     if (weapons && weapons.ads > 0.5) speed *= 0.72;
     const sin = Math.sin(this.yaw), cos = Math.cos(this.yaw);
