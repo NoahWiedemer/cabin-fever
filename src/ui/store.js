@@ -218,7 +218,7 @@ export class Store {
       cash: q('.cf-st-cash'),
       spent: q('.cf-st-spent'),
       toast: q('.cf-st-toast'),
-      cats: [...root.querySelectorAll('[data-cat]')],
+      cats: [...root.querySelectorAll('.cf-st-cat')],
       list: q('.cf-st-list'),
       detail: q('.cf-st-detail'),
       stage: q('.cf-st-stage'),
@@ -665,7 +665,9 @@ export class Store {
 
   _onClick(e) {
     if (!this.isOpen || !this.game) return;
-    const cat = e.target.closest('[data-cat]');
+    // the tab buttons only: the item list also carries data-cat (for styling), so a bare [data-cat]
+    // match swallowed every card click as a no-op tab switch
+    const cat = e.target.closest('.cf-st-cat');
     if (cat) return this._setTab(cat.dataset.cat);
     const card = e.target.closest('.cf-st-card');
     if (card) return this._select(card.dataset.k);
