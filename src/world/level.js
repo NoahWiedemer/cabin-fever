@@ -13,6 +13,7 @@ import { LevelBuilder } from './levelBuilder.js';
 import { CollisionWorld, SURF, FLAG_NOBULLET, FLAG_NAVIGNORE } from './collision.js';
 import { buildProp, clearPropCache } from './propsSafe.js';
 import { getMaterial } from './materials.js';
+import { buildStairCage } from './stairCage.js';
 
 export const FLOOR = { basement: -3.2, ground: 0, upper: 3.45, outside: -0.5 };
 // ruined chapel on the horizon (src/world/landmarks.js); the porch keeps a clear view of it
@@ -286,45 +287,9 @@ export function buildLevel() {
 
   // hallway stairs up (rising toward -z from z=1.8 to z=-4.2)
   B.stairs({ axis: 'z', x0: 0.96, x1: 2.31, s0: 1.8, s1: -4.2, yBottom: 0, yTop: FLOOR.upper, steps: 17, solid: true, mat: 'woodBeam', riser: 'woodPainted', side: 'plaster' });
-  // stair handrail + newel posts
-  {
-    const len = Math.hypot(6.0, FLOOR.upper);
-    const ang = Math.atan2(FLOOR.upper, 6.0);
-    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, len), getMaterial('woodBeam'));
-    rail.position.set(0.93, FLOOR.upper / 2 + 0.95, -1.2);
-    rail.rotation.x = ang;
-    rail.castShadow = true;
-    rail.receiveShadow = true;
-    B.staticGroup.add(rail);
-    const postGeo = new THREE.BoxGeometry(0.035, 0.9, 0.035);
-    const pmat = getMaterial('woodPainted');
-    for (let i = 0; i < 17; i++) {
-      if (i % 2 === 1) continue;
-      const z = 1.8 - (i + 0.5) * (6.0 / 17);
-      const y = (i + 1) * (FLOOR.upper / 17);
-      const p = new THREE.Mesh(postGeo, pmat);
-      p.position.set(0.93, y + 0.45, z);
-      p.castShadow = true;
-      B.staticGroup.add(p);
-    }
-    B.box(0.86, 0, 1.72, 1.02, 1.2, 1.88, { mat: 'woodBeam', surface: SURF.wood, grime: 0 });
-    // thin collider along the rail so nobody falls off the open side
-    world.add(0.9, 0, -4.2, 0.96, FLOOR.upper + 1.0, 1.6, SURF.wood, FLAG_NOBULLET | FLAG_NAVIGNORE);
-  }
-  // Upstairs barricade on the lower stairs (removed when upstairs opens)
-  {
-    const g = new THREE.Group();
-    const bw = buildProp('boardedWindow', { w: 1.35, h: 1.9, seed: 42 });
-    bw.object.position.set(1.63, 0.95 + 0.4, 1.2);
-    g.add(bw.object);
-    const deb = buildProp('debrisPile', { seed: 5 });
-    deb.object.position.set(1.6, 0.4, 1.35);
-    deb.object.scale.setScalar(0.7);
-    g.add(deb.object);
-    dynamic.add(g);
-    const col = world.add(0.96, 0, 0.9, 2.31, 2.6, 1.5, SURF.wood, FLAG_NAVIGNORE, 'upstairsBarricade');
-    unlockables.upstairsBarricade = { group: g, colliders: [col], open: false, t: 0 };
-  }
+  // steel cage round the flight (bar grille + upstairs railing) with a locked grille door at the foot
+  // of the stairs; it swings open when the upstairs unlocks (stairCage.js)
+  unlockables.upstairsBarricade = { ...buildStairCage({ staticGroup: B.staticGroup, dynamic, world, floorUpper: FLOOR.upper, ceil1: CEIL1 }), open: false, t: 0 };
 
   // Ground floor posts & beams (living room girder with posts like the reference screenshots)
   for (const [px, pz] of [[-8.2, 3.5], [-4.6, 3.5], [7.0, 4.6]]) {
@@ -361,11 +326,7 @@ export function buildLevel() {
   ], uOpts);
   B.wall('x', 1, 2.49, WALLX1, FLOOR.upper, CEIL2, TI, [{ a: 8.0, b: 9.1, y0: FLOOR.upper, y1: FLOOR.upper + 2.15 }], uOpts);
   B.wall('z', 6.5, WALLZ0, 0.91, FLOOR.upper, CEIL2, TI, [], uOpts);
-  // stairwell railing upstairs (west + south side of the hole)
-  prop('railing', 0.9, FLOOR.upper, -4.2, -Math.PI / 2, { length: 6.0 }, { collide: false });
-  prop('railing', 0.96, FLOOR.upper, 1.86, 0, { length: 1.35 }, { collide: false });
-  world.add(0.86, FLOOR.upper, -4.2, 0.96, FLOOR.upper + 1.0, 1.9, SURF.wood, FLAG_NOBULLET);
-  world.add(0.96, FLOOR.upper, 1.8, 2.31, FLOOR.upper + 1.0, 1.92, SURF.wood, FLAG_NOBULLET);
+  // (stairwell railing upstairs: part of the steel stair cage, stairCage.js)
 
   // ------------------------------------------------------------------ porch, balcony, stoops
   // porch deck
