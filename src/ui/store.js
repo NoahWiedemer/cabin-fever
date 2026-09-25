@@ -3,15 +3,19 @@
  * the 3D item thumbnails and the live turntable preview; styles in store.css. All rules and prices
  * live in game/shop.js: this renders the game state and forwards clicks.
  *
- * Layout: header (close · title · wallet); the WEAPONS | EQUIPMENT bar over a card grid (EQUIPMENT in
- * two sections: CONSUMABLES and the wearable GEAR, game/gear.js); on the right the selected item: live
- * 3D preview, stat bars, upgrade tracks (weapons you own) / body slot and effects (gear) and one
- * buy / equip / upgrade button (with the weapon backpack worn, a primary also picks its slot there).
+ * Layout: header (close · title · wallet); the WEAPONS | EQUIPMENT | GEAR bar over a card grid, and
+ * on the right the selected item and one buy / equip / upgrade button.
+ *  - WEAPONS: live 3D preview, stat bars, upgrade tracks of the guns you own (akimbo for pistols);
+ *    with the weapon backpack worn a primary also picks its slot there.
+ *  - EQUIPMENT: the consumables (frags, Molotovs, barricade kits, kevlar, ammo), live preview + meter.
+ *  - GEAR: the wearable items of game/gear.js grouped by body slot (head → pocket); on the right the
+ *    paperdoll (ui/storeDoll.js) shows what you wear on each slot, and under it the selected item's
+ *    effects. Clicking a slot box picks that slot's items; an owned item goes back on for free.
  * Cards are built once per category and patched in place. Gear bits: ui/storeGear.js.
  *
- * Keys: Q / E or 1 / 2 category · arrows select · Enter buy (closes the shop when the selected item
- * has nothing to buy, unless you just bought something: no accidental close while maxing out frags)
- * · Esc / F close. A focused button (upgrade row, buy, close) takes Enter natively.
+ * Keys: Q / E or 1 / 2 / 3 category · arrows select · Enter buy / equip (closes the shop when the
+ * selected item has nothing to buy, unless you just bought something: no accidental close while maxing
+ * out frags) · Esc / F close. A focused button (upgrade row, buy, slot box, close) takes Enter natively.
  */
 import './store.css';
 import * as THREE from 'three';
@@ -22,8 +26,9 @@ import { buildBarricadeKit } from '../player/barricadeKit.js';
 import { buildProp } from '../world/propsSafe.js';
 import { gasMask, kevlarVest } from '../world/gearModels.js';
 import { ItemStage } from './itemStage.js';
-import { GEAR_POSES, gearModelBuilder, GEAR_ICON_PATHS, gearDetailHtml, packPickerHtml } from './storeGear.js';
-import { PACK_SLOT, SLOT_LABEL, ONE_PER_SLOT } from '../game/gear.js';
+import { GEAR_POSES, gearModelBuilder, GEAR_ICON_PATHS, gearDetailHtml, gearSlotTag, gearAltsHtml, packPickerHtml, slotIcon } from './storeGear.js';
+import { Paperdoll } from './storeDoll.js';
+import { PACK_SLOT, SLOT_LABEL, ONE_PER_SLOT, GEAR_SLOTS } from '../game/gear.js';
 import {
   MAX_LEVEL,
   shopWeapons,
@@ -142,9 +147,11 @@ function itemSvg(kind) {
   return `<svg viewBox="0 0 128 40" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="${p}"/></svg>`;
 }
 
+const svgBody = (svg) => svg.replace(/^<svg[^>]*>|<\/svg>$/g, '');
 const CAT_ICON = {
-  weapons: `<svg viewBox="4 3 120 34" aria-hidden="true">${weaponSvg('rifle').replace(/^<svg[^>]*>|<\/svg>$/g, '')}</svg>`,
-  equipment: `<svg viewBox="30 -2 68 42" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="${ITEM_PATHS.armor}"/></svg>`,
+  weapons: `<svg viewBox="4 3 120 34" aria-hidden="true">${svgBody(weaponSvg('rifle'))}</svg>`,
+  equipment: `<svg viewBox="46 3 32 36" aria-hidden="true">${svgBody(weaponSvg('grenade'))}</svg>`, // the frag
+  gear: slotIcon('head', ''), // the helmet
 };
 const LOCK_SVG =
   '<svg viewBox="0 0 12 14" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M3 6V4a3 3 0 0 1 6 0v2h1.2c.4 0 .8.4.8.8v6.4c0 .4-.4.8-.8.8H1.8c-.4 0-.8-.4-.8-.8V6.8c0-.4.4-.8.8-.8ZM4.6 6h2.8V4a1.4 1.4 0 0 0-2.8 0Z"/></svg>';
@@ -152,8 +159,9 @@ const UP_SVG = '<svg viewBox="0 0 10 10" aria-hidden="true"><path fill="currentC
 
 /* ------------------------------------------------------------------ stats */
 
-const CATS = ['weapons', 'equipment'];
-const CAT_LABEL = { weapons: 'WEAPONS', equipment: 'EQUIPMENT' };
+const CATS = ['weapons', 'equipment', 'gear'];
+const CAT_LABEL = { weapons: 'WEAPONS', equipment: 'EQUIPMENT', gear: 'GEAR' };
+const CAT_KEY = { w: 'weapons', e: 'equipment', g: 'gear' }; // item key prefix -> category
 const money = (n) => `$${fmtCash(n)}`;
 const c01 = (v) => Math.max(0.04, Math.min(1, v));
 
@@ -205,10 +213,13 @@ export class Store {
     this.game = null;
     this.isOpen = false;
     this.tab = 'weapons';
-    this.sel = { weapons: null, equipment: null };
+    this.sel = { weapons: null, equipment: null, gear: null };
+    this.slotFocus = null; // GEAR: the body slot picked on the paperdoll (its group stands out in the list)
     this._round = null;
     this._cash = null;
-    this.stage = new ItemStage({ isPaused: () => !!this.game?.paused });
+    // the live preview idles while the paperdoll stands in its place
+    this.stage = new ItemStage({ isPaused: () => !!this.game?.paused || this.tab === 'gear' });
+    this.doll = new Paperdoll();
 
     const root = (this.root = document.createElement('div'));
     root.className = 'cf-menu cf-store';
@@ -228,8 +239,9 @@ export class Store {
           <section class="cf-st-main">
             <nav class="cf-st-cats" role="tablist">
               <span class="cf-kc cf-st-cat-k">Q</span>
-              ${CATS.map((c) => `<button class="cf-st-cat" role="tab" data-sfx data-cat="${c}">${CAT_ICON[c]}<span>${CAT_LABEL[c]}</span></button>`).join('')}
+              ${CATS.map((c, i) => `<button class="cf-st-cat" role="tab" data-sfx data-cat="${c}" title="${CAT_LABEL[c]} (${i + 1})">${CAT_ICON[c]}<span>${CAT_LABEL[c]}</span></button>`).join('')}
               <span class="cf-kc cf-st-cat-k">E</span>
+              <span class="cf-st-cats-note">${ONE_PER_SLOT ? 'KEPT ALL MATCH · ONE WORN PER BODY SLOT' : 'KEPT ALL MATCH'}</span>
             </nav>
             <div class="cf-st-list"></div>
           </section>
@@ -258,6 +270,7 @@ export class Store {
       act: q('.cf-st-act'),
       close: q('.cf-st-close'),
     };
+    this.$.stage.after(this.doll.el); // GEAR: the paperdoll in the preview's place
 
     root.addEventListener('click', (e) => this._onClick(e));
     let last = null;
@@ -270,6 +283,10 @@ export class Store {
       this.$.detail.dataset.hl = u && !u.disabled ? u.dataset.key : '';
     });
     this.$.detail.addEventListener('mouseleave', () => (this.$.detail.dataset.hl = ''));
+    // the preview's purchase flash ends for good (the stage is hidden on GEAR: showing it again would replay it)
+    this.$.detail.addEventListener('animationend', (e) => {
+      if (e.animationName === 'cf-st-stage-flash') this.$.detail.classList.remove('flash');
+    });
     this.$.detail.addEventListener('focusin', (e) => {
       const u = e.target.closest?.('.cf-st-upg');
       this.$.detail.dataset.hl = u && !u.disabled ? u.dataset.key : '';
@@ -290,6 +307,8 @@ export class Store {
       this.pick = {}; // backpack slot picks (_packTarget)
     }
     this._cash = null;
+    this.slotFocus = null;
+    this.doll.reset();
     this.$.toast.className = 'cf-st-toast';
     this.root.classList.add('on');
     if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur?.();
@@ -297,6 +316,7 @@ export class Store {
       this.stage.attach(this.$.stage);
       this.stage.start();
     }
+    if (this.tab === 'gear') this.doll.ensureFigure();
     this._buildList();
     this._select(this._validSel(), true);
     this.render();
@@ -314,6 +334,12 @@ export class Store {
     if (this._warm) return;
     this._warm = true;
     this._bakeAll(1500);
+    // the GEAR paperdoll's figure: rendered once, in idle time too
+    setTimeout(() => {
+      const go = () => this.doll.ensureFigure();
+      if (typeof requestIdleCallback === 'function') requestIdleCallback(go, { timeout: 4000 });
+      else go();
+    }, 5000);
   }
 
   /** One baking loop at a time: the open category first, one item after another, never blocking. */
@@ -341,7 +367,8 @@ export class Store {
     if (!this.isOpen) return;
     const el = this.$.list.querySelector(`.cf-st-card[data-k="${k}"]`);
     if (el) this._patchCard(el);
-    if (k === this.sel[this.tab] && this.$.stage.classList.contains('wait')) this._placeholder(this._item(k));
+    if (this.tab === 'gear') this._renderDoll(); // a worn item's picture on its slot box
+    else if (k === this.sel[this.tab] && this.$.stage.classList.contains('wait')) this._placeholder(this._item(k));
   }
 
   /** Full refresh of the state-dependent bits (wallet, cards, detail). */
@@ -351,32 +378,42 @@ export class Store {
     const cash = g.economy.cash(g.player);
     if (this._cash == null) this._showCash(cash);
     else if (cash !== this._cash) this._tickCash(cash);
+    this.root.dataset.cat = this.tab; // store.css: panel width, preview vs paperdoll
     for (const b of this.$.cats) {
       const on = b.dataset.cat === this.tab;
       b.classList.toggle('on', on);
       b.setAttribute('aria-selected', on);
     }
     for (const el of this.$.list.querySelectorAll('.cf-st-card')) this._patchCard(el);
+    // GEAR: the slot picked on the paperdoll stands out, the other groups step back
+    for (const el of this.$.list.querySelectorAll('.cf-st-grp')) {
+      el.classList.toggle('focus', el.dataset.slot === this.slotFocus);
+      el.classList.toggle('dim', !!this.slotFocus && el.dataset.slot !== this.slotFocus);
+    }
     this._renderDetail();
   }
 
   /* ------------------------------------------------------------ items */
 
   _allItems() {
-    return [...this._items('weapons'), ...this._items('equipment')];
+    return CATS.flatMap((c) => this._items(c));
   }
 
+  /** A category's items in list order: weapons; the consumables; the gear by body slot (head → pocket). */
   _items(cat) {
     if (cat === 'weapons') {
       const ak = this.game?.weapons.akimbo;
       return shopWeapons().map((e) => ({ k: `w:${e.id}`, sk: ak?.has(e.id) ? `w:${e.id}:x2` : `w:${e.id}`, kind: 'weapon', e }));
     }
-    return shopEquipment().map((it) => ({ k: `e:${it.key}`, kind: 'gear', it }));
+    const sec = cat === 'gear' ? 'gear' : 'consumable';
+    const list = shopEquipment().filter((it) => itemSection(it) === sec);
+    if (sec === 'gear') list.sort((a, b) => GEAR_SLOTS.indexOf(a.slot) - GEAR_SLOTS.indexOf(b.slot)); // stable: store order within a slot
+    return list.map((it) => ({ k: `${cat[0]}:${it.key}`, kind: 'gear', it }));
   }
 
   _item(k) {
     if (!k) return null;
-    return this._items(k[0] === 'w' ? 'weapons' : 'equipment').find((i) => i.k === k) || null;
+    return this._items(CAT_KEY[k[0]] || 'equipment').find((i) => i.k === k) || null;
   }
 
   _model(item) {
@@ -433,9 +470,9 @@ export class Store {
       // gear: buy -> worn; owned but taken off -> EQUIP (free, on its body slot); worn -> its upgrade
       const u = it.upgrade;
       if (!s.owned) act = { label: 'BUY', cost: s.cost };
-      else if (s.equip) act = { label: 'EQUIP', cost: 0, slot: s.slotLabel };
+      else if (s.equip) act = { label: 'EQUIP', cost: 0, slot: it.slot };
       else if (!s.maxed) act = { label: `UPGRADE ${u.name}`, cost: s.cost };
-      else done = u ? 'MAXED' : 'EQUIPPED';
+      else done = u ? 'MAXED' : 'WORN';
       if (s.owned && u) chip = `${u.value(s.level)}`;
     } else {
       if (!s.maxed) act = { label: 'BUY', cost: it.price };
@@ -467,7 +504,9 @@ export class Store {
     let i = 0;
     const card = (it) => {
       const name = it.kind === 'weapon' ? WEAPONS[it.e.id].name : it.it.short ?? it.it.name;
-      const slot = it.kind === 'gear' && it.it.slot ? `<span class="cf-st-slotb">${SLOT_LABEL[it.it.slot]}</span>` : ''; // body slot
+      // gear: its body slot as an icon (+ WORN while it's on)
+      const sl = it.kind === 'gear' && it.it.slot;
+      const slot = sl ? `<span class="cf-st-slotb" title="${SLOT_LABEL[sl]}" aria-label="${SLOT_LABEL[sl]} SLOT">${slotIcon(sl)}<b>WORN</b></span>` : '';
       return `<button class="cf-st-card" data-sfx data-k="${it.k}" data-tk="${this._thumbKey(it)}" style="--i:${i++}">
         <span class="cf-st-card-pic">${this._pic(it)}</span>
         <span class="cf-st-chip"></span><span class="cf-st-x2" title="AKIMBO">×2</span>${slot}
@@ -481,15 +520,17 @@ export class Store {
         return list.length ? `<div class="cf-st-sec"><div class="cf-st-sec-h">${label}</div><div class="cf-st-grid">${list.map(card).join('')}</div></div>` : '';
       };
       html = sec(0, 'PRIMARY') + sec(1, 'SECONDARY');
+    } else if (this.tab === 'gear') {
+      // one group per body slot (head → pocket), each under its slot icon; the groups flow three cards wide
+      html = GEAR_SLOTS.map((sl) => {
+        const list = items.filter((it) => it.it.slot === sl);
+        if (!list.length) return '';
+        return `<div class="cf-st-grp" data-slot="${sl}" style="--n:${Math.min(3, list.length)}">
+          <div class="cf-st-sec-h cf-st-grp-h">${slotIcon(sl)}${SLOT_LABEL[sl]}</div><div class="cf-st-grid">${list.map(card).join('')}</div></div>`;
+      }).join('');
+      html = `<div class="cf-st-groups">${html}</div>`;
     } else {
-      // CONSUMABLES (stacked, used up) and GEAR (bought once, worn on a body slot)
-      const sec = (key, label, sub) => {
-        const list = items.filter((it) => itemSection(it.it) === key);
-        return list.length
-          ? `<div class="cf-st-sec" data-sec="${key}"><div class="cf-st-sec-h">${label}${sub ? `<small>${sub}</small>` : ''}</div><div class="cf-st-grid">${list.map(card).join('')}</div></div>`
-          : '';
-      };
-      html = sec('consumable', 'CONSUMABLES', '') + sec('gear', 'GEAR', ONE_PER_SLOT ? 'KEPT ALL MATCH · ONE PER BODY SLOT' : 'KEPT ALL MATCH');
+      html = `<div class="cf-st-sec"><div class="cf-st-sec-h">CONSUMABLES</div><div class="cf-st-grid">${items.map(card).join('')}</div></div>`;
     }
     const L = this.$.list;
     L.dataset.cat = this.tab;
@@ -517,6 +558,7 @@ export class Store {
     if (s.act?.cost) t = `<span class="cf-st-price">${s.act.label.startsWith('UPGRADE') ? UP_SVG : ''}${money(s.act.cost)}</span>`;
     else if (s.equipped) t = `<span class="cf-st-tag on">${s.where === PACK_SLOT ? 'BACKPACK' : 'EQUIPPED'}</span>`;
     else if (item.kind === 'weapon' || s.equip) t = '<span class="cf-st-tag">OWNED</span>'; // gear: owned, not worn
+    else if (s.done === 'WORN') t = ''; // gear: its slot badge says WORN
     else t = `<span class="cf-st-tag on">${s.done || 'OWNED'}</span>`;
     if (tag.innerHTML !== t) tag.innerHTML = t;
     const chip = el.querySelector('.cf-st-chip');
@@ -539,13 +581,8 @@ export class Store {
     this.$.fb.innerHTML = item ? this._pic(item) : '';
   }
 
-  _select(k, silent) {
-    if (!k) return;
-    const prev = this.sel[this.tab];
-    this.sel[this.tab] = k;
-    const item = this._item(k);
-    if (!item) return;
-    // live 3D preview once the model is prepared; its thumbnail (or icon) stands in until then
+  /** Live 3D preview once the model is prepared; its thumbnail (or icon) stands in until then. */
+  _preview(item, k) {
     const m = this._model(item);
     const $s = this.$.stage;
     const live = this.stage.ok && !!m;
@@ -561,6 +598,17 @@ export class Store {
         $s.classList.toggle('fb', !ok);
       });
     }
+  }
+
+  _select(k, silent) {
+    if (!k) return;
+    const prev = this.sel[this.tab];
+    this.sel[this.tab] = k;
+    const item = this._item(k);
+    if (!item) return;
+    // GEAR: picking an item of another slot lets go of the slot picked on the paperdoll
+    if (this.slotFocus && item.it?.slot !== this.slotFocus) this.slotFocus = null;
+    if (this.tab !== 'gear') this._preview(item, k);
     if (!silent && prev !== k) this._sfx('ui_click', 0.45);
     if (!silent) this.render();
   }
@@ -570,6 +618,7 @@ export class Store {
   _renderDetail() {
     const item = this._item(this.sel[this.tab]);
     const $ = this.$;
+    if (this.tab === 'gear') this._renderDoll();
     if (!item) {
       $.info.innerHTML = '';
       $.act.innerHTML = '';
@@ -580,17 +629,21 @@ export class Store {
     // the buy button: amber when actionable, red price when broke, muted when there's nothing to buy
     const a = s.act;
     const focused = document.activeElement?.classList?.contains('cf-st-buy');
-    // above the button: the backpack's primary-slot picker, or which worn gear this one would replace
+    // above the button: the backpack's primary-slot picker, which worn gear this one would replace, or
+    // (worn gear) the other items you own for its slot
     let pre = '';
+    const it = item.it;
     if (item.kind === 'weapon' && s.target != null) pre = packPickerHtml(this.game.weapons, item.e.id, s.target);
-    else if (item.kind === 'gear' && s.replaces && !s.worn) pre = `<div class="cf-st-act-hint">REPLACES <b>${esc(s.replaces)}</b> ON YOUR ${esc(s.slotLabel)} · YOU KEEP IT</div>`;
+    else if (it?.slot && s.replaces && !s.worn) pre = `<div class="cf-st-act-hint">REPLACES <b>${esc(s.replaces)}</b> ON YOUR ${esc(s.slotLabel)} · YOU KEEP IT</div>`;
+    else if (it?.slot && s.worn) pre = gearAltsHtml(it.slot, this._alts(it));
+    const done = it?.slot && s.worn ? (it.upgrade ? 'WORN · MAXED' : 'WORN') : s.done;
     $.act.innerHTML =
       pre +
       (a
         ? `<button class="cf-st-buy${s.afford ? '' : ' poor'}" data-sfx data-act="buy">
-          <span class="cf-st-buy-l">${a.label}</span>${a.slot ? `<span class="cf-st-buy-s">${esc(a.slot)}</span>` : ''}${a.cost ? `<span class="cf-st-buy-c">${money(a.cost)}</span>` : ''}<span class="cf-kc">ENTER</span>
+          <span class="cf-st-buy-l">${a.label}</span>${a.slot ? `<span class="cf-st-buy-s">${slotIcon(a.slot)}${SLOT_LABEL[a.slot]}</span>` : ''}${a.cost ? `<span class="cf-st-buy-c">${money(a.cost)}</span>` : ''}<span class="cf-kc">ENTER</span>
         </button>`
-        : `<button class="cf-st-buy off" disabled><span class="cf-st-buy-l">${s.done}</span><svg class="cf-st-tick" viewBox="0 0 12 10" aria-hidden="true"><path d="M1 5.2L4.3 8.5L11 1.5" fill="none" stroke="currentColor" stroke-width="2"/></svg></button>`);
+        : `<button class="cf-st-buy off" disabled><span class="cf-st-buy-l">${done}</span><svg class="cf-st-tick" viewBox="0 0 12 10" aria-hidden="true"><path d="M1 5.2L4.3 8.5L11 1.5" fill="none" stroke="currentColor" stroke-width="2"/></svg></button>`);
     if (focused) $.act.querySelector('.cf-st-buy:not(:disabled)')?.focus();
     // one-shot feedback on the freshly rendered controls: denied shake / bought flash
     const fx = this._fx;
@@ -670,6 +723,32 @@ export class Store {
     );
   }
 
+  /** The other gear you own for a slot (not worn now), for the one-click swaps under a worn item. */
+  _alts(it) {
+    const gear = this.game.gear;
+    return this._items('gear')
+      .filter((i) => i.it.slot === it.slot && i.it.key !== it.key && gear?.owns(i.it.key) && !gear.has(i.it.key))
+      .map((i) => ({ key: i.it.key, name: i.it.short ?? i.it.name }));
+  }
+
+  /** GEAR: fill the paperdoll's slot boxes (what's worn where) and light up the selected item's slot. */
+  _renderDoll() {
+    const gear = this.game?.gear;
+    const items = this._items('gear');
+    const slots = {};
+    const none = [];
+    for (const sl of GEAR_SLOTS) {
+      const list = items.filter((i) => i.it.slot === sl);
+      if (!list.length) none.push(sl);
+      const w = list.find((i) => gear?.has(i.it.key));
+      slots[sl] = w
+        ? { key: w.it.key, name: w.it.short ?? w.it.name, pic: this._pic(w), tk: this._thumbKey(w), alt: list.filter((i) => i !== w && gear.owns(i.it.key)).length }
+        : null;
+    }
+    const sel = this._item(this.sel.gear);
+    this.doll.update(slots, { hl: sel?.it.slot ?? null, focus: this.slotFocus, none });
+  }
+
   _gearInfo(item, s) {
     const it = item.it;
     let meter;
@@ -693,8 +772,8 @@ export class Store {
     } else {
       meter = `<div class="cf-st-meter"><em>RESERVES</em><span class="cf-st-meter-v"><b${s.maxed ? '' : ' class="nx"'}>${s.maxed ? 'FULL' : 'REFILL'}</b></span></div>`;
     }
-    const tag = it.slot && s.worn ? '<span class="cf-st-tag on">EQUIPPED</span>' : it.owned && s.owned ? `<span class="cf-st-tag${it.slot ? '' : ' on'}">OWNED</span>` : '';
-    return this._head(it.name, it.type, tag) + (it.slot ? gearDetailHtml(it, s) : '') + meter;
+    if (it.slot) return this._head(it.name, it.type, gearSlotTag(it, s)) + gearDetailHtml(it) + meter; // GEAR (under the paperdoll)
+    return this._head(it.name, it.type, '') + meter; // a consumable
   }
 
   /* ------------------------------------------------------------ wallet */
@@ -733,10 +812,40 @@ export class Store {
   _setTab(tab) {
     if (!CATS.includes(tab) || tab === this.tab) return;
     this.tab = tab;
+    this.slotFocus = null;
     this._sfx('ui_click', 0.5);
+    if (tab === 'gear') this.doll.ensureFigure();
     this._buildList();
     this._select(this._validSel(), true);
     this.render();
+  }
+
+  /**
+   * GEAR: a slot box on the paperdoll was clicked. Its group stands out in the list and the item worn
+   * there (else the slot's first) is selected, so its details and the other items you own for that slot
+   * show; clicking it again lets go. Nothing in stock for that slot: a shake and a note.
+   */
+  _onSlot(slot) {
+    const list = this._items('gear').filter((i) => i.it.slot === slot);
+    if (!list.length) {
+      this.doll.nope(slot);
+      this._feedback({ ok: false, msg: `NO ${SLOT_LABEL[slot] ?? ''} GEAR IN STOCK` });
+      return;
+    }
+    if (this.slotFocus === slot) {
+      this.slotFocus = null;
+      this._sfx('ui_click', 0.4);
+      this.render();
+      return;
+    }
+    this.slotFocus = slot;
+    const cur = this._item(this.sel.gear);
+    const pick = cur?.it.slot === slot ? cur : list.find((i) => this.game.gear?.has(i.it.key)) || list[0];
+    this._select(pick.k, true);
+    this._sfx('ui_click', 0.45);
+    this.render();
+    const grp = this.$.list.querySelector(`.cf-st-grp[data-slot="${slot}"]`);
+    grp?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }
 
   _close() {
@@ -768,6 +877,11 @@ export class Store {
     if (cat) return this._setTab(cat.dataset.cat);
     const card = e.target.closest('.cf-st-card');
     if (card) return this._select(card.dataset.k);
+    const slot = e.target.closest('.cf-st-ds'); // a paperdoll slot box
+    if (slot) {
+      if (e.detail) slot.blur(); // clicked: Enter keeps buying the selection (keyboard focus keeps it)
+      return this._onSlot(slot.dataset.slot);
+    }
     const b = e.target.closest('[data-act]');
     if (!b || b.disabled) return;
     const act = b.dataset.act;
@@ -785,6 +899,11 @@ export class Store {
     if (act === 'buy') res = this._buy();
     else if (act === 'upgrade') res = buyUpgrade(this.game, b.dataset.id, b.dataset.key);
     else if (act === 'akimbo') res = buyAkimbo(this.game, b.dataset.id);
+    else if (act === 'wear') {
+      // an owned alternative put on from under the worn item: it becomes the selection
+      res = buyEquipment(this.game, b.dataset.key);
+      if (res.ok) this.sel.gear = `g:${b.dataset.key}`;
+    }
     if (!res) return;
     this._feedback(res, act === 'upgrade' || act === 'akimbo' ? b.dataset.key : null);
     this.render();
@@ -820,15 +939,19 @@ export class Store {
       this.$.spent.textContent = `-${money(res.cost)}`;
     } else if (!res.ok && res.sound === 'dryfire') wl.classList.add('denied');
     if (res.ok) {
-      // purchase flash on the card and the preview
+      // purchase flash on the card and the preview (GEAR: on the item's slot box)
       const card = this.$.list.querySelector(`.cf-st-card[data-k="${this.sel[this.tab]}"]`);
-      for (const el of [card, this.$.detail]) {
+      const gear = this.tab === 'gear';
+      for (const el of [card, gear ? null : this.$.detail]) {
         if (!el) continue;
         el.classList.remove('flash');
         void el.offsetWidth;
         el.classList.add('flash');
       }
-      this.stage.pop();
+      if (gear) {
+        const sl = this._item(this.sel.gear)?.it.slot;
+        if (sl) this.doll.flash(sl);
+      } else this.stage.pop();
       if (upgKey) this._fx = { ok: true, key: upgKey };
     } else if (res.sound === 'dryfire') {
       this._fx = { ok: false, key: upgKey };
@@ -906,8 +1029,8 @@ export class Store {
     } else if (k === 'KeyF' || k === 'Escape') {
       e.preventDefault();
       this._close();
-    } else if (k === 'Digit1' || k === 'Numpad1' || k === 'Digit2' || k === 'Numpad2') {
-      this._setTab(CATS[Number(k.slice(-1)) - 1]);
+    } else if (/^(Digit|Numpad)[1-9]$/.test(k)) {
+      this._setTab(CATS[Number(k.slice(-1)) - 1]); // 1 / 2 / 3: WEAPONS / EQUIPMENT / GEAR
     } else if (k === 'KeyQ' || k === 'KeyE') {
       const i = CATS.indexOf(this.tab) + (k === 'KeyQ' ? -1 : 1);
       this._setTab(CATS[(i + CATS.length) % CATS.length]);

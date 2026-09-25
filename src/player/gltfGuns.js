@@ -58,6 +58,16 @@ const BAKED = {
     left: { palm: [0.25, 1, 0], index: [0, 0, -1], data: { rx: 0.036, rz: 0.03, curl: 0.8, thumb: 0.15 } },
     eyeBack: 0.075, // behind the peep; the top spike of the brake is the front post
   },
+  p90: {
+    prefix: 'p90',
+    parts: ['mag'], // lies on top of the receiver under the rail
+    magTop: true, // reload lifts it up and off instead of dropping it out of a well
+    shellType: 'pistol',
+    // near-vertical grip bar in front of the thumbhole; the support hand wraps the curved front grip
+    right: { palm: [-1, 0, 0], index: [0, Math.cos(10 * DEG), -Math.sin(10 * DEG)], data: { rx: 0.017, rz: 0.02, curl: 1, trigger: true, thumb: 0.7 } },
+    left: { palm: [1, 0, 0], index: [0, Math.cos(15 * DEG), -Math.sin(15 * DEG)], data: { rx: 0.016, rz: 0.013, curl: 1.05, thumb: 0.55 } },
+    eyeBack: 0.1, // the sight line clears the solid rear sight block: the front post sits in its notch
+  },
   mozambique: {
     prefix: 'mozambique',
     parts: [],
@@ -190,6 +200,7 @@ function buildBaked(id, spec, gltf) {
   root.updateMatrixWorld(true);
   const res = { root, muzzle, ejectPort, rightHand, leftHand, sight: { eye }, parts, shellType: spec.shellType };
   if (spec.pumpStroke) res.pumpStroke = spec.pumpStroke;
+  if (spec.magTop) res.magTop = true;
   if (src.getObjectByName(`${spec.prefix}_loadPort`)) res.loadPort = at('loadPort');
   if (src.getObjectByName(`${spec.prefix}_rag`)) {
     res.rag = new THREE.Object3D();

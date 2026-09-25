@@ -473,13 +473,36 @@ export class Viewmodel {
     } else if (a && a.kind === 'mag' && st === 'reload') {
       const f = clamp(a.t / a.dur, 0, 1);
       const tilt = pulse(f, 0.0, 0.15, 0.82, 1.0);
-      rz -= tilt * 0.38; // roll right: magwell turns toward the support hand
-      rx += tilt * 0.22; // muzzle up
+      if (m.magTop) {
+        rz += tilt * 0.3; // roll left: the magazine on top turns toward the support hand
+        rx += tilt * 0.12;
+      } else {
+        rz -= tilt * 0.38; // roll right: magwell turns toward the support hand
+        rx += tilt * 0.22; // muzzle up
+      }
       ry += tilt * 0.12;
       pos.x -= tilt * 0.05;
       pos.y += tilt * 0.03;
       const isPistol = def.id === 'm9';
-      if (P.mag && m.rest.mag) {
+      if (P.mag && m.rest.mag && m.magTop) {
+        // top-loaded (P90): slide the magazine back out from under the rail, swing it away down to the
+        // left and let it fall; the fresh one comes back the same way and slides home
+        const t = f < 0.34 ? smoothstep(0.1, 0.3, f) : 1 - smoothstep(0.34, 0.55, f);
+        const slide = smoothstep(0, 0.5, t);
+        const carry = smoothstep(0.5, 1, t);
+        const r = m.rest.mag.pos;
+        P.mag.position.set(r.x - 0.15 * carry, r.y + 0.012 * slide - 0.2 * carry, r.z + 0.17 * slide);
+        if (f < 0.34 && t >= 0.6 && !a.dropped) {
+          a.dropped = true;
+          this.dropMag(P.mag, def.model);
+        }
+        P.mag.visible = f >= 0.34 || !a.dropped;
+        leftBlend = pulse(f, 0.06, 0.12, 0.56, 0.66);
+        this.leftProxy.position.copy(P.mag.position);
+        this.leftProxy.position.x -= 0.025; // palm on the magazine's left flank
+        this.leftProxy.quaternion.copy(m.leftHand ? m.leftHand.quaternion : _q.identity());
+        if (f > 0.26 && f < 0.36) this.leftProxy.position.y -= 0.12; // grab a fresh one off-screen
+      } else if (P.mag && m.rest.mag) {
         const out = smoothstep(0.1, 0.28, f);
         const back = smoothstep(0.34, 0.55, f);
         if (f < 0.34) {

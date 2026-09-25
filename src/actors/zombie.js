@@ -24,8 +24,8 @@ import { levelOf } from '../world/level.js';
 // Optional: leap {min, max distance, vy, t, cd: [min, max], snd, pitch}, turn (yaw rate), height
 // (collision), eye (LOS height), pitch (voice), lunge (move factor while attacking), hitAt.
 export const ZOMBIE_TYPES = {
-  // body kinds cycle per instance (2 of 7 maulers use the Smoker GLB, 2 of 7 the gas-mask GLB)
-  mauler: { name: 'Mauler', body: ['mauler', 'smoker', 'gasmask', 'mauler2', 'smoker', 'mauler', 'gasmask'], hp: 150, walk: 1.125, run: 3.87, dmg: 11, reach: 1.25, attackTime: 1.0, radius: 0.32, scale: 1.0, score: 100, mass: 1 },
+  // body kinds cycle per instance: 3 of 7 maulers are the zombie woman, 2 the Smoker GLB, 2 the gas-mask GLB
+  mauler: { name: 'Mauler', body: ['woman', 'smoker', 'gasmask', 'woman', 'smoker', 'woman', 'gasmask'], hp: 150, walk: 1.125, run: 3.87, dmg: 11, reach: 1.25, attackTime: 1.0, radius: 0.32, scale: 1.0, score: 100, mass: 1 },
   charger: { name: 'Boomer', body: ['boomer'], hp: 110, walk: 1.35, run: 4.5, dmg: 0, reach: 1.9, attackTime: 0.9, radius: 0.32, scale: 1.0, score: 150, mass: 1, explodes: true },
   striker: { name: 'Striker', body: ['bomber'], hp: 170, walk: 1.53, run: 5.31, dmg: 13, reach: 1.25, attackTime: 0.7, radius: 0.3, scale: 0.97, score: 200, mass: 0.8, leap: { min: 2.5, max: 6.5, vy: 5.2, t: 0.6, cd: [3, 5], snd: 'striker_shriek', pitch: 1.1 } },
   crusher: { name: 'Crusher', body: ['tank'], hp: 1500, walk: 1.35, run: 2.52, dmg: 34, reach: 1.9, attackTime: 1.5, radius: 0.55, scale: 1.4, score: 500, mass: 4, turn: 4 },

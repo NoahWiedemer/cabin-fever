@@ -33,7 +33,7 @@ A group of double agents escaped with a virus sample and are pinned down in an a
 - Every fifth round after 20 gets a "The horde grows stronger" banner. The HUD shows the round as `07/∞`.
 
 - **Infected**
-  - **Mauler**: the standard infected (some of them are Smokers, some wear a gas mask).
+  - **Mauler**: the standard infected. The bodies rotate between the zombie woman, the Smoker and the gas-mask zombie.
   - **Boomer**: bloated. It explodes when it reaches you or dies, and shooting its gut sets it off.
   - **Mutant Dog**: from round 3. Dogs arrive in packs of 2 or 3. They are fast, pounce, and bite.
   - **Biter**: a feral kid, from round 4, in packs of 3 to 5 (smaller and rarer on easy). It is small, fast and fragile, and its head is a small target.
@@ -60,13 +60,15 @@ A group of double agents escaped with a virus sample and are pinned down in an a
   - White box: primary ammo.
 - **Between rounds** HP is restored, ammo is restocked and fallen teammates respawn. The **buy phase** follows and nothing opens by itself.
   - The gate to the **gun shop** in the cellar under the back room opens. A HUD waypoint points to the stairs.
-  - At the counter, tap **F** to open the shop overlay. The WEAPONS tab has the guns and their upgrades. The EQUIPMENT tab has two sections: **CONSUMABLES** (frags, Molotovs, barricade kits, kevlar and the ammo crate) and **GEAR** (see Gear below). Esc, F or Enter closes it.
+  - At the counter, tap **F** to open the shop overlay. It has three tabs (Q / E or 1 / 2 / 3). **WEAPONS** has the guns and their upgrades. **EQUIPMENT** has the consumables: frags, Molotovs, barricade kits, kevlar and the ammo crate. **GEAR** has the wearable items (see Gear below). Arrows pick an item and Enter buys it. Esc, F or Enter (with nothing to buy) closes the shop.
+  - On the GEAR tab, the items are grouped by body slot (head, torso, back, belt, hands, feet), and each card shows its slot as an icon. On the right, a **paperdoll** shows your character with all eight slots around it. Each slot box is tied to its body part by a line and shows what you wear there, or a dashed EMPTY outline. Selecting an item lights up its slot, and under the figure are its effects and the BUY / EQUIP / UPGRADE button. Clicking a slot box picks that slot's items, and a worn item lists the other items you own for its slot, one click to swap.
   - **Hold F** for 1.2 s anywhere to ready up. A ring fills around the crosshair, and letting go early cancels it. A 3-second countdown follows (bots are always ready).
   - When the round starts the gate closes, and anyone still in the cellar is moved to the top of the stairs.
   - The mission clock is paused during the buy phase.
 - **Money**: every kill by anyone in the fireteam pays every member the same amount (mauler $60, dog $70, biter $75, striker $80, charger $90, crusher $400, +$20 for a headshot), plus a round-clear bonus of $250 + $50 × round. Everyone starts with $500 and spends from an own wallet; bots buy rifle damage upgrades.
 - **Store arsenal**
   - Rifles: M4A1, M16A2 (3-round burst, modeled in Blender), R-201 Carbine, X-55 Devotion (LMG whose fire rate winds up), SIGMA-420 (heavy drum-fed LMG, 100 rounds).
+  - P90 ($2,000): a bullpup SMG with a 50-round top magazine, 900 rpm and fast handling. It aims over its iron sights, and the reload slides the magazine back out from under the rail.
   - Shotguns: M4 Super 90 (semi-auto), SPAS-12 (pump action).
   - R-6P Softball: a 6-round drum grenade launcher.
   - SA-3 Mozambique: a triple-barrel shotgun pistol that replaces the M9.
@@ -112,8 +114,8 @@ A group of double agents escaped with a virus sample and are pinned down in an a
   - While the filter lasts, the gas does no damage and doesn't make you cough, and the green haze stays out of your eyes. You get a lens vignette and hear your breathing.
   - The filter drains only in the gas and recharges at 0.5 s per second outside it. It refills at every round end.
   - A HUD meter appears near the gas and warns you below 25%.
-- **Gear** (the GEAR section of the store's EQUIPMENT tab) is made of real items. You buy each one once and keep it for the whole match.
-  - Each item sits on a **body slot**: head, neck, torso, back, belt, hands, feet or pocket. The slot shows on the card and in the detail panel.
+- **Gear** (the store's GEAR tab) is made of real items. You buy each one once and keep it for the whole match.
+  - Each item sits on a **body slot**: head, neck, torso, back, belt, hands, feet or pocket. The slot shows as an icon on the card and as a box on the paperdoll.
   - You can wear only one item per slot. Buying a second item for a taken slot puts it on and takes the other one off.
   - You keep everything you buy. An owned item goes back on for free with **EQUIP**, and the store names the item it replaces.
   - Only worn gear works. Bots don't wear gear, and a new game starts without any.
@@ -171,7 +173,7 @@ W / Space at a ladder climb (S down, C slide, Space jump off) · 1–6 / wheel s
   - `horde.js`: crowd-level decisions. It picks each zombie's entrance route (weighing path, personal bias, load and barricades), keeps count of attackers per survivor, and builds the entrance route fields.
 - `src/actors`
   - `rig.js`: skinned procedural humanoids and the `createCharacter` factory.
-  - `gltfCharacter.js`: rigged GLB bodies (L4D2 Coach, Ellis and Boomer, the Scorpion soldier, Viper, the UniRig zombie in the Smoker slot, the gas-mask zombie, the Biter kid and the mutant dog). A proxy skeleton with `rig.js` bone names is retargeted onto the model's joints, so one set of procedural animation drives both kinds of body. Valve and Mixamo joints are matched by name. Other skeletons, such as UniRig's `Bone_NNN`, are matched by hierarchy and joint position. Hit volumes are measured from the skinned mesh. If a GLB is missing, the procedural body is used instead.
+  - `gltfCharacter.js`: rigged GLB bodies (L4D2 Coach, Ellis and Boomer, the Scorpion soldier, Viper, the UniRig zombie in the Smoker slot, the zombie woman and the gas-mask zombie among the Maulers, the Biter kid and the mutant dog). A proxy skeleton with `rig.js` bone names is retargeted onto the model's joints, so one set of procedural animation drives both kinds of body. Valve and Mixamo joints are matched by name. Other skeletons, such as UniRig's `Bone_NNN`, are matched by hierarchy and joint position. Hit volumes are measured from the skinned mesh. If a GLB is missing, the procedural body is used instead.
   - `zombie.js`: the Infected AI, animation and hit volumes. The chase covers target choice, direct pursuit with an intercept, entrance routes, stairs, stuck recovery, wall and crowd avoidance, and doorway queueing (see the header).
   - `ladders.js`: ladder climbing for the player (grab, climb, step off) and the Infected (portal mount, queueing, climbing pose on the proxy bones, dismount, the ragdoll drop).
   - `biter.js`: the Biter, a `Zombie` subclass. It covers the skittering chase, the pounce, the latch, the shake-off and the stun, and has its own procedural poses.
@@ -190,7 +192,7 @@ W / Space at a ladder climb (S down, C slide, Space jump off) · 1–6 / wheel s
   - `barricadeKit.js`: the barricade kit viewmodel (a claw hammer and a tied bundle of planks) and the plank geometry that the world barricades share.
 - `src/tools/viewer.js` (`/viewer.html`): the real viewmodel in a lit room. It covers every weapon, ADS, fire/reload/pump animations and a freeze-and-orbit mode for inspecting the hands.
 - `src/fx`: particles, decals, impacts, blood, explosions, casings and tracers. `magDrops.js` handles the player's dropped magazines: pooled world clones of the viewmodel mag that take over at the same spot on screen, then fall, bounce, settle flat and sink away. `latchView.js` is the first-person view with a Biter on your back: its GLB clawing in at the screen corners (arm IK on the viewmodel layer), a bite vignette and the shake-off prompt.
-- `src/game/gear.js`: the wearable gear. It covers body slots, owned vs worn, and the effect hooks: `sprintMul`, `reloadMul`, `handlingMul`, `carryBonus`, `defibFor`, and `gearDef()`, which puts the worn gear onto the held weapon's def. It also switches the backpack slot and the melee weapon. The store entries are in `shop.js`, the product models in `src/world/gearModels.js` and the store pieces in `src/ui/storeGear.js`. `src/player/machete.js` is the machete's procedural viewmodel and its swing poses, built with `gunModels.js`' kit.
+- `src/game/gear.js`: the wearable gear. It covers body slots, owned vs worn, and the effect hooks: `sprintMul`, `reloadMul`, `handlingMul`, `carryBonus`, `defibFor`, and `gearDef()`, which puts the worn gear onto the held weapon's def. It also switches the backpack slot and the melee weapon. The store entries are in `shop.js`, the product models in `src/world/gearModels.js`, the store pieces (slot icons, details) in `src/ui/storeGear.js` and the paperdoll in `src/ui/storeDoll.js`. The paperdoll's figure is the Scorpion body, rendered once through `src/actors/portraits.js`. `src/player/machete.js` is the machete's procedural viewmodel and its swing poses, built with `gunModels.js`' kit.
 - `src/game/revive.js`: revives. It covers the downed window and markers, the player's revive channel, the bots' revive runs (a `Teammate.update` hook), and the `reviveTime` / `reviveHp` tuning hooks the defibrillator plugs into.
 - `src/game`: round and wave logic, scoring, projectiles and pickups. `modes.js` holds the game modes and difficulties that the menu briefing and the game share. `economy.js` holds the wallets and rewards, and `shop.js` the data-driven store catalog, upgrade math and purchases.
 - `src/ui`: the Combat Arms-style HUD, the menus (`menu.js`, and `menu.css` for the cinematic main menu), the menu music (`music.js`) and the between-round store (`store.js`, `store.css`).
@@ -199,9 +201,9 @@ W / Space at a ladder climb (S down, C slide, Space jump off) · 1–6 / wheel s
 
 GLB sources live in `assets/source/` and are not served (nor committed: the original downloads and intermediate `*_raw.glb` exports add up to ~400 MB; the optimized files in `public/models/` are). `node tools/optimize-assets.mjs [filter]` turns them into web-ready files in `public/models/`, using glTF-Transform (a dev dependency). It converts spec/gloss materials to metal/rough, resizes textures and re-encodes them as WebP, prunes unused data (keeping marker empties) and applies meshopt compression to everything except the skinned arms. `src/core/assetList.js` lists every model; they are preloaded during loading.
 
-UniRig auto-rigs tend to bleed hand and forearm weights onto the thighs, and sometimes hip weights onto the hands, wherever the two touch in the rest pose. `node tools/fix-viper-weights.mjs --model <name> [--dry] [--out file]` repairs that. It tells arm from leg by surface distance from the hands and the knees, strips the wrong influences and blends them back in from the neighbouring vertices. It keeps the untouched file as `<name>_orig.glb`. It has been applied to Viper, the Smoker and Crusher bodies, the gas-mask zombie, the Biter, the Striker and Nadja. The walk runs per hand, so a hand modeled as its own mesh island (Nadja's left) is reached through its own sleeve.
+UniRig auto-rigs tend to bleed hand and forearm weights onto the thighs, and sometimes hip weights onto the hands, wherever the two touch in the rest pose. `node tools/fix-viper-weights.mjs --model <name> [--dry] [--out file]` repairs that. It tells arm from leg by surface distance from the hands and the knees, strips the wrong influences and blends them back in from the neighbouring vertices. It keeps the untouched file as `<name>_orig.glb`. It has been applied to Viper, the Smoker and Crusher bodies, the gas-mask zombie, the zombie woman, the Biter, the Striker and Nadja. The walk runs per hand, so a hand modeled as its own mesh island (Nadja's left) is reached through its own sleeve.
 
-`characters/nadja.glb` is the lab tech (`assets/source/nadja.glb`, a UniRig character normalized to 1.7 m, weights fixed as above).
+`characters/nadja.glb` is the lab tech. It comes from a 2.2M-triangle scan that has no skeleton: the scan is simplified to 100k triangles with meshoptimizer (`gltf-transform weld` + `simplify`, which keeps UV seams intact), scaled to the old rigged Nadja (1.7 m, same A-pose), and put on that model's UniRig skeleton. Each vertex takes the old skin weights, interpolated from the nearest point on the old surface, and the result goes through the weight fix above (`assets/source/nadja.glb`; the first rigged version is kept as `nadja_v1.glb`).
 
 The Blender pipeline in `tools/blender/` is plain Python, run inside Blender (for example through the Blender MCP):
 
@@ -210,7 +212,7 @@ The Blender pipeline in `tools/blender/` is plain Python, run inside Blender (fo
 - `import_weapon.py` and `weapons_import.py` normalize third-party weapon GLBs:
   - They bake skinning, scale to meters and point the muzzle along +Y.
   - They split animated parts (magazine, pump, bolt, drum).
-  - Dense AI scans (the SIGMA-420) are collapse-decimated first, and a part is cut out by region when the mesh is one piece.
+  - Dense AI scans (the SIGMA-420, the P90) are collapse-decimated first, and a part is cut out by region when the mesh is one piece. `decimate(..., keep_normals=True)` projects the dense mesh's normals back onto the result, so flat panels don't dent.
   - They add markers.
 - `arms.py` builds the gloved first-person arm: palm, fingers and thumb are voxel-remeshed into one surface, with a molded knuckle guard, finger plates, wrist strap and sleeve. It uses a 19-bone skeleton with procedural weights.
 

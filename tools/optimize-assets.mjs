@@ -16,6 +16,7 @@ export const ASSETS = [
   ['ellis_l4d2.glb', 'characters/ellis.glb', 1024],
   ['left_4_dead_2_-_boomer_with_rig.glb', 'zombies/boomer.glb', 1024],
   ['striker.glb', 'zombies/bomber.glb', 1024], // UniRig gas-mask bomber: the Striker body (drops 3 charges on death)
+  ['zombie_woman.glb', 'zombies/woman.glb', 1024], // UniRig zombie woman: replaced the procedural Mauler bodies
   ['tank.glb', 'zombies/tank.glb', 1024], // UniRig blue tank: the Crusher boss body
   ['zombie.glb', 'zombies/smoker.glb', 1024], // UniRig zombie (replaced the L4D2 smoker), bones mapped by topology
   ['gasmask_zombie.glb', 'zombies/gasmask.glb', 1024], // UniRig gas-mask zombie: a Mauler body variant (weights: fix-viper-weights)
@@ -25,7 +26,7 @@ export const ASSETS = [
   ['Meshy_AI_Character_output.glb', 'characters/meshy.glb', 1024], // UniRig skeleton, bones mapped by topology
   ['Viper.glb', 'characters/viper.glb', 1024], // UniRig skeleton, bones mapped by topology
   ['shopkeeper.glb', 'characters/shopkeeper.glb', 1024], // gun shop clerk (UniRig), bones mapped by topology
-  ['nadja.glb', 'characters/nadja.glb', 1024], // lab tech behind the basement's armored glass (UniRig, weights: fix-viper-weights)
+  ['nadja.glb', 'characters/nadja.glb', 2048], // lab tech behind the basement's armored glass: 2.2M-tri scan simplified to 100k (meshopt), old UniRig skeleton + weights transferred, fix-viper-weights
   ['kirche2.glb', 'environment/church.glb', 1024],
   // built in Blender (tools/blender/m16a2.py -> Kit.export)
   ['m16a2_raw.glb', 'weapons/m16a2.glb', 1024],
@@ -37,6 +38,7 @@ export const ASSETS = [
   ['softball_raw.glb', 'weapons/softball.glb', 2048],
   ['molotov_raw.glb', 'weapons/molotov.glb', 1024],
   ['sigma_raw.glb', 'weapons/sigma.glb', 2048], // AI scan decimated to 90k tris
+  ['p90_raw.glb', 'weapons/p90.glb', 2048], // textured scan decimated to 190k tris, normals re-projected
   // first-person arms (tools/blender/arms.py)
   ['arms_raw.glb', 'arms/arms.glb', 1024, { meshopt: false }], // skinned: keep float positions (UVs are projected at runtime)
 ];

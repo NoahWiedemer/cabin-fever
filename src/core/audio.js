@@ -784,6 +784,16 @@ def('lmg_fire', { d: 0.7, v: 5, gain: 0.8, rev: 0.32, max: 9, jit: 0.03, ref: 3.
   mech: { t: 0.014, g: 0.3, f: rnd(0.8, 0.9), dec: 0.05 },
 }));
 
+// 5.7 mm PDW: a sharp, bright snap with a light thump and a short tail, tight enough for 900 rpm
+def('smg_fire', { d: 0.5, v: 5, gain: 0.66, rev: 0.28, max: 10, jit: 0.035, ref: 2.8 }, (b) => gunshot(b, {
+  crackF: rnd(3300, 4000), crackQ: 0.9, crackD: 0.035, crackG: 0.9, airG: 0.4, airD: 0.02,
+  thF0: rnd(165, 190), thF1: 58, thSweep: 0.05, thD: 0.1, thG: 0.75,
+  bodyF: rnd(1050, 1300), bodyD: 0.07, bodyG: 0.5, drive: 3.5,
+  tailF: 1700, tailD: 0.28, tailG: 0.18,
+  echoT: rnd(0.06, 0.085), echoFb: 0.22, echoLP: 2700, echoWet: 0.22,
+  mech: { t: 0.01, g: 0.22, f: rnd(1.1, 1.22), dec: 0.035 },
+}));
+
 def('m4_mag_out', { d: 0.35, v: 3, gain: 0.45, rev: 0.1 }, (b) => magOut(b, 0.01, rnd(0.97, 1.03)));
 def('m4_mag_in', { d: 0.4, v: 3, gain: 0.48, rev: 0.1 }, (b) => magIn(b, 0.01, rnd(0.97, 1.03)));
 def('m4_bolt', { d: 0.5, v: 3, gain: 0.48, rev: 0.1 }, (b) => chargingHandle(b, 0.01, rnd(0.97, 1.03)));

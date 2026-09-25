@@ -836,9 +836,14 @@ function finishWeapon(res) {
 }
 
 /* ============================================================================
- * M4A1 carbine (RIS, EOTech holo, 30rd STANAG)
+ * M4A1 carbine (RIS, iron sights: flip-up rear aperture + A2 front post, 30rd STANAG)
  * gun coords: bore y=0, upper receiver rear face z=0
  * ========================================================================== */
+const M4_SIGHT_Y = 0.064; // sight line above the bore: rear aperture centre = flat top of the front post
+const M4_AP_Z = -0.0105; // rear aperture plane (flip-up sight at the back of the rail)
+const M4_AP_R = 0.0027; // peep hole radius (large aperture)
+const M4_EYE_BACK = 0.07; // aiming: the eye sits this far behind the aperture
+
 function m4MagInner() {
 	const g = grp('m4MagModel');
 	const B = new PB();
@@ -865,19 +870,33 @@ function m4MagInner() {
 	const spine = front.slice(1, 15).map(p => [p[0] + 0.0012, p[1]]);
 	const spine2 = spine.map(p => [p[0] - 0.0028, p[1]]).reverse();
 	B.add('anod', extrude([...spine, ...spine2], 0.012, { bevel: 0.0008, crease: 25 }), 1.1);
+	// stamped stiffening ribs along the curve, both sides (band a..b off the centreline)
+	const band = (a, b, y0, y1, n = 12) => {
+		const A = [], Z = [];
+		for (let i = 0; i <= n; i++) {
+			const y = y0 + (y1 - y0) * i / n, d = dzd(y), l = Math.hypot(1, d), nz = 1 / l, ny = -d / l, cz = dz(y);
+			A.push([cz + a * nz, y + a * ny]); Z.push([cz + b * nz, y + b * ny]);
+		}
+		return [...A, ...Z.reverse()];
+	};
+	for (const [a, b] of [[-0.0172, -0.0146], [0.0158, 0.0184]]) B.add('anod', extrude(band(a, b, 0.034, -0.092), 0.0254, { bevel: 0.0007, crease: 25 }), 1.18);
 	// floor plate
 	const yb = -0.110, ang = Math.atan(dzd(yb));
-	B.add('anod', cbox(0.0262, 0.0052, 0.0695, 0.0016, [0, yb - 0.0006 * Math.cos(ang), dz(yb) - 0.0015], [ang, 0, 0]), 0.8);
+	const fp = [0, yb - 0.0006 * Math.cos(ang), dz(yb) - 0.0015];
+	B.add('anod', cbox(0.0262, 0.0052, 0.0695, 0.0016, fp, [ang, 0, 0]), 0.8);
+	// floor plate retaining tab (pressed boss at the rear), placed in the plate's tilted frame
+	const ly = -0.0030, lz = 0.02;
+	B.add('anod', cbox(0.011, 0.0014, 0.012, 0.0005, [0, fp[1] + ly * Math.cos(ang) - lz * Math.sin(ang), fp[2] + ly * Math.sin(ang) + lz * Math.cos(ang)], [ang, 0, 0]), 0.95);
 	// feed lips
 	for (const s of [-1, 1]) {
 		B.add('anod', loft([[0.026, s > 0 ? 0.0078 : -0.0112, s > 0 ? 0.0112 : -0.0078, 0.054, 0.0605, 0.0008], [-0.026, s > 0 ? 0.0078 : -0.0112, s > 0 ? 0.0112 : -0.0078, 0.054, 0.0605, 0.0008]]));
 	}
-	// top cartridge (5.56) staggered right, bullet forward
-	const { caseG, bulletG } = cartridgeGeos(0.0449, 0.00475, 0.00315, 0.036, 0.019, 0.00285, { segs: 12 });
-	xf(caseG, [0.0028, 0.0612, 0.027]); xf(bulletG, [0.0028, 0.0612, 0.027]);
-	B.add('brass', caseG, TINT.brass); B.add('brass', bulletG, TINT.copper);
-	// follower edge visible on the other side
-	B.add('anod', cbox(0.009, 0.004, 0.05, 0.001, [-0.005, 0.0565, 0.002]), 0.55);
+	// double stack of 5.56: the top round staggered right, the next one left and lower, bullets forward
+	for (const [x, y] of [[0.0028, 0.0612], [-0.0030, 0.0548]]) {
+		const { caseG, bulletG } = cartridgeGeos(0.0449, 0.00475, 0.00315, 0.036, 0.019, 0.00285, { segs: 12 });
+		xf(caseG, [x, y, 0.027]); xf(bulletG, [x, y, 0.027]);
+		B.add('brass', caseG, TINT.brass); B.add('brass', bulletG, TINT.copper);
+	}
 	B.build(g, 'm4mag');
 	return g;
 }
@@ -890,9 +909,12 @@ function buildM4A1() {
 	const UP_T = 0.0235, UP_B = -0.0165; // upper receiver top / seam
 
 	/* ---- upper receiver (split so the ejection port is a real pocket) ---- */
-	const upProf = rounded([[0.0, UP_T, 0.0015], [-0.176, UP_T, 0.002], [-0.176, UP_B, 0.0015], [0.0, UP_B, 0.0015]], 0, 2);
-	B.add('anod', extrude(upProf, 0.0185, { bevel: 0.0009, pos: [-0.00525, 0, 0] }));
-	B.add('anod', extrude(upProf, 0.0105, { bevel: 0.0009, holes: [rrect(-0.106, -0.0088, -0.047, 0.0098, 0.0018)], pos: [0.00925, 0, 0] }));
+	// flat sides up to UP_M, then the roof's angled flats narrow to the rail
+	const UP_M = 0.011;
+	const upProf = rounded([[0.0, UP_M, 0.001], [-0.176, UP_M, 0.001], [-0.176, UP_B, 0.0015], [0.0, UP_B, 0.0015]], 0, 2);
+	B.add('anod', extrude(upProf, 0.0185, { bevel: 0.0009, pos: [-0.00525, 0, 0] }), 1.06);
+	B.add('anod', extrude(upProf, 0.0105, { bevel: 0.0009, holes: [rrect(-0.106, -0.0088, -0.047, 0.0098, 0.0018)], pos: [0.00925, 0, 0] }), 1.06);
+	B.add('anod', prism([[-0.01455, 0.0098], [0.01455, 0.0098], [0.01455, 0.0128], [0.0106, UP_T], [-0.0106, UP_T], [-0.01455, 0.0128]], -0.176, 0.0, 0.0006, 'xy'), 1.06);
 	// receiver front ring (barrel nut region) + delta ring
 	B.add('park', lathe([[0.0165, -0.172], [0.0175, -0.1735], [0.0175, -0.1775], [0.0205, -0.178], [0.0232, -0.1805], [0.0248, -0.1875], [0.0248, -0.1935], [0.0222, -0.1965], [0.0105, -0.1965]], { segs: 32 }));
 	// forward assist housing + plunger
@@ -903,12 +925,16 @@ function buildM4A1() {
 	B.add('anod', loft([[-0.047, 0.012, 0.0152, -0.006, 0.0125, 0.001], [-0.038, 0.012, 0.0215, -0.005, 0.0125, 0.0015], [-0.029, 0.012, 0.0192, -0.003, 0.0105, 0.0015]]));
 	// dust cover (open, hanging)
 	B.add('park', cbox(0.0012, 0.019, 0.060, 0.0004, [0.0152 + 0.0026, -0.0110 - 0.0092, -0.0765], [0, 0, 16 * DEG]));
-	B.add('park', xf(cyl(0.0012, 0.068, 8), [0.0153, -0.0105, -0.0765]));
+	// its stiffening lip along the free edge + the latch nub, and the hinge rod (steel)
+	B.add('park', cbox(0.0026, 0.0024, 0.056, 0.0004, [0.0205, -0.0290, -0.0765], [0, 0, 16 * DEG]), 1.1);
+	B.add('park', cbox(0.0022, 0.0034, 0.006, 0.0005, [0.0199, -0.0262, -0.1005], [0, 0, 16 * DEG]), 1.1);
+	B.add('steel', xf(cyl(0.0012, 0.068, 8, 0.0003), [0.0153, -0.0105, -0.0765]), TINT.steelDark);
 	// ejection port inner shadow (back wall darkening)
 	B.add('anod', cbox(0.0006, 0.0182, 0.0585, 0.0002, [0.0043, 0.0005, -0.0765]), 0.35);
-	// top rail
+	// top rail; dark slot floors between the cross-slots read as recesses
 	picRail(B, 'anod', -0.001, -0.175, { p: [0, UP_T, 0] });
-	// rail index "T" marks hinted by small raised dots on the side
+	const railFloor = (z0, z1, p, r) => B.add('anod', xf(cbox(0.0194, 0.0006, z0 - z1 - 0.002, 0.0001, [0, 0.0066, (z0 + z1) / 2]), p, r), 0.4);
+	railFloor(-0.001, -0.175, [0, UP_T, 0]);
 	/* ---- lower receiver ---- */
 	const lowProf = rounded([
 		[0.016, UP_B, 0.001], [-0.1695, UP_B, 0.001], [-0.1695, -0.026, 0.002], [-0.1665, -0.030, 0.001],
@@ -916,9 +942,9 @@ function buildM4A1() {
 		[-0.0955, -0.060, 0.002], [-0.090, -0.050, 0.003], [-0.083, -0.046, 0.002], [0.024, -0.046, 0.002],
 		[0.030, -0.040, 0.004], [0.030, -0.026, 0.004], [0.022, -0.0195, 0.002],
 	], 0, 3);
-	B.add('anod', extrude(lowProf, 0.0285, { bevel: 0.0011 }));
+	B.add('anod', extrude(lowProf, 0.0285, { bevel: 0.0011 }), 0.94); // lower: a shade off the upper, like mismatched anodizing
 	// magwell flare (wider)
-	B.add('anod', extrude(rounded([[-0.1665, -0.031, 0.001], [-0.0962, -0.031, 0.001], [-0.0962, -0.0765, 0.0012], [-0.1695, -0.0765, 0.0012], [-0.1705, -0.0705, 0.002], [-0.1665, -0.060, 0.002]], 0, 2), 0.0328, { bevel: 0.0011 }));
+	B.add('anod', extrude(rounded([[-0.1665, -0.031, 0.001], [-0.0962, -0.031, 0.001], [-0.0962, -0.0765, 0.0012], [-0.1695, -0.0765, 0.0012], [-0.1705, -0.0705, 0.002], [-0.1665, -0.060, 0.002]], 0, 2), 0.0328, { bevel: 0.0011 }), 0.94);
 	// magwell opening (dark)
 	B.add('poly', cbox(0.0236, 0.0006, 0.0665, 0.0001, [0, -0.0767, -0.1330]), 0.12);
 	// mag release fence + button (right)
@@ -946,7 +972,10 @@ function buildM4A1() {
 	const gFront = [[-0.006, -0.020], [0.012, -0.0195], [0.028, -0.0225], [0.041, -0.0185], [0.057, -0.0205], [0.083, -0.019], [0.099, -0.0165, 0.006]];
 	const gRear = [[0.099, 0.0158, 0.006], [0.082, 0.0185], [0.045, 0.0182], [0.018, 0.0205], [0.002, 0.0245], [-0.006, 0.024]];
 	const gOut = rounded([...gFront, ...gRear].map(([u, v, r]) => [...gp(u, v), r ?? 0.002]), 0, 3);
-	B.add('grip', extrude(gOut, 0.0282, { bevel: 0.0048, bevelSegs: 3, crease: 40 }));
+	B.add('poly', extrude(gOut, 0.0282, { bevel: 0.0048, bevelSegs: 3, crease: 40 }));
+	// checkered side panels standing proud of the stippled shell, and the open bottom of the grip
+	B.add('grip', extrude(rrect(0.014, -0.0115, 0.086, 0.0105, 0.004, 3).map(([u, v]) => gp(u, v)), 0.0292, { bevel: 0.0004, crease: 40 }));
+	B.add('hole', xf(cbox(0.016, 0.0012, 0.022, 0.0005), [0, gp(0.0985, 0)[1], gp(0.0985, 0)[0]], [-ga, 0, 0]));
 	/* ---- buffer tube, castle nut, end plate, stock ---- */
 	B.add('anod', lathe([[0, 0.192], [0.0126, 0.192], [0.0146, 0.190], [0.0146, 0.0095]], { segs: 28 }));
 	B.add('park', lathe([[0.0146, 0.0215], [0.0172, 0.0215], [0.0184, 0.0205], [0.0184, 0.0125], [0.0172, 0.0118], [0.0146, 0.0118]], { segs: 28 }));
@@ -954,8 +983,8 @@ function buildM4A1() {
 	B.add('park', extrude(rounded([[-0.0182, -0.0195, 0.004], [0.0182, -0.0195, 0.004], [0.0182, 0.0175, 0.006], [-0.0182, 0.0175, 0.006]], 0, 3), 0.0016, { plane: 'xy', bevel: 0.0004, pos: [0, 0, 0.0108], holes: [circlePts(0, 0, 0.0146, 20)] }));
 	B.add('park', xf(torus(0.0055, 0.0011, 6, 16), [-0.0205, -0.0015, 0.0135], [0, PI / 2, 0]));
 	// strip under tube with detent holes
-	B.add('anod', cbox(0.0065, 0.0028, 0.105, 0.0006, [0, -0.0152, 0.14]));
-	for (let i = 0; i < 6; i++) B.add('poly', xf(cyl(0.0014, 0.0006, 8), [0, -0.0167, 0.100 + i * 0.012], [PI / 2, 0, 0]), 0.1);
+	B.add('anod', cbox(0.0065, 0.0028, 0.168, 0.0006, [0, -0.0152, 0.108]));
+	for (let i = 0; i < 6; i++) B.add('hole', xf(cyl(0.0015, 0.0006, 10), [0, -0.0167, 0.032 + i * 0.0145], [PI / 2, 0, 0]));
 	// M4 collapsible stock: tube sleeve + slimmer web + wide butt
 	B.add('poly', extrude(rounded([[0.118, 0.0186, 0.004], [0.246, 0.0205, 0.004], [0.246, -0.0225, 0.004], [0.128, -0.0235, 0.006], [0.118, -0.012, 0.004]], 0, 3), 0.0355, { bevel: 0.0045, bevelSegs: 2, crease: 38 }));
 	B.add('poly', extrude(rounded([[0.150, -0.018, 0.004], [0.250, -0.018, 0.004], [0.250, -0.090, 0.006], [0.240, -0.0925, 0.006], [0.165, -0.040, 0.012]], 0, 3), 0.0245, { bevel: 0.003, bevelSegs: 2, crease: 38 }));
@@ -963,8 +992,13 @@ function buildM4A1() {
 	// waffle ribs on the web
 	for (const sx of [-1, 1]) for (let i = 0; i < 3; i++) B.add('poly', cbox(0.0016, 0.0035, 0.052 - i * 0.012, 0.0006, [sx * 0.0125, -0.030 - i * 0.017, 0.212 + i * 0.006]), 0.8);
 	B.add('poly', cbox(0.0362, 0.0055, 0.019, 0.001, [0, -0.074, 0.236]), 0.15);
+	// adjustment latch lever under the sleeve: finger pad ridges + pivot pin
 	B.add('poly', loft([[0.120, -0.0055, 0.0055, -0.0275, -0.018, 0.0012], [0.176, -0.0055, 0.0055, -0.0268, -0.018, 0.0012]]), 0.9);
-	B.add('poly', extrude(rounded([[0.2605, 0.0295, 0.004], [0.2795, 0.0295, 0.004], [0.2795, -0.0955, 0.006], [0.2605, -0.0955, 0.004]], 0, 3), 0.0395, { bevel: 0.0035, bevelSegs: 2 }), 0.7);
+	for (let i = 0; i < 4; i++) B.add('poly', cbox(0.0106, 0.0012, 0.0016, 0.0004, [0, -0.0279, 0.124 + i * 0.0042]), 1.1);
+	B.add('steel', xf(cyl(0.0016, 0.0126, 10, 0.0003), [0, -0.0215, 0.169], [0, PI / 2, 0]), TINT.steelDark);
+	// rubber butt pad with grip ribs round its edge
+	B.add('rubber', extrude(rounded([[0.2605, 0.0295, 0.004], [0.2795, 0.0295, 0.004], [0.2795, -0.0955, 0.006], [0.2605, -0.0955, 0.004]], 0, 3), 0.0395, { bevel: 0.0035, bevelSegs: 2 }));
+	for (let i = 0; i < 9; i++) B.add('rubber', cbox(0.0404, 0.0014, 0.013, 0.0005, [0, 0.0195 - i * 0.0126, 0.2715]), 1.25);
 	/* ---- RIS handguard ---- */
 	const HC = 0.002, HS = 0.0215, HCH = 0.0085; // centre y, half size, corner chamfer
 	B.add('anod', prism([[-HS + HCH, -HS + HC], [HS - HCH, -HS + HC], [HS, -HS + HCH + HC], [HS, HS - HCH + HC], [HS - HCH, HS + HC], [-HS + HCH, HS + HC], [-HS, HS - HCH + HC], [-HS, -HS + HCH + HC]], -0.1965, -0.3645, 0.0012));
@@ -972,6 +1006,10 @@ function buildM4A1() {
 	picRail(B, 'anod', -0.198, -0.3625, { p: [0, HC - HS, 0], r: [0, 0, PI] });
 	picRail(B, 'anod', -0.198, -0.3625, { p: [HS, HC, 0], r: [0, 0, -PI / 2] });
 	picRail(B, 'anod', -0.198, -0.3625, { p: [-HS, HC, 0], r: [0, 0, PI / 2] });
+	railFloor(-0.198, -0.3625, [0, HC + HS, 0]);
+	railFloor(-0.198, -0.3625, [0, HC - HS, 0], [0, 0, PI]);
+	railFloor(-0.198, -0.3625, [HS, HC, 0], [0, 0, -PI / 2]);
+	railFloor(-0.198, -0.3625, [-HS, HC, 0], [0, 0, PI / 2]);
 	for (const phi of [45, 135, 225, 315]) {
 		const a = phi * DEG, d = HS - HCH / 2 + 0.00005;
 		for (let i = 0; i < 6; i++) {
@@ -992,48 +1030,53 @@ function buildM4A1() {
 	/* ---- A2 front sight base ---- */
 	B.add('park', lathe([[0.0081, -0.371], [0.0122, -0.371], [0.0129, -0.3722], [0.0129, -0.4008], [0.0122, -0.402], [0.0081, -0.402]], { segs: 24 }));
 	B.add('park', loft([[-0.3725, -0.0096, 0.0096, 0.0, 0.0182, 0.0016], [-0.4005, -0.0096, 0.0096, 0.0, 0.0182, 0.0016]]));
-	B.add('park', prism([[-0.3718, 0.0175], [-0.4012, 0.0175], [-0.3978, 0.0305], [-0.3752, 0.0305]], -0.0094, 0.0094, 0.0008, 'zy'));
-	for (const s of [-1, 1]) B.add('park', prism([[-0.3735, 0.028], [-0.3995, 0.028], [-0.3897, 0.0655], [-0.3848, 0.0655]], s * 0.0049, s * 0.0093, 0.0006, 'zy'));
-	B.add('park', hull([[-0.0009, 0.029, -0.3864], [0.0009, 0.029, -0.3864], [-0.0009, 0.029, -0.3882], [0.0009, 0.029, -0.3882], [-0.0009, 0.0628, -0.3864], [0.0009, 0.0628, -0.3864], [-0.0009, 0.0628, -0.3882], [0.0009, 0.0628, -0.3882], [0, 0.0644, -0.3873]]));
+	// A-frame tower and protective wings: their raked faces are flat stock, not worn edges (they face
+	// the eye when aiming and would read as bright bars either side of the post)
+	B.add('park', worn(prism([[-0.3718, 0.0175], [-0.4012, 0.0175], [-0.3978, 0.0305], [-0.3752, 0.0305]], -0.0094, 0.0094, 0.0008, 'zy'), 0.1));
+	for (const s of [-1, 1]) B.add('park', worn(prism([[-0.3735, 0.028], [-0.3995, 0.028], [-0.3897, 0.0655], [-0.3848, 0.0655]], s * 0.0049, s * 0.0093, 0.0006, 'zy'), 0.1));
+	// square post on its round detent shank; its flat top is the sight line (M4_SIGHT_Y)
+	const FPZ = -0.38725;
+	B.add('park', cbox(0.0024, M4_SIGHT_Y - 0.031, 0.0022, 0.00025, [0, (M4_SIGHT_Y + 0.031) / 2, FPZ]), 0.9);
+	B.add('park', xf(cyl(0.0026, 0.0046, 14, 0.0005), [0, 0.0323, FPZ], [PI / 2, 0, 0]), 1.1);
 	B.add('park', loft([[-0.377, -0.0042, 0.0042, -0.027, -0.010, 0.001], [-0.3995, -0.0042, 0.0042, -0.027, -0.010, 0.001]]));
 	B.add('park', xf(torus(0.0068, 0.0012, 6, 18), [0, -0.0335, -0.3962], [0, PI / 2, 0]));
 	for (const s of [-1, 1]) for (const z of [-0.3775, -0.3955]) B.add('park', xf(screwHead(0.0014, 0.0003), [s * 0.0096, 0.009, z], [0, s > 0 ? 0 : PI, 0]), 0.8);
-	/* ---- EOTech-style holographic sight ---- */
+	/* ---- flip-up rear sight (BUIS), deployed: rail clamp, protective ears, aperture leaf ---- */
 	const RT = UP_T + RAIL_H; // rail top
-	B.add('anod', loft([[-0.030, -0.0145, 0.0145, RT - 0.0062, RT + 0.005, 0.0012], [-0.116, -0.0145, 0.0145, RT - 0.0062, RT + 0.005, 0.0012]]));
-	B.add('anod', loft([[-0.0292, -0.0158, 0.0158, RT + 0.004, 0.0505, 0.0026], [-0.092, -0.0158, 0.0158, RT + 0.004, 0.0505, 0.0026], [-0.1175, -0.0158, 0.0158, RT + 0.004, 0.0435, 0.0026]]));
-	for (const g of knurledKnob(0.0058, 0.0065, 16)) B.add('park', xf(g, [-0.0186, RT - 0.0005, -0.072], [0, PI / 2, 0]));
-	for (const s of [-1, 1]) {
-		const x0 = s > 0 ? 0.0146 : -0.0180, x1 = s > 0 ? 0.0180 : -0.0146;
-		B.add('anod', loft([[-0.0298, x0, x1, 0.049, 0.0808, 0.0010], [-0.0812, x0, x1, 0.049, 0.0798, 0.0010]]));
-	}
-	B.add('anod', loft([[-0.0298, -0.0180, 0.0180, 0.0781, 0.0838, 0.0016], [-0.0812, -0.0180, 0.0180, 0.0775, 0.0826, 0.0016]]));
-	B.add('anod', loft([[-0.0298, -0.0160, 0.0160, 0.0478, 0.0502, 0.0006], [-0.0812, -0.0160, 0.0160, 0.0478, 0.0502, 0.0006]]));
-	// battery cap + buttons
-	B.add('anod', xf(cyl(0.0068, 0.034, 20, 0.0008), [0, 0.0418, -0.1045], [0, PI / 2, 0]));
-	for (const g of knurledKnob(0.0072, 0.004, 14)) B.add('park', xf(g, [0.0176, 0.0418, -0.1045], [0, PI / 2, 0]));
-	for (const s of [-1, 1]) B.add('poly', xf(cyl(0.0034, 0.003, 14, 0.0008), [s * 0.0065, 0.0425, -0.0282]), 0.7);
-	// windows + reticle
-	B.add('glassClear', cbox(0.0292, 0.0282, 0.0008, 0.0001, [0, 0.064, -0.0322]));
-	B.add('glassClear', cbox(0.0292, 0.0282, 0.0008, 0.0001, [0, 0.064, -0.0790]));
-	B.add('reticle', xf(fromThree(new THREE.RingGeometry(0.00205, 0.00238, 40)), [0, 0.064, -0.0784]));
-	B.add('reticle', xf(fromThree(new THREE.CircleGeometry(0.00028, 12)), [0, 0.064, -0.0784]));
-	for (let i = 0; i < 4; i++) { const a = i * PI / 2; B.add('reticle', xf(fromThree(new THREE.PlaneGeometry(0.0003, 0.0006)), [Math.cos(a) * 0.0027, 0.064 + Math.sin(a) * 0.0027, -0.0784], [0, 0, a + PI / 2])); }
-	/* ---- folded rear BUIS ---- */
-	B.add('anod', loft([[-0.004, -0.0108, 0.0108, RT - 0.0055, RT + 0.0045, 0.001], [-0.023, -0.0108, 0.0108, RT - 0.0055, RT + 0.0045, 0.001]]));
-	B.add('anod', loft([[-0.006, -0.0088, 0.0088, RT + 0.0045, RT + 0.0085, 0.0012], [-0.0225, -0.0082, 0.0082, RT + 0.0045, RT + 0.0078, 0.0012]]));
-	B.add('park', xf(cyl(0.0042, 0.004, 14, 0.0006), [0.0125, RT - 0.001, -0.0135], [0, PI / 2, 0]));
+	const SY = M4_SIGHT_Y, AZ = M4_AP_Z;
+	// base: deck on the rail with a sloped nose, clamp jaws down the rail flanks, knurled cross-bolt nut
+	B.add('anod', loft([[-0.0035, -0.0118, 0.0118, RT - 0.0004, RT + 0.0048, 0.0012], [-0.0335, -0.0118, 0.0118, RT - 0.0004, RT + 0.0048, 0.0012], [-0.0385, -0.0118, 0.0118, RT - 0.0004, RT + 0.0016, 0.0008]]));
+	for (const s of [-1, 1]) B.add('anod', cbox(0.0026, 0.0078, 0.030, 0.0006, [s * 0.0112, RT - 0.0042, -0.0205]));
+	for (const g of knurledKnob(0.0046, 0.0048, 14)) B.add('park', xf(g, [0.0149, RT - 0.0045, -0.0205], [0, PI / 2, 0]));
+	B.add('steel', xf(screwHead(0.0019, 0.0006), [-0.0125, RT - 0.0045, -0.0205], [0, PI, 0]), TINT.steelDark);
+	// protective ears either side of the leaf, a little taller than it
+	for (const s of [-1, 1]) B.add('anod', prism([[-0.0045, RT + 0.004], [-0.0335, RT + 0.004], [AZ - 0.0078, SY + 0.0062], [AZ + 0.0042, SY + 0.0062]], s * 0.0068, s * 0.0104, 0.0007, 'zy'));
+	// aperture leaf standing on its hinge (round top around the peep, lightening window below it),
+	// peep ring boss on the eye side
+	const LW = 0.0056, leaf = [[-LW, RT + 0.0028], [LW, RT + 0.0028]];
+	for (let i = 0; i <= 12; i++) { const a = i / 12 * PI; leaf.push([Math.cos(a) * LW, SY + Math.sin(a) * LW]); }
+	const holes = [circlePts(0, SY, M4_AP_R, 28), rrect(-0.0028, RT + 0.0085, 0.0028, SY - 0.0088, 0.0014, 2)];
+	B.add('anod', extrude(leaf, 0.0028, { plane: 'xy', bevel: 0.0005, holes, pos: [0, 0, AZ] }), 1.1);
+	B.add('anod', xf(tube(0.0043, M4_AP_R, 0.0026, 28, 0.0006), [0, SY, AZ + 0.0026]), 1.1);
+	// hinge knuckle + pin heads on the ears, knurled windage drum on the right ear
+	B.add('anod', xf(cyl(0.0022, 0.0132, 14, 0.0004), [0, RT + 0.0042, AZ], [0, PI / 2, 0]));
+	for (const s of [-1, 1]) B.add('steel', xf(screwHead(0.0014, 0.0004), [s * 0.0104, RT + 0.0042, AZ], [0, s > 0 ? 0 : PI, 0]), TINT.steelDark);
+	for (const g of knurledKnob(0.0040, 0.0036, 14)) B.add('park', xf(g, [0.0122, RT + 0.0125, AZ - 0.0045], [0, PI / 2, 0]));
 	B.build(body, 'm4a1');
 
 	/* ---- moving parts ---- */
 	const parts = {};
 	// charging handle (pulls back +Z ~0.07)
 	const ch = grp('chargingHandle', body, [0, 0.0202, 0]);
-	B.add('anod', loft([[0.0005, -0.0068, 0.0068, -0.0033, 0.0033, 0.0009], [0.0155, -0.0068, 0.0068, -0.0033, 0.0033, 0.0009]]));
-	B.add('anod', loft([[0.004, -0.0245, -0.006, -0.003, 0.0031, 0.0011], [0.0152, -0.0262, -0.006, -0.003, 0.0031, 0.0011]]));
-	B.add('anod', loft([[0.004, 0.006, 0.0225, -0.003, 0.0031, 0.0011], [0.0152, 0.006, 0.0240, -0.003, 0.0031, 0.0011]]));
-	B.add('anod', loft([[0.006, -0.0235, -0.012, 0.003, 0.0052, 0.0008], [0.0135, -0.0248, -0.012, 0.003, 0.0048, 0.0008]]), 1.25);
+	// T-handle (top-view outline x/z, finger hooks either side) on the shaft that runs into the upper
+	const chOut = rounded([[-0.0068, 0.0005, 0.0005], [0.0068, 0.0005, 0.0005], [0.0068, 0.0042, 0.0012], [0.0212, 0.0042, 0.002], [0.0246, 0.0078, 0.0025], [0.0240, 0.0155, 0.003],
+		[-0.0240, 0.0155, 0.003], [-0.0246, 0.0078, 0.0025], [-0.0212, 0.0042, 0.002], [-0.0068, 0.0042, 0.0012]], 0, 2);
+	B.add('anod', extrude(chOut, 0.0062, { plane: 'xz', bevel: 0.0008 }));
 	B.add('anod', cbox(0.009, 0.004, 0.05, 0.0006, [0, 0.0, -0.024]));
+	// latch on the left arm: lever with a serrated thumb pad on its pivot pin
+	B.add('park', extrude(rounded([[-0.0250, 0.0060, 0.0015], [-0.0112, 0.0060, 0.0008], [-0.0100, 0.0150, 0.0015], [-0.0244, 0.0150, 0.0025]], 0, 2), 0.0024, { plane: 'xz', bevel: 0.0005, pos: [0, 0.0034, 0] }));
+	for (let i = 0; i < 4; i++) B.add('park', cbox(0.0007, 0.0008, 0.0080, 0.0002, [-0.0236 + i * 0.0015, 0.0048, 0.0105]), 1.2);
+	B.add('steel', xf(cyl(0.0011, 0.0074, 10, 0.0002), [-0.0118, 0.0006, 0.0128], [PI / 2, 0, 0]), TINT.steelDark);
 	B.build(ch, 'm4ch');
 	parts.chargingHandle = ch;
 	// bolt carrier group (visible in the port; travels back +Z ~0.075)
@@ -1059,7 +1102,8 @@ function buildM4A1() {
 	const ejectPort = empty('ejectPort', body, [0.016, 0.001, -0.076]);
 	const rightHand = handTarget('rightHand', body, [0, gp(0.006, 0)[1], gp(0.006, 0)[0]], [-1, 0, 0], [0, Math.cos(ga), -Math.sin(ga)], false, { rx: 0.0145, rz: 0.021, curl: 1, trigger: true, thumb: 0.75 });
 	const leftHand = handTarget('leftHand', body, [0, HC, -0.300], [0.32, 1, 0], [0, 0, -1], true, { rx: 0.031, rz: 0.030, curl: 0.8, thumb: 0.15 });
-	const eye = new V3(0, 0.064, -0.030 + 0.10).add(body.position);
+	// aiming: the eye on the sight line behind the peep, so the aperture and the post meet at screen centre
+	const eye = new V3(0, M4_SIGHT_Y, M4_AP_Z + M4_EYE_BACK).add(body.position);
 	return finishWeapon({
 		root, muzzle, ejectPort, rightHand, leftHand, sight: { eye }, parts,
 		magazineModel: () => magProto.clone(true), shellType: 'rifle',
@@ -2387,8 +2431,12 @@ export function buildThirdPersonWeapon(id) {
 			T.add(M, tbox(-0.0215, 0.0215, -0.0195, 0.0235, -0.365, -0.19), TPC.black);
 			T.add(M, tcyl(0.008, -0.365, -0.51, 6), TPC.dark);
 			T.add(M, tcyl(0.011, -0.505, -0.556, 6), TPC.dark);
-			T.add(M, tbox(-0.009, 0.009, -0.012, 0.064, -0.402, -0.371), TPC.dark);
-			T.add(M, tbox(-0.018, 0.018, 0.029, 0.083, -0.116, -0.03), TPC.black);
+			// iron sights like the first-person gun: front sight base + wings + post, flip-up rear sight
+			T.add(M, tbox(-0.009, 0.009, -0.012, 0.031, -0.402, -0.371), TPC.dark);
+			for (const s of [-1, 1]) T.add(M, tbox(s > 0 ? 0.005 : -0.009, s > 0 ? 0.009 : -0.005, 0.031, 0.0655, -0.393, -0.381), TPC.dark);
+			T.add(M, tbox(-0.001, 0.001, 0.031, 0.064, -0.3883, -0.3862), TPC.dark);
+			T.add(M, tbox(-0.0118, 0.0118, 0.0325, 0.0375, -0.0385, -0.0035), TPC.black);
+			T.add(M, tbox(-0.0104, 0.0104, 0.0375, 0.0702, -0.018, -0.007), TPC.black);
 			tgrip(T, P, TPC.poly, [0.012, -0.044], 20 * DEG, 0.095, 0.04, 0.028);
 			break;
 		}

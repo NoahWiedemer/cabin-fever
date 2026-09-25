@@ -346,9 +346,9 @@
   grid-template-columns: repeat(auto-fill, minmax(calc(var(--u) * 212), 1fr));
   gap: calc(var(--u) * 10);
 }
-/* equipment: consumables + wearable gear, cards sized like the weapons' */
+/* EQUIPMENT: five consumables, three bigger cards a row (the GEAR groups flow three wide too) */
 .cf-st-list[data-cat='equipment'] .cf-st-grid {
-  grid-template-columns: repeat(auto-fill, minmax(calc(var(--u) * 212), 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 /* ---------------- item cards ---------------- */
@@ -1110,8 +1110,7 @@
   .cf-st-list {
     overflow: visible;
   }
-  .cf-st-grid,
-  .cf-st-list[data-cat='equipment'] .cf-st-grid {
+  .cf-st-grid {
     grid-template-columns: repeat(auto-fill, minmax(calc(var(--u) * 205), 1fr));
   }
 }
@@ -1206,69 +1205,83 @@
 
 /* ---------------- gear: wearable items on body slots (game/gear.js, ui/storeGear.js) ---------------- */
 
-/* section heading sub-label (EQUIPMENT: CONSUMABLES / GEAR) */
-.cf-st-sec-h small {
-  font-size: calc(var(--u) * 10);
-  letter-spacing: 0.24em;
-  color: #5d646b;
-}
 /* long gear names (WEAPON BACKPACK) next to their price / EQUIPPED tag */
 .cf-st-card-name.long {
   font-size: calc(var(--u) * 19);
 }
 
-/* body-slot badge, top left of a gear card */
+/* body-slot icon (ui/storeGear.js slotIcon) */
+.cf-st-si {
+  flex: none;
+  width: 1em;
+  height: 1em;
+}
+
+/* body-slot badge, top left of a gear card: the slot's icon; amber with WORN while it's on */
 .cf-st-slotb {
   position: absolute;
   z-index: 2;
   left: calc(var(--u) * 8);
   top: calc(var(--u) * 8);
-  padding: calc(var(--u) * 3) calc(var(--u) * 6) calc(var(--u) * 2);
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--u) * 5);
+  height: calc(var(--u) * 25);
+  padding: 0 calc(var(--u) * 6);
   background: rgba(6, 7, 9, 0.66);
   border: 1px solid rgba(255, 255, 255, 0.12);
-  font-weight: 700;
-  font-size: calc(var(--u) * 10);
-  letter-spacing: 0.2em;
   color: #8a9199;
 }
+.cf-st-slotb .cf-st-si {
+  width: calc(var(--u) * 16);
+  height: calc(var(--u) * 16);
+}
+.cf-st-slotb b {
+  display: none;
+  padding: calc(var(--u) * 2) calc(var(--u) * 1) 0 0;
+  font-weight: 700;
+  font-size: calc(var(--u) * 11);
+  letter-spacing: 0.2em;
+}
 .cf-st-card.equipped .cf-st-slotb {
-  border-color: rgba(245, 165, 36, 0.55);
+  background: linear-gradient(180deg, #ffc867, #e08a18);
+  border-color: #ffd48a;
+  color: #1b1207;
+  box-shadow: 0 0 12px rgba(255, 170, 40, 0.35);
+}
+.cf-st-card.equipped .cf-st-slotb b {
+  display: inline;
+}
+
+/* detail head: body slot + worn state */
+.cf-st-wslot {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--u) * 6);
+  margin-top: calc(var(--u) * 3);
+  padding: calc(var(--u) * 4) calc(var(--u) * 9) calc(var(--u) * 3) calc(var(--u) * 7);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  font-weight: 700;
+  font-size: calc(var(--u) * 11);
+  letter-spacing: 0.2em;
+  color: #aab2ba;
+  white-space: nowrap;
+}
+.cf-st-wslot .cf-st-si {
+  width: calc(var(--u) * 16);
+  height: calc(var(--u) * 16);
+  margin-top: calc(var(--u) * -2);
+}
+.cf-st-wslot.own {
+  color: #e2dcd2;
+}
+.cf-st-wslot.on {
+  border-color: rgba(245, 165, 36, 0.7);
+  background: rgba(245, 165, 36, 0.12);
   color: var(--c-amber-2);
 }
 
-/* detail: body slot row + effect lines */
-.cf-st-gear-slot {
-  display: flex;
-  align-items: center;
-  gap: calc(var(--u) * 10);
-  margin-top: calc(var(--u) * 14);
-}
-.cf-st-gear-slot em {
-  font-style: normal;
-  font-weight: 700;
-  font-size: calc(var(--u) * 11);
-  letter-spacing: 0.22em;
-  color: #7c848c;
-}
-.cf-st-slot {
-  padding: calc(var(--u) * 4) calc(var(--u) * 9) calc(var(--u) * 3);
-  border: 1px solid rgba(245, 165, 36, 0.55);
-  background: rgba(245, 165, 36, 0.1);
-  font-weight: 700;
-  font-size: calc(var(--u) * 12);
-  letter-spacing: 0.24em;
-  color: var(--c-amber-2);
-}
-.cf-st-gear-slot b {
-  margin-left: auto;
-  font-weight: 700;
-  font-size: calc(var(--u) * 11);
-  letter-spacing: 0.2em;
-  color: #8a9199;
-}
-.cf-st-gear-slot b.on {
-  color: #9be37a;
-}
 .cf-st-gear-fx {
   display: grid;
   gap: calc(var(--u) * 6);
@@ -1319,11 +1332,19 @@
 }
 /* slot label inside the EQUIP button */
 .cf-st-buy-s {
-  padding: calc(var(--u) * 4) calc(var(--u) * 8) calc(var(--u) * 3);
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--u) * 6);
+  padding: calc(var(--u) * 4) calc(var(--u) * 8) calc(var(--u) * 3) calc(var(--u) * 6);
   border: 1px solid rgba(27, 18, 7, 0.4);
   font-weight: 700;
   font-size: calc(var(--u) * 13);
   letter-spacing: 0.22em;
+}
+.cf-st-buy-s .cf-st-si {
+  width: calc(var(--u) * 17);
+  height: calc(var(--u) * 17);
+  margin-top: calc(var(--u) * -2);
 }
 
 /* weapon backpack: which primary slot the selected gun goes into */
@@ -1387,4 +1408,472 @@
 }
 .cf-st-pk.has .cf-st-pk-n {
   color: #fff;
+}
+
+/* ---------------- GEAR tab: slot groups | paperdoll (ui/storeDoll.js) + compact details ---------------- */
+
+.cf-menu.cf-store[data-cat='gear'] {
+  --dw: calc(var(--u) * 540); /* room for the figure between the two slot columns */
+}
+/* category bar: the gear rule, right-aligned */
+.cf-st-cats-note {
+  display: none;
+  min-width: 0;
+  margin-left: auto;
+  padding-left: calc(var(--u) * 12);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 700;
+  font-size: calc(var(--u) * 10);
+  letter-spacing: 0.24em;
+  color: #6c737a;
+}
+.cf-store[data-cat='gear'] .cf-st-cats-note {
+  display: block;
+}
+
+/* one group per body slot, flowing three cards wide: HEAD | TORSO x2, BACK x2 | BELT, HANDS | FEET
+   (capped: on ultrawide screens the cards would outgrow the height) */
+.cf-st-groups {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: calc(var(--u) * 12) calc(var(--u) * 10);
+  align-items: start;
+  max-width: calc(var(--u) * 1080);
+}
+.cf-st-list[data-cat='equipment'] .cf-st-sec {
+  max-width: calc(var(--u) * 1080);
+}
+.cf-st-grp {
+  grid-column: span var(--n);
+  min-width: 0;
+  transition: opacity 0.22s, filter 0.22s;
+}
+.cf-st-grp .cf-st-grid {
+  grid-template-columns: repeat(var(--n), minmax(0, 1fr));
+}
+.cf-st-grp .cf-st-card-pic {
+  aspect-ratio: 2.15 / 1; /* three rows fit 16:9 with a little slack */
+}
+.cf-st-grp-h {
+  margin-bottom: calc(var(--u) * 8);
+}
+.cf-st-grp-h::before {
+  display: none;
+}
+.cf-st-grp-h .cf-st-si {
+  width: calc(var(--u) * 18);
+  height: calc(var(--u) * 18);
+  margin: calc(var(--u) * -3) 0;
+  color: var(--c-amber);
+}
+.cf-st-grp.focus .cf-st-grp-h {
+  color: var(--c-amber-2);
+}
+.cf-st-grp.focus .cf-st-grp-h::after {
+  background: linear-gradient(90deg, rgba(245, 165, 36, 0.55), transparent);
+}
+/* a slot picked on the paperdoll: the other groups step back */
+.cf-st-grp.dim {
+  opacity: 0.36;
+  filter: saturate(0.3);
+}
+.cf-st-grp.dim:hover {
+  opacity: 0.85;
+  filter: none;
+}
+
+/* the paperdoll takes the live preview's place */
+.cf-st-dollwrap {
+  display: none;
+  flex: 1 1 auto;
+  min-height: calc(var(--u) * 250);
+  padding: calc(var(--u) * 14) calc(var(--u) * 14) calc(var(--u) * 12);
+  background:
+    radial-gradient(ellipse 30% 50% at 50% 48%, rgba(255, 176, 64, 0.11), transparent 72%),
+    radial-gradient(ellipse 20% 4% at 50% 95%, rgba(0, 0, 0, 0.6), transparent 72%),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.022) 0 1px, transparent 1px calc(var(--u) * 28)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(0, 0, 0, 0.18));
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+.cf-store[data-cat='gear'] .cf-st-dollwrap {
+  display: flex;
+}
+.cf-store[data-cat='gear'] .cf-st-stage {
+  display: none;
+}
+.cf-st-doll {
+  --bw: calc(var(--u) * 136); /* slot box */
+  --bh: calc(var(--u) * 90);
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+.cf-st-doll.tight {
+  --bh: calc(var(--u) * 44);
+}
+.cf-st-doll-fig {
+  position: absolute;
+  z-index: 0;
+  pointer-events: none;
+}
+.cf-st-doll-fig img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 calc(var(--u) * 10) calc(var(--u) * 14) rgba(0, 0, 0, 0.6));
+  animation: cf-fade-in 0.4s ease-out both;
+}
+.cf-st-doll-fig img:not([src]) {
+  visibility: hidden;
+}
+
+/* leader lines: box -> body part; amber when something is worn there, bright for the selected slot */
+.cf-st-doll-wires {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+.cf-st-doll-wires path {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.3);
+  stroke-width: 1;
+  transition: stroke 0.2s;
+}
+.cf-st-doll-wires circle {
+  fill: #0c0e11;
+  stroke: rgba(255, 255, 255, 0.45);
+  stroke-width: 1;
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: fill 0.2s, stroke 0.2s;
+}
+.cf-st-doll-wires g.on path {
+  stroke: rgba(245, 165, 36, 0.5);
+}
+.cf-st-doll-wires g.on circle {
+  fill: var(--c-amber);
+  stroke: rgba(255, 226, 160, 0.9);
+}
+.cf-st-doll-wires g.hl path {
+  stroke: var(--c-amber-2);
+  stroke-width: 1.6;
+  filter: drop-shadow(0 0 3px rgba(255, 170, 40, 0.9));
+}
+.cf-st-doll-wires g.hl circle {
+  fill: var(--c-amber-2);
+  stroke: #fff6dc;
+  animation: cf-st-dot 1.3s ease-in-out infinite;
+}
+.cf-st-doll-wires g.flash path {
+  animation: cf-st-wire-flash 0.8s ease-out;
+}
+.cf-st-doll-wires g.flash circle {
+  animation: cf-st-dot-pop 0.7s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+@keyframes cf-st-dot {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.7); }
+}
+@keyframes cf-st-dot-pop {
+  0% { transform: scale(3.2); fill: #fff4d6; }
+  100% { transform: scale(1); }
+}
+@keyframes cf-st-wire-flash {
+  0% { stroke: #fff4d6; stroke-width: 3; }
+}
+
+/* slot boxes: header (icon + slot), the worn item's picture, its name; dashed EMPTY when free */
+.cf-st-ds {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  width: var(--bw);
+  height: var(--bh);
+  padding: calc(var(--u) * 6) calc(var(--u) * 8) calc(var(--u) * 7);
+  background: linear-gradient(170deg, rgba(25, 28, 34, 0.92), rgba(8, 9, 12, 0.95));
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #a9b0b8;
+  text-align: left;
+  transition: border-color 0.18s, box-shadow 0.18s, background-color 0.18s, opacity 0.18s;
+}
+.cf-st-ds.l {
+  left: 0;
+}
+.cf-st-ds.r {
+  right: 0;
+}
+.cf-st-ds-h {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: calc(var(--u) * 5);
+  font-weight: 700;
+  font-size: calc(var(--u) * 10);
+  letter-spacing: 0.24em;
+  color: #7c848c;
+}
+.cf-st-ds-h .cf-st-si {
+  width: calc(var(--u) * 14);
+  height: calc(var(--u) * 14);
+}
+.cf-st-ds-h em {
+  font-style: normal;
+  padding-top: calc(var(--u) * 1);
+}
+/* other items you own for the slot */
+.cf-st-ds-alt {
+  margin-left: auto;
+  font-style: normal;
+  font-family: var(--f-num);
+  font-weight: 500;
+  font-size: calc(var(--u) * 15);
+  line-height: 0.8;
+  letter-spacing: 0.04em;
+  color: var(--up);
+}
+.cf-st-ds-pic {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: calc(var(--u) * 2) 0;
+}
+.cf-st-ds-pic img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 calc(var(--u) * 4) calc(var(--u) * 4) rgba(0, 0, 0, 0.55));
+}
+.cf-st-ds-pic > svg:not(.cf-st-ds-ph) {
+  width: 86%;
+  height: auto;
+  aspect-ratio: 128 / 40;
+  color: #b9c0c7;
+}
+.cf-st-ds-ph {
+  width: auto;
+  height: 62%;
+  color: rgba(255, 255, 255, 0.1);
+}
+.cf-st-ds-n {
+  flex: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+  font-family: var(--f-num);
+  font-weight: 600;
+  font-size: calc(var(--u) * 16.5);
+  line-height: 0.8;
+  padding-top: 0.12em;
+  letter-spacing: 0.03em;
+  color: #eee8de;
+}
+.cf-st-ds.empty {
+  background: rgba(8, 10, 13, 0.5);
+  border-style: dashed;
+  border-color: rgba(255, 255, 255, 0.22);
+}
+.cf-st-ds.empty .cf-st-ds-n {
+  font-family: var(--f-ui);
+  font-weight: 700;
+  font-size: calc(var(--u) * 10);
+  line-height: 1.2;
+  padding-top: 0;
+  letter-spacing: 0.32em;
+  color: #6c737a;
+}
+.cf-st-ds.na {
+  opacity: 0.6;
+}
+.cf-st-ds.full {
+  border-color: rgba(245, 165, 36, 0.42);
+}
+.cf-st-ds.full .cf-st-ds-h {
+  color: var(--c-amber-2);
+}
+.cf-st-ds:hover,
+.cf-st-ds:focus-visible {
+  border-color: rgba(245, 165, 36, 0.75);
+  outline: none;
+  opacity: 1;
+}
+/* the selected item's slot / the slot picked here */
+.cf-st-ds.hl,
+.cf-st-ds.focus {
+  border-color: var(--c-amber);
+  background:
+    radial-gradient(ellipse 80% 70% at 50% 45%, rgba(255, 176, 64, 0.16), transparent 75%),
+    linear-gradient(170deg, rgba(42, 34, 22, 0.94), rgba(10, 10, 12, 0.96));
+  box-shadow: inset 0 0 0 1px rgba(245, 165, 36, 0.25), 0 0 24px rgba(245, 165, 36, 0.2);
+  opacity: 1;
+}
+.cf-st-ds.hl .cf-st-ds-h,
+.cf-st-ds.focus .cf-st-ds-h {
+  color: var(--c-amber-2);
+}
+.cf-st-ds.hl .cf-st-ds-ph,
+.cf-st-ds.focus .cf-st-ds-ph {
+  color: rgba(255, 190, 90, 0.3);
+}
+.cf-st-ds.focus::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  border-style: solid;
+  border-width: 0 0 calc(var(--u) * 11) calc(var(--u) * 11);
+  border-color: transparent transparent var(--c-amber) transparent;
+}
+/* an item went on (or was upgraded): flash; a new one drops into the box */
+.cf-st-ds.flash {
+  animation: cf-st-ds-flash 0.75s ease-out;
+}
+.cf-st-ds.swap .cf-st-ds-pic > *,
+.cf-st-ds.swap .cf-st-ds-n {
+  animation: cf-st-ds-in 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+}
+.cf-st-ds.nope {
+  animation: cf-st-shake 0.36s linear;
+}
+@keyframes cf-st-ds-flash {
+  0% { box-shadow: inset 0 0 0 2px #ffe3a0, 0 0 0 0 rgba(255, 190, 70, 0.85); filter: brightness(1.9); }
+  100% { box-shadow: inset 0 0 0 1px rgba(245, 165, 36, 0.25), 0 0 0 calc(var(--u) * 16) rgba(255, 190, 70, 0); filter: none; }
+}
+@keyframes cf-st-ds-in {
+  0% { opacity: 0; transform: translateY(-35%) scale(1.3); }
+  100% { opacity: 1; transform: none; }
+}
+/* short panel: names only */
+.cf-st-doll.tight .cf-st-ds-pic {
+  display: none;
+}
+.cf-st-doll.tight .cf-st-ds-n {
+  margin-top: auto;
+  text-align: left;
+}
+
+/* compact details under the paperdoll; fixed heights so the figure doesn't jump between items */
+.cf-store[data-cat='gear'] .cf-st-info {
+  min-height: calc(var(--u) * 184);
+  padding: calc(var(--u) * 14) calc(var(--u) * 18) 0;
+}
+.cf-store[data-cat='gear'] .cf-st-d-t h3 {
+  font-size: calc(var(--u) * 36);
+}
+.cf-store[data-cat='gear'] .cf-st-d-t small {
+  margin-top: calc(var(--u) * 5);
+}
+.cf-store[data-cat='gear'] .cf-st-gear-fx {
+  gap: calc(var(--u) * 4);
+  margin-top: calc(var(--u) * 11);
+  padding: calc(var(--u) * 9) calc(var(--u) * 12);
+}
+.cf-store[data-cat='gear'] .cf-st-meter {
+  margin-top: calc(var(--u) * 8);
+  padding: calc(var(--u) * 8) calc(var(--u) * 12);
+}
+.cf-store[data-cat='gear'] .cf-st-meter-v {
+  font-size: calc(var(--u) * 24);
+}
+.cf-store[data-cat='gear'] .cf-st-act {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  min-height: calc(var(--u) * 112);
+  padding: calc(var(--u) * 10) calc(var(--u) * 18) calc(var(--u) * 18);
+}
+.cf-store[data-cat='gear'] .cf-st-buy {
+  flex: none;
+  height: calc(var(--u) * 54);
+}
+.cf-store[data-cat='gear'] .cf-st-buy-l {
+  font-size: calc(var(--u) * 34);
+}
+
+/* worn item: the other items you own for its slot, one click to swap */
+.cf-st-alts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(var(--u) * 6) calc(var(--u) * 8);
+  margin-bottom: calc(var(--u) * 10);
+}
+.cf-st-alts em {
+  font-style: normal;
+  font-weight: 700;
+  font-size: calc(var(--u) * 11);
+  letter-spacing: 0.2em;
+  color: #8a9199;
+}
+.cf-st-alt {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--u) * 8);
+  height: calc(var(--u) * 26);
+  padding: 0 calc(var(--u) * 4) 0 calc(var(--u) * 10);
+  border: 1px solid rgba(127, 226, 255, 0.35);
+  background: rgba(127, 226, 255, 0.05);
+  transition: border-color 0.15s, background-color 0.15s;
+}
+.cf-st-alt span {
+  font-family: var(--f-num);
+  font-size: calc(var(--u) * 18);
+  line-height: 0.8;
+  padding-top: 0.12em;
+  letter-spacing: 0.04em;
+  color: #e8e2d8;
+}
+.cf-st-alt i {
+  padding: calc(var(--u) * 3) calc(var(--u) * 6) calc(var(--u) * 2);
+  font-style: normal;
+  font-weight: 700;
+  font-size: calc(var(--u) * 10);
+  letter-spacing: 0.2em;
+  background: rgba(127, 226, 255, 0.16);
+  color: var(--up);
+}
+.cf-st-alt:hover,
+.cf-st-alt:focus-visible {
+  border-color: var(--up);
+  background: rgba(127, 226, 255, 0.12);
+  outline: none;
+}
+
+@media (max-width: 1100px) {
+  .cf-menu.cf-store[data-cat='gear'] {
+    --dw: calc(var(--u) * 500);
+  }
+  .cf-st-doll {
+    --bw: calc(var(--u) * 128);
+  }
+}
+@media (max-height: 640px) {
+  .cf-st-doll {
+    --bh: calc(var(--u) * 78);
+  }
+}
+/* narrow: the paperdoll on top at a fixed height, the groups below */
+@media (max-width: 760px) {
+  .cf-store[data-cat='gear'] .cf-st-dollwrap {
+    flex: none;
+    height: calc(var(--u) * 470);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cf-st-doll-wires g.hl circle,
+  .cf-st-ds.swap .cf-st-ds-pic > *,
+  .cf-st-ds.swap .cf-st-ds-n {
+    animation: none !important;
+  }
 }

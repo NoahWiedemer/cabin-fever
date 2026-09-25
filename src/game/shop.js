@@ -13,6 +13,7 @@ export const SHOP_WEAPONS = [
   { id: 'm4super90', slot: 0, price: 1400, type: 'SEMI-AUTO SHOTGUN', icon: 'shotgun' },
   { id: 'm16a2', slot: 0, price: 1500, type: '3-ROUND BURST RIFLE', icon: 'rifle' },
   { id: 'spas12', slot: 0, price: 1800, type: 'COMBAT SHOTGUN', icon: 'shotgun' },
+  { id: 'p90', slot: 0, price: 2000, type: 'SUBMACHINE GUN', icon: 'rifle' },
   { id: 'r201', slot: 0, price: 2400, type: 'ASSAULT RIFLE', icon: 'rifle', upg: 1.15 },
   { id: 'softball', slot: 0, price: 3500, type: 'GRENADE LAUNCHER', icon: 'launcher', upg: 1.3 },
   { id: 'devotion', slot: 0, price: 3800, type: 'LIGHT MACHINE GUN', icon: 'lmg', upg: 1.3 },
