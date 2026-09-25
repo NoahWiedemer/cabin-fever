@@ -70,6 +70,10 @@ const _u = new THREE.Vector3();
 const _f = new THREE.Vector3();
 const _x = new THREE.Vector3();
 const _r = new THREE.Vector3();
+const _eye = new THREE.Vector3();
+const _low = new THREE.Vector3();
+// eye relative to the head bone in gun space (x right, y up, -z forward): the right eye, just ahead
+const EYE_FROM_HEAD = new THREE.Vector3(0.032, 0.075, -0.085);
 const _aw = new THREE.Vector3();
 const _pw = new THREE.Vector3();
 const _pole = new THREE.Vector3();
@@ -171,6 +175,7 @@ export class Teammate {
       gripFwd: Math.max(GRIP_FWD, Math.min(0.3, w.stock)),
       wristR: WRIST_R.clone().add(w.rightHand).sub(REF_R),
       wristL: WRIST_L.clone().add(w.leftHand).sub(REF_L),
+      eye: (w.eye ?? new THREE.Vector3(0, 0.11, 0.13)).clone(), // aiming: this point of the gun sits at the eye
     };
     // the gun is posed in character space along the aim (muzzle = -Z); both hands are IK'd onto it
     this.gunHolder = new THREE.Group();
@@ -553,16 +558,24 @@ export class Teammate {
     if (this.jiggle) this.jiggle.update(dt);
   }
 
-  /** rifle along yaw + aim pitch with the stock in the right shoulder (low ready when idle), hands IK'd on */
+  /**
+   * Rifle along yaw + aim pitch, hands IK'd on. Aiming: the gun's sight sits at the right eye (cheek on
+   * the stock, the butt falls into the shoulder). Idle: low ready from the shoulder pocket, muzzle down.
+   */
   _holdRifle(dt) {
     const b = this.bones;
     this.ready = damp(this.ready, this.target && this.reloadT <= 0 ? 1 : 0, 5, dt);
     const pitch = this.aimPitch + this.recoil * 0.05 - (1 - this.ready) * 0.5;
     _gq.copy(this.root.quaternion).multiply(_qa.setFromEuler(_eu.set(-pitch, Math.PI, 0)));
-    // stock pocket: just inside the right shoulder joint
-    b.upperArmR.getWorldPosition(_G);
     const hold = this.hold;
-    _G.add(_T.set(-0.06, 0.04, this.recoil * 0.035 - hold.gripFwd).applyQuaternion(_gq));
+    // low ready: stock pocket just inside the right shoulder joint
+    b.upperArmR.getWorldPosition(_low);
+    _low.add(_T.set(-0.06, 0.04, -hold.gripFwd).applyQuaternion(_gq));
+    // aimed: gun origin = eye - (the gun's sight eye point)
+    b.head.getWorldPosition(_eye);
+    _eye.add(_T.copy(EYE_FROM_HEAD).applyQuaternion(_gq)).sub(_T.copy(hold.eye).applyQuaternion(_gq));
+    const k = this.ready * this.ready * (3 - 2 * this.ready);
+    _G.lerpVectors(_low, _eye, k).add(_T.set(0, 0, this.recoil * 0.035).applyQuaternion(_gq));
     this.gunHolder.position.copy(this.mesh.worldToLocal(_T.copy(_G)));
     this.gunHolder.quaternion.copy(this.mesh.getWorldQuaternion(_qb).invert().multiply(_gq));
     const h = this.hands;

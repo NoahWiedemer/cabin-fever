@@ -87,13 +87,14 @@ export function buildThirdPersonWeapon(id) {
 // Grip markers of the light third-person models (same gun space as the first-person ones: root at the
 // grip web, muzzle along -Z). m4a1 matches the procedural first-person M4A1's markers.
 const TP_MARKERS = {
-  m4a1: { muzzle: [0, 0.047, -0.59], rightHand: [0, -0.005, -0.018], leftHand: [0, 0.049, -0.331] },
-  m4super90: { muzzle: [0, 0.05, -0.74], rightHand: [0, -0.006, -0.016], leftHand: [0, 0.012, -0.39] },
+  // eye: where the shooter's eye sits when aiming down the sights (gun space)
+  m4a1: { muzzle: [0, 0.047, -0.59], rightHand: [0, -0.005, -0.018], leftHand: [0, 0.049, -0.331], eye: [0, 0.11, 0.13] },
+  m4super90: { muzzle: [0, 0.05, -0.74], rightHand: [0, -0.006, -0.016], leftHand: [0, 0.012, -0.39], eye: [0, 0.1, 0.12] },
 };
 
 /**
- * A gun for an AI teammate's hands: { root, muzzle, rightHand, leftHand (Vector3s in gun space),
- * stock (z of the butt), shellType, glb }. GLB guns bring their own markers; anything else is the
+ * A gun for an AI teammate's hands: { root, muzzle, rightHand, leftHand, eye (Vector3s in gun space; eye =
+ * the shooter's eye when aiming down the sights), stock (z of the butt), shellType, glb }. GLB guns bring their own markers; anything else is the
  * cheap third-person model (its stand-in for a missing GLB) with the M4A1 markers.
  */
 export function buildBotWeapon(id) {
@@ -103,7 +104,8 @@ export function buildBotWeapon(id) {
       m.root.updateMatrixWorld(true);
       const box = new THREE.Box3().setFromObject(m.root);
       const R = m.rightHand.position.clone();
-      return { root: m.root, muzzle: m.muzzle.position.clone(), rightHand: R, leftHand: m.leftHand ? m.leftHand.position.clone() : R.clone(), stock: box.max.z, shellType: m.shellType, glb: true };
+      const eye = m.sight?.eye ? m.sight.eye.clone() : new THREE.Vector3(0, 0.11, box.max.z * 0.5);
+      return { root: m.root, muzzle: m.muzzle.position.clone(), rightHand: R, leftHand: m.leftHand ? m.leftHand.position.clone() : R.clone(), eye, stock: box.max.z, shellType: m.shellType, glb: true };
     } catch (e) {
       console.warn('GLB bot weapon failed', id, e);
     }
@@ -114,5 +116,5 @@ export function buildBotWeapon(id) {
   const mk = TP_MARKERS[tp] ?? TP_MARKERS.m4a1;
   const box = new THREE.Box3().setFromObject(root);
   const v = (a) => new THREE.Vector3(a[0], a[1], a[2]);
-  return { root, muzzle: v(mk.muzzle), rightHand: v(mk.rightHand), leftHand: v(mk.leftHand), stock: box.isEmpty() ? 0.25 : box.max.z, shellType: tp === 'm4super90' ? 'shotgun' : 'rifle', glb: false };
+  return { root, muzzle: v(mk.muzzle), rightHand: v(mk.rightHand), leftHand: v(mk.leftHand), eye: v(mk.eye ?? [0, 0.11, 0.13]), stock: box.isEmpty() ? 0.25 : box.max.z, shellType: tp === 'm4super90' ? 'shotgun' : 'rifle', glb: false };
 }
