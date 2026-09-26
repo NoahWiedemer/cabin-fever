@@ -22,6 +22,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   volume: 0.8,
   music: 0.9,
   showFps: false,
+  fullscreen: false, // the whole page (core/fullscreen.js); re-entered on the next click after a reload
   rev: 2, // settings revision (2: louder music default)
 });
 
@@ -65,6 +66,7 @@ const CONTROLS = [
   [['HOLD F'], 'Buy phase: ready up'],
   [['TAB'], 'Scoreboard'],
   [['ESC'], 'Pause · close the shop'],
+  [['HOLD ESC'], 'Leave fullscreen'],
 ];
 
 const TIPS = [
@@ -129,6 +131,7 @@ function sanitizeSettings(s) {
     // saves from before rev 2 that still hold the old, too quiet default get the new one
     if ((s.rev ?? 1) < 2 && s.music === 0.6) o.music = DEFAULT_SETTINGS.music;
     o.showFps = !!s.showFps;
+    o.fullscreen = !!s.fullscreen;
   }
   return o;
 }
@@ -216,6 +219,11 @@ export class Menu {
 
   getSettings() {
     return { ...this.settings };
+  }
+
+  /** Change one setting from outside (e.g. FULLSCREEN when the browser refused or the player left it). */
+  setSetting(key, value) {
+    this._setSetting(key, value);
   }
 
   showMain(view = 'home') {
@@ -953,6 +961,10 @@ export class Menu {
         <label>GRAPHICS QUALITY</label><span class="cf-set-val"></span>
         <div class="cf-seg">${QUALITIES.map((q) => `<button data-sfx data-q="${q}">${q.toUpperCase()}</button>`).join('')}</div>
       </div>
+      <div class="cf-set-row cf-set-toggle" data-key="fullscreen"${document.fullscreenEnabled ? '' : ' hidden'}>
+        <label>FULLSCREEN</label>
+        <button class="cf-toggle" data-sfx role="switch"><i></i><span class="cf-toggle-off">OFF</span><span class="cf-toggle-on">ON</span></button>
+      </div>
       <div class="cf-set-row" data-key="volume">
         <label>MASTER VOLUME</label><span class="cf-set-val"></span>
         <input class="cf-range" type="range" min="0" max="1" step="0.01" data-sfx>
@@ -983,8 +995,12 @@ export class Menu {
       const b = e.target.closest('[data-q]');
       if (b) this._setSetting('quality', b.dataset.q);
     });
-    const tog = wrap.querySelector('.cf-toggle');
-    tog.addEventListener('click', () => this._setSetting('showFps', !this.settings.showFps));
+    const toggles = [...wrap.querySelectorAll('.cf-set-toggle')].map((row) => {
+      const key = row.dataset.key;
+      const btn = row.querySelector('.cf-toggle');
+      btn.addEventListener('click', () => this._setSetting(key, !this.settings[key]));
+      return { key, btn };
+    });
     wrap.querySelector('[data-reset]').addEventListener('click', () => {
       this.settings = { ...DEFAULT_SETTINGS };
       this._settingsChanged();
@@ -1009,8 +1025,10 @@ export class Menu {
         }
         for (const b of segBtns) b.classList.toggle('sel', b.dataset.q === s.quality);
         qVal.textContent = '';
-        tog.classList.toggle('on', !!s.showFps);
-        tog.setAttribute('aria-checked', s.showFps ? 'true' : 'false');
+        for (const { key, btn } of toggles) {
+          btn.classList.toggle('on', !!s[key]);
+          btn.setAttribute('aria-checked', s[key] ? 'true' : 'false');
+        }
       },
     };
     this._panels.push(panel);
@@ -1023,7 +1041,7 @@ export class Menu {
     if (key === 'fov') value = Math.round(clamp(value, 70, 110));
     if (key === 'volume' || key === 'music') value = clamp(Math.round(value * 100) / 100, 0, 1);
     if (key === 'quality' && !QUALITIES.includes(value)) return;
-    if (key === 'showFps') value = !!value;
+    if (key === 'showFps' || key === 'fullscreen') value = !!value;
     if (this.settings[key] === value) return;
     this.settings[key] = value;
     this._settingsChanged();

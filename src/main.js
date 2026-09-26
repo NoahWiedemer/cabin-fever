@@ -11,6 +11,7 @@ import { MenuMusic } from './ui/music.js';
 import { generateAllTextures } from './world/textures.js';
 import { Game } from './game/game.js';
 import { renderPortraits } from './actors/portraits.js';
+import { fullscreen } from './core/fullscreen.js';
 
 installFogShader();
 
@@ -38,6 +39,7 @@ const menu = new Menu(document.getElementById('menu'), {
     game.start(config);
     started = true;
     input.lock();
+    wantFullscreen();
     setTimeout(() => {
       if (started && !input.locked && !game.paused && !store.isOpen) menu.showClickToPlay(true);
     }, 1200);
@@ -50,6 +52,7 @@ const menu = new Menu(document.getElementById('menu'), {
       return;
     }
     input.lock();
+    wantFullscreen();
   },
   onQuit: () => {
     closeStore();
@@ -72,13 +75,18 @@ const menu = new Menu(document.getElementById('menu'), {
     started = true;
     inMenu = false;
     input.lock();
+    wantFullscreen();
   },
   onSettingsChange: (s) => {
+    const fsChanged = s.fullscreen !== settings.fullscreen;
     Object.assign(settings, s);
     audio.setMasterVolume(settings.volume ?? 0.8);
     music.setVolume(settings.volume ?? 0.8, settings.music ?? 0.9);
     if (gr.qualityName !== settings.quality) gr.setQuality(settings.quality);
     hud.setFps(settings.showFps ? 0 : null);
+    // the switch is a click, so fullscreen can follow right away; refused, the switch goes back off
+    if (fsChanged && settings.fullscreen) fullscreen.enter().catch(() => menu.setSetting('fullscreen', false));
+    else if (fsChanged) fullscreen.exit();
   },
   onUiSound: (name) => audio.play(name, { volume: 0.5 }),
   // music loops on the main menu, fades out on deploy / pause / end screens
@@ -117,6 +125,7 @@ function closeShop() {
   closeStore();
   hud.setVisible(true);
   input.lock();
+  wantFullscreen();
   setTimeout(() => {
     if (started && !input.locked && !game?.paused && !store.isOpen) menu.showClickToPlay(true);
   }, 1200);
@@ -125,12 +134,34 @@ function closeShop() {
 const settings = { ...menu.getSettings() };
 music.setVolume(settings.volume ?? 0.8, settings.music ?? 0.9);
 
+// FULLSCREEN setting: a browser only goes fullscreen on a user gesture, so with the setting on it's
+// (re-)entered on the next one: the first click after loading, deploy, resume, a click back into the
+// game. Where Esc is locked to the page (core/fullscreen.js), a tap still pauses, and leaving
+// fullscreen by other means (holding Esc, F11) switches the setting off.
+function wantFullscreen() {
+  if (settings.fullscreen && fullscreen.supported && !fullscreen.active) fullscreen.enter().catch(() => {});
+}
+document.addEventListener('fullscreenchange', () => {
+  if (fullscreen.active) {
+    if (!settings.fullscreen) fullscreen.exit(); // a request still under way when the setting went off
+    return;
+  }
+  const held = fullscreen.escLocked;
+  fullscreen.escLocked = false;
+  if (held && settings.fullscreen) menu.setSetting('fullscreen', false);
+});
+addEventListener('keydown', (e) => {
+  // Esc no longer releases the pointer by itself while it's locked to the page: pause like it would
+  if (e.code === 'Escape' && fullscreen.escLocked && input.locked && !store.isOpen) input.unlock();
+});
+
 // Browsers keep audio locked until a user gesture: unlock the synth (menu sounds, thunder) on
 // the first click / key anywhere. The menu music retries its own play() on the same gesture.
 function unlockAudio() {
   removeEventListener('pointerdown', unlockAudio, true);
   removeEventListener('keydown', unlockAudio, true);
   audio.init().then(() => audio.setMasterVolume(settings.volume ?? 0.8));
+  wantFullscreen();
 }
 addEventListener('pointerdown', unlockAudio, true);
 addEventListener('keydown', unlockAudio, true);
@@ -153,7 +184,9 @@ input.onLockChange = (locked) => {
 };
 // clicking the canvas during play re-locks the pointer
 gr.renderer.domElement.addEventListener('click', () => {
-  if (started && !input.locked && !game?.paused && !store.isOpen) input.lock();
+  if (!started || input.locked || game?.paused || store.isOpen) return;
+  input.lock();
+  wantFullscreen();
 });
 
 async function boot() {

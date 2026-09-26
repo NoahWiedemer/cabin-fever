@@ -12,6 +12,8 @@ npm run dev      # http://localhost:5173 (the game), /viewer.html (weapon + arms
 
 The title sits over the live farmhouse scene. A slow camera moves between shots, cutting through black when you change screens, and the lightning brightens the title. **Play** sets up a run in three steps: game mode, difficulty and fireteam size (0–3 bots). A briefing panel shows the rounds, time limit, floors that open, the threat timeline and the standard kit. Everyone deploys with the same kit: M4A1, M9, knife and 2 frags. Better guns are bought in the store between rounds. The menu also has **Settings** (with a separate music volume), **Controls** and **Credits**. You can use the mouse, or the arrow keys, Enter and Esc.
 
+**Fullscreen**: the FULLSCREEN switch in the settings (main menu and pause menu) puts the whole page in fullscreen. It is saved with the other settings. Browsers only go fullscreen on a click or key press, so after a reload it comes back on your first click, and again when you deploy, resume or click back into the game. In Chrome and Edge, Esc stays with the game while fullscreen (Keyboard Lock): a tap pauses as usual, and holding Esc leaves fullscreen and switches the setting off. In other browsers Esc leaves fullscreen along with the mouse, and resuming brings it back. `src/core/fullscreen.js` wraps the Fullscreen and Keyboard Lock APIs.
+
 **Menu music**: `public/audio/abandoned-farmhouse.mp3` loops on the main menu screens. Browsers block audio until the first click or key press, so the track starts then, or right away if the page already has permission. It fades out over 1.5 s when you deploy and fades back in when you return to the menu. It is silent in the pause menu, on the end screens and in `/viewer.html`. Volume is master × music, and both settings are saved with the others. The track plays through an `HTMLAudioElement` (`src/ui/music.js`), separate from the synthesized game mix.
 
 ## Game modes
@@ -162,7 +164,7 @@ A group of double agents escaped with a virus sample and are pinned down in an a
 ## Controls
 
 WASD move · Shift sprint · Space jump · Ctrl/C crouch · Mouse1 fire · Mouse2 aim/scope (akimbo pistols: Mouse1 right gun, Mouse2 left gun) · R reload ·
-W / Space at a ladder climb (S down, C slide, Space jump off) · 1–6 / wheel switch (1 again: primary ↔ backpack gun, with the weapon backpack; 4 again: frag ↔ Molotov; 5 = barricade kit, hold Mouse1 at a doorway to nail it up; 6 = gas can, hold Mouse1 at the generator to refuel it; empty slots are skipped) · Q last weapon · G quick throw · E pick up · V (mash) shake off a Biter · F flashlight (buy phase: tap F at the counter to open the gun shop, hold F to ready up; hold F at the broken generator to repair it, hold F at a downed teammate to revive them) · Tab scoreboard · Esc pause / close the shop
+W / Space at a ladder climb (S down, C slide, Space jump off) · 1–6 / wheel switch (1 again: primary ↔ backpack gun, with the weapon backpack; 4 again: frag ↔ Molotov; 5 = barricade kit, hold Mouse1 at a doorway to nail it up; 6 = gas can, hold Mouse1 at the generator to refuel it; empty slots are skipped) · Q last weapon · G quick throw · E pick up · V (mash) shake off a Biter · F flashlight (buy phase: tap F at the counter to open the gun shop, hold F to ready up; hold F at the broken generator to repair it, hold F at a downed teammate to revive them) · Tab scoreboard · Esc pause / close the shop (hold Esc: leave fullscreen)
 
 ## Code map
 

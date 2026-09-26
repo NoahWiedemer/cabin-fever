@@ -2141,6 +2141,9 @@
   padding: calc(var(--u) * 11) 0;
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
+.cf-set-row[hidden] {
+  display: none;
+}
 .cf-set-row label {
   font-weight: 700;
   font-size: calc(var(--u) * 13);
