@@ -18,6 +18,9 @@ export const MODELS = {
   gasmask: '/models/zombies/gasmask.glb', // Mauler body variant
   biter: '/models/zombies/biter.glb', // Biter (small, pounces and latches on)
   stalker: '/models/zombies/stalker.glb', // Stalker (haunts the fireteam, attacks now and then: actors/stalker.js)
+  normal: '/models/zombies/normal.glb', // Mauler body variant (plain zombie)
+  worker: '/models/zombies/worker.glb', // Worker (hard hat: some headshots glance off)
+  survivor: '/models/zombies/survivor.glb', // Survivalist (rare, drops loot)
   // weapons
   m16a2: '/models/weapons/m16a2.glb',
   spas12: '/models/weapons/spas12.glb',

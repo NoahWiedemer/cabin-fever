@@ -1,6 +1,7 @@
 // High-level visual effects: impacts, blood, explosions, acid clouds, muzzle flashes,
-// shell casings and tracers. Owns the particle systems and decals.
+// shell casings, flesh chunks and tracers. Owns the particle systems and decals.
 import * as THREE from 'three';
+import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { SpriteParticles, StreakParticles } from './particles.js';
 import { Decals } from './decals.js';
 import { tex } from '../world/textures.js';
@@ -16,6 +17,10 @@ const _m = new THREE.Matrix4();
 const _s = new THREE.Vector3(1, 1, 1);
 const _e = new THREE.Euler();
 const UP = new THREE.Vector3(0, 1, 0);
+const _c = new THREE.Color();
+const GIBS = 64; // flesh chunks alive at once (the oldest are reused)
+// raw meat, dark offal, pale fat / skin, bile-soaked
+const GIB_TINTS = [0x5c0f0b, 0x3a0806, 0x6e1a12, 0x8a5646, 0x3b3514];
 
 function safeMap(name) {
   try {
@@ -87,6 +92,7 @@ export class Effects {
       }
     }
     this.mags = new MagDrops(scene, world, audio); // the player's empty magazines on the floor
+    this.gibs = this._makeGibs(GIBS); // flesh chunks of a bursting Boomer
     this.acidClouds = [];
     this.fireZones = [];
     this.time = 0;
@@ -94,6 +100,121 @@ export class Effects {
 
   setViewport(h, fov) {
     for (const s of this.systems) s.setViewportHeight(h, fov);
+  }
+
+  /** Instanced lumps of wet flesh: a squashed, randomly dented icosphere, tinted per chunk. */
+  _makeGibs(max) {
+    const geo = mergeVertices(new THREE.IcosahedronGeometry(1, 1).deleteAttribute('normal').deleteAttribute('uv'));
+    const pos = geo.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      const k = rand(0.62, 1.2);
+      pos.setXYZ(i, pos.getX(i) * k, pos.getY(i) * k * 0.7, pos.getZ(i) * k);
+    }
+    geo.computeVertexNormals();
+    const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.28, metalness: 0 });
+    const mesh = new THREE.InstancedMesh(geo, mat, max);
+    mesh.frustumCulled = false;
+    mesh.castShadow = false;
+    mesh.receiveShadow = true;
+    _m.makeScale(0, 0, 0);
+    for (let i = 0; i < max; i++) {
+      mesh.setMatrixAt(i, _m);
+      mesh.setColorAt(i, _c.setHex(GIB_TINTS[0]));
+    }
+    this.scene.add(mesh);
+    return { mesh, items: new Array(max).fill(null), idx: 0, sounds: 0 };
+  }
+
+  /** Throw one flesh chunk (fleshBurst): it bleeds in flight, slaps onto walls and floors, and lies there a while. */
+  gib(p, vel, size) {
+    const g = this.gibs;
+    const tint = GIB_TINTS[Math.random() < 0.55 ? (Math.random() * 3) | 0 : 3 + ((Math.random() * 2) | 0)];
+    g.mesh.setColorAt(g.idx, _c.setHex(tint).multiplyScalar(rand(0.8, 1.15)));
+    g.mesh.instanceColor.needsUpdate = true;
+    g.items[g.idx] = {
+      p: p.clone(),
+      v: vel.clone(),
+      rot: new THREE.Euler(rand(0, 6), rand(0, 6), rand(0, 6)),
+      av: new THREE.Vector3(rand(-14, 14), rand(-14, 14), rand(-14, 14)),
+      s: new THREE.Vector3(size * rand(0.7, 1.3), size * rand(0.6, 1.1), size * rand(0.7, 1.3)),
+      life: rand(10, 14),
+      dripT: 0,
+      bounces: 0,
+      rest: false,
+    };
+    g.idx = (g.idx + 1) % g.items.length;
+  }
+
+  _updateGibs(dt) {
+    const g = this.gibs;
+    let any = false;
+    for (let i = 0; i < g.items.length; i++) {
+      const it = g.items[i];
+      if (!it) continue;
+      any = true;
+      if (!it.rest) {
+        it.v.y -= 9.8 * dt;
+        // into a wall: a splat where it hits, then it slides down
+        const sp = it.v.length();
+        if (sp > 2) {
+          _n.copy(it.v).divideScalar(sp);
+          const hit = this.world.raycast(it.p.x, it.p.y, it.p.z, _n.x, _n.y, _n.z, sp * dt + 0.05, null, {});
+          if (hit && hit.ny < 0.5) {
+            // a wall (or the ceiling): it sticks for a splat, then drops
+            it.p.addScaledVector(_n, Math.max(0, hit.t - 0.04));
+            this.decals.bloodSplat(_v.copy(it.p), _n.set(hit.nx, hit.ny, hit.nz), rand(0.3, 0.6) * (it.s.x / 0.1), hit.ny < -0.5 ? 1 : rand(1.2, 2.2));
+            it.v.set(hit.nx * 0.4, Math.min(0, it.v.y) * 0.2 - (hit.ny < -0.5 ? 0.5 : 0), hit.nz * 0.4);
+            it.av.multiplyScalar(0.2);
+          }
+        }
+        it.p.addScaledVector(it.v, dt);
+        it.rot.x += it.av.x * dt;
+        it.rot.y += it.av.y * dt;
+        it.rot.z += it.av.z * dt;
+        // bleeding in flight
+        it.dripT -= dt;
+        if (it.dripT <= 0 && it.bounces === 0) {
+          it.dripT = 0.035;
+          this.blood.emit(it.p.x, it.p.y, it.p.z, it.v.x * 0.15 + rand(-0.3, 0.3), it.v.y * 0.15, it.v.z * 0.15 + rand(-0.3, 0.3), { life: rand(0.3, 0.6), size: rand(0.02, 0.04), gravity: 9.8, drag: 1, color: [0.16, 0.012, 0.01], alpha: 1 });
+        }
+        const floor = this.world.groundHeight(it.p.x, it.p.z, 0.02, it.p.y + 0.05);
+        const r = it.s.y * 0.6;
+        if (it.p.y < floor + r) {
+          it.p.y = floor + r;
+          if (it.bounces === 0) {
+            this.decals.bloodSplat(_v.set(it.p.x, floor, it.p.z), UP, rand(0.3, 0.55) * (it.s.x / 0.1));
+            if (g.sounds < 4) {
+              g.sounds++;
+              this.audio.play('impact_flesh', { position: it.p, volume: 0.45, pitch: rand(0.7, 0.95) });
+            }
+          }
+          it.bounces++;
+          it.v.y = -it.v.y * 0.18; // a wet slap, hardly any bounce
+          it.v.x *= 0.35;
+          it.v.z *= 0.35;
+          it.av.multiplyScalar(0.3);
+          if (it.bounces > 1 || Math.abs(it.v.y) < 0.5) {
+            it.rest = true;
+            it.rot.x = rand(-0.2, 0.2);
+            it.rot.z = rand(-0.2, 0.2);
+          }
+        }
+      }
+      it.life -= dt;
+      if (it.p.y < -30) it.life = 0; // fell out of the world
+      const k = it.life < 1 ? Math.max(0.001, it.life) : 1;
+      _q.setFromEuler(it.rot);
+      _s.copy(it.s).multiplyScalar(k);
+      _m.compose(it.p, _q, _s);
+      g.mesh.setMatrixAt(i, _m);
+      if (it.life <= 0) {
+        g.items[i] = null;
+        _m.makeScale(0, 0, 0);
+        g.mesh.setMatrixAt(i, _m);
+      }
+    }
+    if (any) g.mesh.instanceMatrix.needsUpdate = true;
+    g.sounds = Math.max(0, g.sounds - dt * 2);
   }
 
   // ------------------------------------------------------------------ impacts
@@ -242,6 +363,53 @@ export class Effects {
     this.audio.duck?.(0.5, 1.2);
   }
 
+  /**
+   * A Boomer bursting (game.explode with opts.burst): no fire and no flash, a wet explosion of blood, bile and flesh.
+   * Chunks of meat on high arcs (they bleed, slap onto the walls and lie about), heavy gobbets, a fine spray,
+   * a thin sinking haze, and the floor and the walls around splattered.
+   */
+  fleshBurst(p, scale = 1) {
+    // the particles are unlit: dark values, or the night turns them into glowing embers
+    const blood = [0.19, 0.01, 0.008], dark = [0.08, 0.008, 0.006], bile = [0.09, 0.1, 0.018];
+    const y = p.y + 0.9;
+    for (let i = 0; i < 18 * scale; i++) {
+      _v.set(rand(-1, 1), rand(0.15, 1.2), rand(-1, 1)).normalize().multiplyScalar(rand(2.5, 8.5) * scale);
+      _n.set(p.x + rand(-0.25, 0.25), y + rand(-0.35, 0.4), p.z + rand(-0.25, 0.25));
+      this.gib(_n, _v, rand(0.055, 0.13) * (Math.random() < 0.2 ? 1.5 : 1));
+    }
+    for (let i = 0; i < 40 * scale; i++) {
+      _v.set(rand(-1, 1), rand(0.1, 1.3), rand(-1, 1)).normalize().multiplyScalar(rand(3, 10) * scale);
+      this.blood.emit(p.x, y, p.z, _v.x, _v.y, _v.z, { life: rand(0.6, 1.4), size: rand(0.06, 0.14), gravity: 9.8, drag: 0.5, color: Math.random() < 0.2 ? bile : dark, alpha: 1 });
+    }
+    for (let i = 0; i < 130 * scale; i++) {
+      _v.set(rand(-1, 1), rand(-0.2, 1.1), rand(-1, 1)).normalize().multiplyScalar(rand(2, 12) * scale);
+      this.blood.emit(p.x, y, p.z, _v.x, _v.y, _v.z, { life: rand(0.35, 0.9), size: rand(0.02, 0.05), gravity: 9.8, drag: 1, color: Math.random() < 0.2 ? bile : blood, alpha: 1 });
+    }
+    for (let i = 0; i < 9 * scale; i++) {
+      const a = Math.random() * Math.PI * 2, s = rand(0.8, 2.2);
+      this.smoke.emit(p.x + rand(-0.3, 0.3), p.y + rand(0.3, 1.3), p.z + rand(-0.3, 0.3), Math.cos(a) * s, rand(-0.2, 0.4), Math.sin(a) * s, {
+        life: rand(0.8, 1.5), size: rand(0.45, 0.85) * scale, grow: 1.6, drag: 2.2, gravity: 0.35, color: i % 4 ? [0.1, 0.012, 0.009] : [0.07, 0.075, 0.02], alpha: 0.45,
+      });
+    }
+    // splatter: the floor all round, the walls within reach, a big pool where it stood
+    for (let i = 0; i < 18; i++) {
+      const a = Math.random() * Math.PI * 2, r = rand(0.3, 3.6) * scale;
+      const x = p.x + Math.cos(a) * r, z = p.z + Math.sin(a) * r;
+      const down = this.world.raycast(x, p.y + 0.8, z, 0, -1, 0, 3, null, {});
+      if (down) this.decals.bloodSplat(_v.set(x, p.y + 0.8 - down.t, z), UP, rand(0.6, 1.4));
+    }
+    for (let i = 0; i < 10; i++) {
+      const a = Math.random() * Math.PI * 2;
+      _n.set(Math.cos(a), rand(-0.15, 0.35), Math.sin(a)).normalize();
+      const hit = this.world.raycast(p.x, y, p.z, _n.x, _n.y, _n.z, 4 * scale, null, {});
+      if (!hit) continue;
+      _v.set(p.x + _n.x * hit.t, y + _n.y * hit.t, p.z + _n.z * hit.t);
+      this.decals.bloodSplat(_v, _n.set(hit.nx, hit.ny, hit.nz), rand(0.5, 1.2), rand(1, 2));
+    }
+    this.bloodPoolAt(p);
+    this.audio.play('boomer_burst', { position: p, volume: 1 });
+  }
+
   /** Burning fuel pool (Molotov): ground flames, smoke and a flickering light. Visual only. */
   fireZone(p, radius = 3, duration = 7) {
     this.fireZones.push({ p: p.clone(), radius, life: duration, max: duration, emitT: 0, lightT: 0 });
@@ -315,6 +483,7 @@ export class Effects {
     for (const s of this.systems) s.update(dt);
     this.sparks.update(dt);
     this.mags.update(dt);
+    this._updateGibs(dt);
     // acid clouds
     for (let i = this.acidClouds.length - 1; i >= 0; i--) {
       const c = this.acidClouds[i];

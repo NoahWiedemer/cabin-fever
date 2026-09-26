@@ -13,6 +13,7 @@ import { clamp, damp, lerp, smoothstep } from '../core/utils.js';
 const _v = new THREE.Vector3();
 const _q = new THREE.Quaternion();
 const _e = new THREE.Euler();
+const _adsArm = new THREE.Vector3();
 // full-sprint offsets [x, y, z, rx, ry, rz]: the gun drops and cants across the body (a def may bring its own)
 const SPRINT_POSE = [-0.035, -0.03, 0.015, -0.22, 0.45, 0.3];
 
@@ -233,6 +234,8 @@ export class Viewmodel {
         c.shoulders.left.set(-0.2, -0.3, 0.06);
         c.poles.left.set(-1, -0.45, 0);
       }
+      // the support arm as set up for this gun (update() blends it toward m.adsLeft while aiming)
+      this.armBase = { shoulder: c.shoulders.left.clone(), pole: c.poles.left.clone() };
     }
     if (def.akimbo) (this.akimbo ??= new AkimboRig(this)).equip(def);
     else this.akimbo?.hide();
@@ -807,6 +810,16 @@ export class Viewmodel {
 
     this.root.updateMatrixWorld(true);
     m.animate?.(dt); // model extras that need the posed world matrices (the gas can's fuel stream)
+    // a gun aimed with its grip right under the eye (the P90): the support arm comes up from below while aiming
+    const ac = this.arms?.config;
+    if (ac?.shoulders && this.armBase) {
+      ac.shoulders.left.copy(this.armBase.shoulder);
+      ac.poles.left.copy(this.armBase.pole);
+      if (m.adsLeft && adsE > 0) {
+        ac.shoulders.left.lerp(_adsArm.fromArray(m.adsLeft.shoulder), adsE);
+        ac.poles.left.lerp(_adsArm.fromArray(m.adsLeft.pole), adsE);
+      }
+    }
     if (this.arms) {
       try {
         this.arms.update(rightTarget, leftTarget, m.root);

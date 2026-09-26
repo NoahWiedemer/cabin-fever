@@ -2,7 +2,7 @@
 // explodes, weak spot on the gut), Striker (female, fast), Crusher (tank), Mutant Dog (quadruped
 // GLB, packs, pounce + bite; animated by dogAnim.js), Biter (small kid in packs that pounces and latches
 // onto your back; a Zombie subclass in biter.js), Stalker (a mutant that haunts the player outside the waves;
-// a Zombie subclass in stalker.js).
+// a Zombie subclass in stalker.js). The Crusher's boss moves (ground slam, charge, rage) are in crusher.js.
 // AI (alert → chase → attack), procedural animation, hitboxes. The chase:
 //   * target: the survivor nearest by PATH (the flow field labels each cell with it), sticky (a new one has
 //     to win twice in a row) and spread (a survivor already mobbed sheds zombies to others in the open)
@@ -25,11 +25,18 @@ import { levelOf } from '../world/level.js';
 // Optional: leap {min, max distance, vy, t, cd: [min, max], snd, pitch}, turn (yaw rate), height
 // (collision), eye (LOS height), pitch (voice), lunge (move factor while attacking), hitAt.
 export const ZOMBIE_TYPES = {
-  // body kinds cycle per instance: 3 of 7 maulers are the zombie woman, 2 the Smoker GLB, 2 the gas-mask GLB
-  mauler: { name: 'Mauler', body: ['woman', 'smoker', 'gasmask', 'woman', 'smoker', 'woman', 'gasmask'], hp: 150, walk: 1.125, run: 3.87, dmg: 11, reach: 1.25, attackTime: 1.0, radius: 0.32, scale: 1.0, score: 100, mass: 1 },
+  // body kinds cycle per instance: 3 of 9 maulers are the zombie woman, 2 the Smoker GLB, 2 the gas-mask GLB, 2 the plain zombie
+  mauler: { name: 'Mauler', body: ['woman', 'smoker', 'normal', 'gasmask', 'woman', 'normal', 'smoker', 'woman', 'gasmask'], hp: 150, walk: 1.125, run: 3.87, dmg: 11, reach: 1.25, attackTime: 1.0, radius: 0.32, scale: 1.0, score: 100, mass: 1 },
+  // a Mauler in a hard hat, a step slower; helmet: the share of headshots that glance off it (game.hitscan)
+  worker: { name: 'Worker', body: ['worker'], hp: 150, walk: 0.96, run: 3.3, dmg: 11, reach: 1.25, attackTime: 1.0, radius: 0.32, scale: 1.0, score: 110, mass: 1.05, helmet: 0.45 },
+  // rare: a survivalist who didn't make it, a little tougher; loot: it drops something useful (game.onZombieKilled)
+  survivor: { name: 'Survivalist', body: ['survivor'], hp: 190, walk: 1.1, run: 3.7, dmg: 12, reach: 1.25, attackTime: 1.0, radius: 0.34, scale: 1.0, score: 250, mass: 1.1, loot: true },
   charger: { name: 'Boomer', body: ['boomer'], hp: 110, walk: 1.35, run: 4.5, dmg: 0, reach: 1.9, attackTime: 0.9, radius: 0.32, scale: 1.0, score: 150, mass: 1, explodes: true },
   striker: { name: 'Striker', body: ['bomber'], hp: 170, walk: 1.53, run: 5.31, dmg: 13, reach: 1.25, attackTime: 0.7, radius: 0.3, scale: 0.97, score: 200, mass: 0.8, leap: { min: 2.5, max: 6.5, vy: 5.2, t: 0.6, cd: [3, 5], snd: 'striker_shriek', pitch: 1.1 } },
-  crusher: { name: 'Crusher', body: ['tank'], hp: 1500, walk: 1.35, run: 2.52, dmg: 34, reach: 1.9, attackTime: 1.5, radius: 0.55, scale: 1.4, score: 500, mass: 4, turn: 4 },
+  // the boss (crusher.js: the Crusher class with its slam, charge and rage). partMult: its armoured skull takes
+  // headshots x1.5 instead of PART_MULT's x4; blast: share of explosion damage (game.explode); more hp per
+  // fireteam member (CRUSHER.team)
+  crusher: { name: 'Crusher', body: ['tank'], hp: 2800, walk: 1.35, run: 2.52, dmg: 34, reach: 1.9, attackTime: 1.5, radius: 0.55, scale: 1.4, score: 800, mass: 4, turn: 4, partMult: { head: 1.5 }, blast: 0.6 },
   dog: { name: 'Mutant Dog', body: ['dog'], hp: 90, walk: 1.375, run: 4.73, dmg: 8, reach: 1.1, attackTime: 0.55, radius: 0.36, scale: 1.0, score: 120, mass: 0.7, turn: 14, height: 1.0, eye: 0.75, pitch: 1.55, lunge: 0.6, hitAt: 0.5, leap: { min: 1.8, max: 4.5, vy: 3.4, t: 0.45, cd: [2.2, 3.8], snd: 'zombie_attack', pitch: 1.6 } },
   // small feral kid in packs: ~42 % of a Mauler's hp, 1.3x its run; pounces and latches on (biter.js: the
   // Biter class, its AI, pose and the latch). dmg / reach are its claw swipe when it can't pounce.
@@ -53,6 +60,16 @@ const _ray = {};
 const _want = { x: 0, z: 0 };
 const _av = { x: 0, z: 0, lx: 0, lz: 0, slow: 1 };
 const _sopts = { need: 1 };
+const LIVID = new THREE.Color(0x6e2233); // engorged skin, bruised purple-red
+
+/** Per-instance GLB skin (GLB_BODIES glow): k = how livid (the Boomer's swell), glow = emissive intensity. */
+function flushSkin(mats, k, glow) {
+  for (const m of mats) {
+    const base = (m.userData.baseColor ??= m.color.clone());
+    m.color.copy(base).lerp(LIVID, k);
+    m.emissiveIntensity = glow;
+  }
+}
 export const DIRECT_MAX = 18; // m: straight chase along a clear walkable line up to this far
 
 let ZID = 1;
@@ -66,7 +83,8 @@ export class Zombie {
     this.game = game;
     const bodies = this.type.body;
     const n = (bodyCount[typeName] = (bodyCount[typeName] ?? 0) + 1);
-    const char = createCharacter(bodies[n % bodies.length], this.type.scale);
+    this.bodyName = bodies[n % bodies.length];
+    const char = createCharacter(this.bodyName, this.type.scale);
     this.root = char.root;
     this.root.rotation.order = 'YXZ';
     this.mesh = char.mesh;
@@ -218,7 +236,7 @@ export class Zombie {
     this.hitSlow = 0;
     this.burnT = 0;
     this.explodedOnDeath = false;
-    if (this.glow) for (const m of this.glow) m.emissiveIntensity = 0;
+    if (this.glow) flushSkin(this.glow, 0, 0);
     if (this.quad) resetDog(this);
     this.wallT = 0;
     this.wallShift = 0;
@@ -276,7 +294,7 @@ export class Zombie {
     this.fallSide = rand(-0.4, 0.4);
     this.deathArms = rand(0.6, 1.4);
     if (this.led) this.led.material.emissiveIntensity = 0;
-    if (this.glow) for (const m of this.glow) m.emissiveIntensity = 0;
+    if (this.glow) flushSkin(this.glow, 0, 0);
     // some kills (most blasts) throw the body as a ragdoll instead of the fall below; it's dead either way.
     // Shot off a ladder (actors/ladders.js): always a ragdoll fall
     const fell = this.climb && this.game.ladders?.drop(this);
@@ -327,10 +345,18 @@ export class Zombie {
       this.fuse += dt;
       if (this.led) this.led.material.emissiveIntensity = Math.sin(this.fuse * 40) > 0 ? 30 : 0;
       if (this.glow) {
-        // GLB Boomer: flashes hot and swells before it pops
-        const k = Math.sin(this.fuse * 40) > 0 ? 1.3 : 0.2;
-        for (const m of this.glow) m.emissiveIntensity = k;
-        this.root.scale.setScalar(this.scale * this.sizeVar * (1 + this.fuse * 0.07 + Math.sin(this.fuse * 40) * 0.012));
+        // GLB Boomer: the skin goes livid and throbs with the blood showing through, it swells up to burst
+        // and dribbles bile and blood
+        const u = Math.min(1, this.fuse / 0.85), throb = Math.sin(this.fuse * 26);
+        flushSkin(this.glow, u * (0.65 + 0.2 * throb), u * (0.12 + 0.1 * throb));
+        this.root.scale.setScalar(this.scale * this.sizeVar * (1 + u * u * 0.16 + throb * 0.02 * u));
+        if (Math.random() < 0.6) {
+          const h = this.bones.head.getWorldPosition(_v1);
+          const fx = Math.sin(this.yaw) * 0.12, fz = Math.cos(this.yaw) * 0.12;
+          this.game.fx.blood.emit(h.x + fx, h.y - 0.1, h.z + fz, fx * 4 + rand(-0.3, 0.3), rand(-0.4, 0.5), fz * 4 + rand(-0.3, 0.3), {
+            life: rand(0.4, 0.7), size: rand(0.02, 0.045), gravity: 9.8, drag: 1, color: Math.random() < 0.5 ? [0.09, 0.1, 0.018] : [0.16, 0.01, 0.008], alpha: 1,
+          });
+        }
       }
       if (this.fuse > 0.85) {
         this.hp = 0;
@@ -362,7 +388,7 @@ export class Zombie {
         if (this.typeName === 'charger') {
           if (this.fuse < 0) {
             this.fuse = 0;
-            game.audio.play('charger_fuse', { position: pos, volume: 1 });
+            game.audio.play(this.glow ? 'boomer_swell' : 'charger_fuse', { position: pos, volume: 1 }); // (the dynamite fallback beeps)
           }
         } else {
           this.attackT = 0;
@@ -842,6 +868,7 @@ export class Zombie {
 
     const sp = this.moveSpeed;
     const tn = this.typeName;
+    const plain = tn === 'mauler' || tn === 'worker' || tn === 'survivor'; // the shambling rank and file
     const run = clamp((sp - 1.6) / 2.4, 0, 1);
     const strideLen = tn === 'crusher' ? lerp(1.2, 1.7, run) : lerp(0.9, 1.7, run);
     this.phase += dt * (sp / strideLen) * Math.PI;
@@ -854,10 +881,10 @@ export class Zombie {
     // hips
     const bob = Math.abs(c) * (0.02 + run * 0.05) * moving;
     b.hips.position.y = 0.98 - 0.02 - run * 0.07 + bob - (tn === 'crusher' ? 0.03 : 0);
-    b.hips.rotation.set(0, s * 0.12 * moving + f.z * 0.2, c * 0.05 * moving + (tn === 'mauler' ? 0.04 : 0));
+    b.hips.rotation.set(0, s * 0.12 * moving + f.z * 0.2, c * 0.05 * moving + (plain ? 0.04 : 0));
 
     // legs
-    const limp = tn === 'mauler' && this.id % 3 === 0 ? 0.6 : 1;
+    const limp = plain && this.id % 3 === 0 ? 0.6 : 1;
     b.thighL.rotation.set(-s * amp - run * 0.15, 0, 0.03);
     b.thighR.rotation.set(s * amp * limp - run * 0.15, 0, -0.03);
     b.shinL.rotation.set(Math.max(0, -c) * amp * 1.5 + 0.08 + run * 0.25, 0, 0);
@@ -1015,7 +1042,7 @@ export class ZombieManager {
   constructor(game, scene) {
     this.game = game;
     this.scene = scene;
-    this.pool = { mauler: [], charger: [], striker: [], crusher: [], dog: [], biter: [], stalker: [] };
+    this.pool = { mauler: [], worker: [], survivor: [], charger: [], striker: [], crusher: [], dog: [], biter: [], stalker: [] };
     this.list = [];
     this.hash = new Map();
     this.cell = 1.5;
@@ -1026,7 +1053,7 @@ export class ZombieManager {
     return new (ZOMBIE_CLASSES[type] ?? Zombie)(type, this.game);
   }
 
-  prewarm(counts = { mauler: 14, charger: 5, striker: 6, crusher: 3, dog: 7, biter: 8, stalker: 1 }) {
+  prewarm(counts = { mauler: 14, worker: 4, survivor: 1, charger: 5, striker: 6, crusher: 3, dog: 7, biter: 8, stalker: 1 }) {
     for (const [type, n] of Object.entries(counts)) {
       for (let i = 0; i < n; i++) {
         const z = this._make(type);

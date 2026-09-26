@@ -1,12 +1,14 @@
 // Supply boxes dropped by the infected (green = health, red = full ammo + grenades,
-// white = rifle ammo) and weapon pickups (special weapons / dropped primaries).
+// white = rifle ammo, gold = the Survivalist's pack) and weapon pickups (special weapons /
+// dropped primaries).
 import * as THREE from 'three';
 import { buildProp } from '../world/propsSafe.js';
-import { buildThirdPersonWeapon } from '../player/gunSafe.js';
+import { buildBotWeapon } from '../player/gunSafe.js';
 import { tex } from '../world/textures.js';
 import { WEAPONS } from '../player/weaponDefs.js';
+import { shopEquipment, itemMax } from './shop.js';
 
-const COLORS = { green: 0x40ff70, red: 0xff4030, white: 0xdfe8ff };
+const COLORS = { green: 0x40ff70, red: 0xff4030, white: 0xdfe8ff, pack: 0xffc040 };
 
 export class Pickups {
   constructor(game, scene) {
@@ -34,6 +36,7 @@ export class Pickups {
 
   _proto(kind) {
     if (this.protos[kind]) return this.protos[kind];
+    if (kind === 'pack') return (this.protos.pack = this._packProto());
     const type = kind === 'green' ? 'supplyBoxGreen' : kind === 'red' ? 'supplyBoxRed' : 'supplyBoxWhite';
     let obj;
     try {
@@ -42,6 +45,25 @@ export class Pickups {
       obj = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.3, 0.35), new THREE.MeshStandardMaterial({ color: COLORS[kind] }));
     }
     this.protos[kind] = obj;
+    return obj;
+  }
+
+  /** the Survivalist's pack: the red box repainted olive drab, with gold trim, a size up */
+  _packProto() {
+    const obj = this._proto('red').clone();
+    const done = new Map();
+    const tint = (m) => {
+      if (done.has(m)) return done.get(m);
+      const c = m.clone();
+      if (c.emissive && c.emissiveIntensity > 1) c.emissive.setHex(0xffb020); // glowing seams
+      else if (c.color && c.color.r > 0.05 && c.color.r > 4 * c.color.g) c.color.setHex(0x4a5230); // red paint
+      done.set(m, c);
+      return c;
+    };
+    obj.traverse((o) => {
+      if (o.isMesh) o.material = Array.isArray(o.material) ? o.material.map(tint) : tint(o.material);
+    });
+    obj.scale.multiplyScalar(1.2);
     return obj;
   }
 
@@ -55,7 +77,7 @@ export class Pickups {
       }
     });
     g.add(box);
-    const gl = this._glow(COLORS[kind], 1.1);
+    const gl = this._glow(COLORS[kind], kind === 'pack' ? 1.5 : 1.1);
     if (gl) {
       gl.position.y = 0.2;
       g.add(gl);
@@ -64,14 +86,15 @@ export class Pickups {
     g.position.set(pos.x, (ground > -50 ? ground : pos.y) + 0.02, pos.z);
     g.rotation.y = Math.random() * Math.PI * 2;
     this.scene.add(g);
-    this.list.push({ type: 'supply', kind, obj: g, glow: gl, life: 35, t: Math.random() * 10, baseY: g.position.y });
+    this.list.push({ type: 'supply', kind, obj: g, glow: gl, life: kind === 'pack' ? 60 : 35, t: Math.random() * 10, baseY: g.position.y });
   }
 
   spawnWeapon(id, pos, { permanent = false, announce = false } = {}) {
     const g = new THREE.Group();
     let w;
     try {
-      w = buildThirdPersonWeapon(id);
+      // the bots' third-person gun: the real model for GLB guns (the light procedural one has none of them)
+      w = new THREE.Group().add(buildBotWeapon(id).root);
     } catch (e) {
       w = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.1, 0.8), new THREE.MeshStandardMaterial({ color: 0x222222 }));
     }
@@ -161,6 +184,17 @@ export class Pickups {
       player.ap = Math.max(player.ap, 100); // keep store kevlar
       game.audio.play('pickup_ammo', { volume: 0.9 });
       game.hud?.popScore(0, 'FULL AMMO');
+    } else if (kind === 'pack') {
+      // patched up, restocked, and one more of every throwable (up to the carry caps)
+      player.hp = player.maxHp;
+      player.ap = Math.max(player.ap, 100);
+      game.weapons.refillFull();
+      for (const item of shopEquipment()) {
+        if (item.carry && item.count(game) < itemMax(game, item)) item.give(game);
+      }
+      game.audio.play('pickup_health', { volume: 0.9 });
+      game.audio.play('pickup_weapon', { volume: 0.7 });
+      game.hud?.popScore(0, 'SURVIVAL PACK');
     } else {
       if (!game.weapons.addRifleAmmo()) return false;
       game.audio.play('pickup_ammo', { volume: 0.8 });

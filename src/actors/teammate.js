@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { createCharacter } from './rig.js';
 import { buildBotWeapon } from '../player/gunSafe.js';
-import { clamp, damp, dampAngle, rand, coneDirection, lerp, wrapAngle } from '../core/utils.js';
+import { clamp, damp, dampAngle, rand, coneDirection, lerp, smoothstep, wrapAngle } from '../core/utils.js';
 import { levelOf } from '../world/level.js';
 import { WEAPONS } from '../player/weaponDefs.js';
 import { FIRETEAM } from './fireteam.js';
@@ -74,6 +74,13 @@ const _eye = new THREE.Vector3();
 const _low = new THREE.Vector3();
 // eye relative to the head bone in gun space (x right, y up, -z forward): the right eye, just ahead
 const EYE_FROM_HEAD = new THREE.Vector3(0.032, 0.075, -0.085);
+// reloading (_reloadHand): the support wrist at the magwell / loading port, gun space from the firing wrist;
+// the mag pouch on the left hip, character space (+x its left, +z ahead)
+const MAGWELL = new THREE.Vector3(-0.05, -0.08, -0.17);
+const POUCH = new THREE.Vector3(0.17, 0.98, 0.12);
+const _rw = new THREE.Vector3();
+const _rp = new THREE.Vector3();
+const _rg = new THREE.Vector3();
 const _aw = new THREE.Vector3();
 const _pw = new THREE.Vector3();
 const _pole = new THREE.Vector3();
@@ -258,6 +265,17 @@ export class Teammate {
     this.hurtT = 0;
     this.lastPos = pos.clone();
     this.fireFlash = 0;
+    // animation state (_animate): the way it moves relative to its facing, the turn shuffle, the idle look-round,
+    // the hit flinch spring, the reload's length (for the hands)
+    this.moveDir = 0;
+    this.prevYaw = yaw;
+    this.turnStep = 0;
+    this.look = 0;
+    this.lookP = 0;
+    this.lookT = rand(1, 3);
+    this.flinch = 0;
+    this.flinchV = 0;
+    this.reloadDur = 0;
     if (this.jiggle) this.jiggle.reset();
   }
 
@@ -271,6 +289,7 @@ export class Teammate {
     }
     this.hp -= dmg;
     this.hurtT = 1.5;
+    this.flinchV = (this.flinchV ?? 0) + clamp(amount / 25, 0.25, 1) * 6; // the torso and head jolt back
     if (this.jiggle) this.jiggle.kick(rand(-0.3, 0.3), 0.35, rand(-0.3, 0.3));
     if (fromPos && !this.target) this.targetT = 0;
     if (this.hp <= 0) {
@@ -464,10 +483,10 @@ export class Teammate {
     const w = this.weapon;
     this.burst = 0;
     if (w.reloadType === 'shell') {
-      this.reloadT = (w.reloadStart ?? 0.3) + (w.shellTime ?? 0.45);
+      this.reloadT = this.reloadDur = (w.reloadStart ?? 0.3) + (w.shellTime ?? 0.45);
       return;
     }
-    this.reloadT = this.mag > 0 ? w.reload ?? 2.4 : w.reloadEmpty ?? w.reload ?? 2.4;
+    this.reloadT = this.reloadDur = this.mag > 0 ? w.reload ?? 2.4 : w.reloadEmpty ?? w.reload ?? 2.4;
     this.game.audio.play('m4_reload', { position: this.pos, volume: 0.5, pitch: w.mag > 60 ? 0.85 : 1 });
   }
 
@@ -482,7 +501,7 @@ export class Teammate {
     this.game.audio.play('shotgun_insert', { position: this.pos, volume: 0.35 });
     // keep loading unless something is in its face and there are a few shells to meet it with
     const close = this.target && this.target.alive && this.target.pos.distanceTo(this.pos) < 6;
-    if (this.mag < w.mag && !(close && this.mag >= 3)) this.reloadT = w.shellTime ?? 0.45;
+    if (this.mag < w.mag && !(close && this.mag >= 3)) this.reloadT = this.reloadDur = w.shellTime ?? 0.45;
     else {
       this.cooldown = Math.max(this.cooldown, w.reloadEnd ?? 0.4);
       this.pumpT = (w.reloadEnd ?? 0.4) * 0.5;
@@ -550,27 +569,74 @@ export class Teammate {
     game.alertNoise(this.pos, 25);
   }
 
+  /**
+   * Body animation on the proxy bones (the rifle and both arms are _holdRifle's):
+   *   legs     step the way it actually moves relative to where it faces: forward, backpedalling (shorter steps)
+   *            or sideways (the legs never cross); turning on the spot shuffles the feet round
+   *   stance   feet apart, knees soft; lower and more braced when it aims; the crouch / kneel (this.crouch)
+   *   idle     slow breathing, the weight drifting from foot to foot, and with nothing to shoot the head looks
+   *            round now and then
+   *   run      leaning into it, the torso counter-rotating with the stride, the head kept steady
+   *   hit      a flinch spring (takeDamage kicks it): torso and head jolt back
+   */
   _animate(dt) {
     const b = this.bones;
+    const t = this.game.time;
+    // how it moves relative to its facing (0: forward, ±π/2: sideways to its left / right, π: back)
+    const v = this.body.vel;
+    const sy = Math.sin(this.yaw), cy = Math.cos(this.yaw);
+    const vf = v.x * sy + v.z * cy, vs = v.x * cy - v.z * sy;
+    if (Math.hypot(vf, vs) > 0.3) this.moveDir = dampAngle(this.moveDir ?? 0, Math.atan2(vs, vf), 10, dt);
     const sp = this.moveSpeed;
-    const run = clamp((sp - 1.5) / 2.5, 0, 1);
-    this.phase += dt * (sp / lerp(1.0, 1.7, run)) * Math.PI;
+    const run = clamp((sp - 1.8) / 2.2, 0, 1);
+    const moving = clamp(sp / 0.7, 0, 1);
+    // turning on the spot: the feet shuffle round
+    const turn = dt > 0 ? Math.abs(wrapAngle(this.yaw - (this.prevYaw ?? this.yaw))) / dt : 0;
+    this.prevYaw = this.yaw;
+    this.turnStep = damp(this.turnStep ?? 0, clamp(turn / 2.5, 0, 1) * (1 - moving), 8, dt);
+    this.phase += dt * ((sp / lerp(1.0, 1.75, run)) * Math.PI + this.turnStep * 7);
     const s = Math.sin(this.phase), c = Math.cos(this.phase);
-    const moving = clamp(sp / 0.8, 0, 1);
-    const amp = lerp(0.35, 0.7, run) * moving;
+    const cf = Math.cos(this.moveDir ?? 0), sf = Math.sin(this.moveDir ?? 0);
+    const amp = (lerp(0.32, 0.62, run) * moving + this.turnStep * 0.16) * (cf < 0 ? 1 + 0.3 * cf : 1);
     const cr = this.crouch;
-    b.hips.position.y = 0.98 - cr * 0.38 + Math.abs(c) * 0.03 * moving;
-    b.hips.rotation.set(0, 0.35, 0);
-    b.thighL.rotation.set(-s * amp - cr * 1.3, -0.3, 0.05);
-    b.thighR.rotation.set(s * amp - cr * 0.2, -0.3, -0.05);
-    b.shinL.rotation.set(Math.max(0, -c) * amp * 1.4 + 0.08 + cr * 1.6, 0, 0);
-    b.shinR.rotation.set(Math.max(0, c) * amp * 1.4 + 0.08 + cr * 1.9, 0, 0);
-    b.footL.rotation.set(-(b.thighL.rotation.x + b.shinL.rotation.x) * 0.7, 0, 0);
-    b.footR.rotation.set(-(b.thighR.rotation.x + b.shinR.rotation.x) * 0.7 + cr * 0.3, 0, 0);
-    b.spine.rotation.set(0.08 + run * 0.1 + cr * 0.15, -0.3, 0);
-    b.chest.rotation.set(-this.aimPitch * 0.4 - this.recoil * 0.04, -0.05, 0);
-    b.neck.rotation.set(-this.aimPitch * 0.3, 0.2, 0);
-    b.head.rotation.set(-this.aimPitch * 0.3 - cr * 0.1, 0.15, 0);
+    const idle = (1 - moving) * (1 - cr);
+    const brace = this.ready ?? 0; // aiming: a lower, braced stance
+    const breath = Math.sin(t * 1.45 + this.index * 2.1);
+    const sway = Math.sin(t * 0.33 + this.index * 1.7);
+    // hit flinch: a stiff, quickly damped spring
+    if (dt > 0) {
+      this.flinchV = ((this.flinchV ?? 0) - (this.flinch ?? 0) * 160 * dt) * Math.exp(-12 * dt);
+      this.flinch = (this.flinch ?? 0) + this.flinchV * dt;
+    }
+    const fl = this.flinch ?? 0;
+
+    // legs: each swings along the way it goes (its forward swing sL / sR, split into forward and sideways)
+    const sL = s * amp, sR = -s * amp;
+    const bend = lerp(0.08, 0.2, brace) * (1 - moving * 0.5); // a soft knee in the stance, more when braced
+    const lean = run * 0.18 * Math.max(0, cf);
+    b.hips.position.y = 0.98 - cr * 0.38 - bend * 0.1 + Math.abs(c) * (0.025 + run * 0.045) * moving + breath * 0.003 * idle;
+    b.hips.rotation.set(0, 0.35 + s * 0.1 * moving * cf, c * 0.05 * moving + sway * 0.035 * idle);
+    b.thighL.rotation.set(-sL * cf - bend - cr * 1.3, -0.3, Math.max(0.02, 0.07 + 0.02 * idle + sL * sf * 0.6));
+    b.thighR.rotation.set(-sR * cf - bend - cr * 0.2, -0.3, Math.min(-0.02, -0.07 - 0.02 * idle + sR * sf * 0.6));
+    b.shinL.rotation.set(Math.max(0, -c) * amp * 1.45 + 0.08 + bend * 2 + cr * 1.6 + run * 0.1, 0, 0);
+    b.shinR.rotation.set(Math.max(0, c) * amp * 1.45 + 0.08 + bend * 2 + cr * 1.9 + run * 0.1, 0, 0);
+    b.footL.rotation.set(-(b.thighL.rotation.x + b.shinL.rotation.x) * 0.75, 0, -b.thighL.rotation.z * 0.8);
+    b.footR.rotation.set(-(b.thighR.rotation.x + b.shinR.rotation.x) * 0.75 + cr * 0.3, 0, -b.thighR.rotation.z * 0.8);
+
+    // torso: lean into a run and into a sidestep, counter-rotate with the stride, breathe, flinch
+    b.spine.rotation.set(0.08 + lean + cr * 0.15 + brace * 0.06 + breath * 0.01 * idle - fl * 0.4, -0.3 - s * 0.07 * moving, -sf * 0.07 * moving);
+    b.chest.rotation.set(-this.aimPitch * 0.4 - this.recoil * 0.04 + breath * 0.018 * idle - fl * 0.2, -0.05 + s * 0.05 * moving, 0);
+    // head: steady on the move; nothing to shoot and standing: it looks round now and then
+    if ((this.lookT = (this.lookT ?? 0) - dt) <= 0) {
+      this.lookT = rand(2.2, 5.5);
+      const free = !this.target && sp < 0.5;
+      this.lookTo = free ? rand(-0.7, 0.7) : 0;
+      this.lookUp = free ? rand(-0.15, 0.1) : 0;
+    }
+    this.look = damp(this.look ?? 0, this.target ? 0 : this.lookTo ?? 0, 4, dt);
+    this.lookP = damp(this.lookP ?? 0, this.target ? 0 : this.lookUp ?? 0, 4, dt);
+    b.neck.rotation.set(-this.aimPitch * 0.3 + this.lookP * 0.5, 0.2 + this.look * 0.4 + s * 0.035 * moving, 0);
+    b.head.rotation.set(-this.aimPitch * 0.3 - cr * 0.1 + this.lookP * 0.5 - fl * 0.35, 0.15 + this.look * 0.6 + s * 0.035 * moving, 0);
     this._holdRifle(dt);
     if (this.rig) this.rig.sync();
     if (this.jiggle) this.jiggle.update(dt);
@@ -583,8 +649,16 @@ export class Teammate {
   _holdRifle(dt) {
     const b = this.bones;
     this.ready = damp(this.ready, this.target && this.reloadT <= 0 ? 1 : 0, 5, dt);
-    const pitch = this.aimPitch + this.recoil * 0.05 - (1 - this.ready) * 0.5;
-    _gq.copy(this.root.quaternion).multiply(_qa.setFromEuler(_eu.set(-pitch, Math.PI, 0)));
+    // reloading: the gun cants over toward the support hand (mag reloads: magwell up; shells: port up)
+    const rl = this.reloadT > 0 && this.reloadDur > 0 ? 1 - this.reloadT / this.reloadDur : -1;
+    const shell = this.weapon.reloadType === 'shell';
+    const cant = rl >= 0 ? (shell ? 1 : smoothstep(0, 0.12, rl) * (1 - smoothstep(0.85, 1, rl))) : 0;
+    this.cant = damp(this.cant ?? 0, cant, 10, dt);
+    // at a run, at low ready: carried across the chest, muzzle low and to the left
+    const carry = clamp((this.moveSpeed - 2.2) / 2, 0, 1) * (1 - this.ready);
+    this.carry = damp(this.carry ?? 0, carry, 6, dt);
+    const pitch = this.aimPitch + this.recoil * 0.05 - (1 - this.ready) * 0.5 + this.cant * 0.2;
+    _gq.copy(this.root.quaternion).multiply(_qa.setFromEuler(_eu.set(-pitch, Math.PI + this.carry * 0.35, this.carry * 0.3 + this.cant * 0.5)));
     const hold = this.hold;
     // low ready: stock pocket just inside the right shoulder joint
     b.upperArmR.getWorldPosition(_low);
@@ -603,18 +677,53 @@ export class Teammate {
     reach(b.upperArmR, b.foreArmR, b.handR, _T, _pole, _aw.copy(ALONG_R).applyQuaternion(_gq), _pw.copy(PALM_R).applyQuaternion(_gq), h.R);
     // left hand under the handguard (on the pump / LMG shroud: wherever the gun's leftHand marker says)
     _T.copy(hold.wristL).applyQuaternion(_gq).add(_G);
+    if (rl >= 0) this._reloadHand(rl, shell, _T);
     _pole.set(0.3, -1, -0.1).applyQuaternion(this.root.quaternion);
     reach(b.upperArmL, b.foreArmL, b.handL, _T, _pole, _aw.copy(ALONG_L).applyQuaternion(_gq), _pw.copy(PALM_L).applyQuaternion(_gq), h.L);
   }
 
+  /**
+   * The support hand while reloading (rl 0..1 of the reload, or of the current shell), moving the wrist target
+   * `out` (world; on the handguard coming in): a mag reload goes handguard → magwell (the old mag out) → the
+   * belt pouch on the left hip → magwell (the new one in) → handguard; a shell reload shuttles pouch ↔ port.
+   */
+  _reloadHand(rl, shell, out) {
+    const guard = _rg.copy(out);
+    const well = _rw.copy(this.hold.wristR).add(MAGWELL).applyQuaternion(_gq).add(_G);
+    const pouch = this.mesh.localToWorld(_rp.copy(POUCH));
+    if (shell) {
+      out.copy(pouch).lerp(well, 0.5 - 0.5 * Math.cos(rl * Math.PI * 2));
+      return;
+    }
+    const ss = smoothstep;
+    if (rl < 0.2) out.copy(guard).lerp(well, ss(0, 0.2, rl));
+    else if (rl < 0.45) out.copy(well).lerp(pouch, ss(0.2, 0.45, rl));
+    else if (rl < 0.7) out.copy(pouch).lerp(well, ss(0.45, 0.7, rl));
+    else if (rl < 0.85) out.copy(well);
+    else out.copy(well).lerp(guard, ss(0.85, 1, rl));
+  }
+
+  /** knees buckle and the head drops (0.25 s), then the body topples and settles with a small bounce */
   _animateDead(dt) {
     this.deadT += dt;
-    const k = Math.min(1, this.deadT / 0.7);
+    const buckle = smoothstep(0, 0.25, this.deadT);
+    const k = clamp((this.deadT - 0.15) / 0.65, 0, 1);
     const e = k * k;
-    this.root.rotation.x = this.fallDir * (Math.PI / 2) * e;
+    const bounce = k >= 1 ? Math.exp(-(this.deadT - 0.8) * 9) * Math.sin((this.deadT - 0.8) * 22) * 0.05 : 0;
+    this.root.rotation.x = this.fallDir * ((Math.PI / 2) * e - bounce);
     const a = this.root.rotation.x;
     this.mesh.position.set(0, 0.12 * Math.cos(a) * e, -0.12 * Math.sin(a) * e);
     const b = this.bones;
+    // the knees give first (straightening again as it lands), the torso curls, the head lolls
+    const kn = buckle * (1 - 0.6 * e);
+    b.hips.position.y = 0.98 - 0.2 * kn;
+    b.thighL.rotation.x = lerp(b.thighL.rotation.x, -0.7 * kn, 0.25);
+    b.thighR.rotation.x = lerp(b.thighR.rotation.x, -0.5 * kn, 0.25);
+    b.shinL.rotation.x = lerp(b.shinL.rotation.x, 1.2 * kn, 0.25);
+    b.shinR.rotation.x = lerp(b.shinR.rotation.x, 0.9 * kn, 0.25);
+    b.spine.rotation.x = lerp(b.spine.rotation.x, 0.25 * buckle * this.fallDir, 0.2);
+    b.neck.rotation.x = lerp(b.neck.rotation.x, 0.45 * buckle, 0.2);
+    b.head.rotation.z = lerp(b.head.rotation.z, 0.35 * buckle, 0.15);
     b.upperArmL.rotation.x = lerp(b.upperArmL.rotation.x, -2.5, 0.08);
     b.upperArmR.rotation.x = lerp(b.upperArmR.rotation.x, -0.5, 0.08);
     if (this.rig) this.rig.sync();

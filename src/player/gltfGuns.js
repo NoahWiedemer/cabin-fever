@@ -67,6 +67,9 @@ const BAKED = {
     right: { palm: [-1, 0, 0], index: [0, Math.cos(10 * DEG), -Math.sin(10 * DEG)], data: { rx: 0.017, rz: 0.02, curl: 1, trigger: true, thumb: 0.7 } },
     left: { palm: [1, 0, 0], index: [0, Math.cos(15 * DEG), -Math.sin(15 * DEG)], data: { rx: 0.016, rz: 0.013, curl: 1.05, thumb: 0.55 } },
     eyeBack: 0.1, // the sight line clears the solid rear sight block: the front post sits in its notch
+    // aiming, the front grip is only ~30 cm from the eye: a support arm coming in from the side would fill the lower
+    // left of the view, so it comes up steeply from below instead (viewmodel space, blended in with ADS)
+    adsLeft: { shoulder: [-0.08, -0.56, 0.0], pole: [-0.45, -1, 0.1] },
   },
   mozambique: {
     prefix: 'mozambique',
@@ -201,6 +204,7 @@ function buildBaked(id, spec, gltf) {
   const res = { root, muzzle, ejectPort, rightHand, leftHand, sight: { eye }, parts, shellType: spec.shellType };
   if (spec.pumpStroke) res.pumpStroke = spec.pumpStroke;
   if (spec.magTop) res.magTop = true;
+  if (spec.adsLeft) res.adsLeft = spec.adsLeft;
   if (src.getObjectByName(`${spec.prefix}_loadPort`)) res.loadPort = at('loadPort');
   if (src.getObjectByName(`${spec.prefix}_rag`)) {
     res.rag = new THREE.Object3D();

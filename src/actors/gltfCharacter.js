@@ -1,4 +1,6 @@
-// Rigged GLB characters (L4D2 survivors + infected) driven by the procedural animation code.
+// Rigged GLB characters (L4D2 survivors + infected, Meshy / auto-rigged infected) driven by the
+// procedural animation code. Joints are found by name (Valve Bip01, Mixamo, Meshy; the models rigged
+// with tools/blender/autorig.py carry Mixamo names) or, for UniRig's numbered joints, by topology.
 // Each instance gets a proxy skeleton with rig.js's bone names and axes. The proxies' identity rest
 // pose is the model's "canonical" pose (limbs straight down, feet flat on the ground, facing +Z), so
 // zombie.js / teammate.js animate them exactly like procedural bones. sync() then retargets onto
@@ -38,10 +40,19 @@ const RIGS = {
     thighL: 'leftupleg', shinL: 'leftleg', footL: 'leftfoot', toeL: 'lefttoebase',
     thighR: 'rightupleg', shinR: 'rightleg', footR: 'rightfoot', toeR: 'righttoebase',
   },
+  // Meshy's biped rig: Mixamo-like names, but the spine counts down from the neck (Hips → Spine02 → Spine01 → Spine)
+  meshy: {
+    hips: 'hips', spine: 'spine02', chest: 'spine', neck: 'neck', head: 'head',
+    shoulderL: 'leftshoulder', upperArmL: 'leftarm', foreArmL: 'leftforearm', handL: 'lefthand',
+    shoulderR: 'rightshoulder', upperArmR: 'rightarm', foreArmR: 'rightforearm', handR: 'righthand',
+    thighL: 'leftupleg', shinL: 'leftleg', footL: 'leftfoot', toeL: 'lefttoebase',
+    thighR: 'rightupleg', shinR: 'rightleg', footR: 'rightfoot', toeR: 'righttoebase',
+  },
 };
 
 // kind -> model + sizing. height in meters; armSpread tilts the canonical arms away from the body.
-// Valve / Mixamo skeletons are mapped by joint name, anything else (meshy: UniRig "Bone_NNN") by topology.
+// Valve / Mixamo / Meshy skeletons are mapped by joint name, anything else (the `meshy` body: UniRig "Bone_NNN")
+// by topology.
 export const GLB_BODIES = {
   coach: { url: MODELS.coach, height: 1.84, armSpread: 0.16, fallback: 'soldier' },
   ellis: { url: MODELS.ellis, height: 1.79, armSpread: 0.12, fallback: 'soldier2' },
@@ -61,8 +72,15 @@ export const GLB_BODIES = {
   bomber: { url: MODELS.bomber, height: 1.76, armSpread: 0.14, fallback: 'striker' },
   // zombie woman in the Mauler rotation (replaced the procedural mauler / mauler2 bodies)
   woman: { url: MODELS.woman, height: 1.68, armSpread: 0.12, fallback: 'mauler2' },
-  tank: { url: MODELS.tank, height: 1.8, armSpread: 0.3, fallback: 'crusher' },
-  boomer: { url: MODELS.boomer, height: 1.8, armSpread: 0.42, fallback: 'charger', belly: true, glow: 0xff7a30 },
+  // auto-rigged (tools/blender/autorig.py: Mixamo joint names): a plain zombie in the Mauler rotation, the Worker in
+  // a hard hat, the Survivalist with a big pack
+  normal: { url: MODELS.normal, height: 1.8, armSpread: 0.1, fallback: 'mauler' },
+  worker: { url: MODELS.worker, height: 1.82, armSpread: 0.12, fallback: 'mauler' },
+  survivor: { url: MODELS.survivor, height: 1.82, armSpread: 0.14, fallback: 'mauler2' },
+  // glow: its own materials with an emissive skin, lit up while it rages (crusher.js)
+  tank: { url: MODELS.tank, height: 1.8, armSpread: 0.3, fallback: 'crusher', glow: 0x3a7cff },
+  // the Boomer (Meshy "Fat Zombie"): glow = its skin going livid, blood showing through, as it swells to burst (zombie.js)
+  boomer: { url: MODELS.boomer, height: 1.8, armSpread: 0.42, fallback: 'charger', belly: true, glow: 0xc8242c },
   // quadruped: sized by body length (nose to tail); no procedural dog exists, so the fallback is a mauler body
   dog: { url: MODELS.dog, quad: true, length: 1.3, fallback: 'mauler' },
   // gun shop clerk (actors/shopkeeper.js): never a bot or a target
@@ -71,7 +89,7 @@ export const GLB_BODIES = {
   nadja: { url: MODELS.nadja, height: 1.7, armSpread: 0.1, fallback: 'soldier' },
 };
 // finger curl per joint (rad): a rifle grip for the survivors, a loose claw for the infected
-const CURL = { coach: 0.5, ellis: 0.5, meshy: 0.45, viper: 0.45, smoker: 0.3, boomer: 0.3, woman: 0.3, tank: 0.35, bomber: 0.3, gasmask: 0.3, biter: 0.4, stalker: 0.5, shopkeeper: 0.28, nadja: 0.3 };
+const CURL = { coach: 0.5, ellis: 0.5, meshy: 0.45, viper: 0.45, smoker: 0.3, boomer: 0.3, woman: 0.3, tank: 0.35, bomber: 0.3, gasmask: 0.3, biter: 0.4, stalker: 0.5, normal: 0.3, worker: 0.3, survivor: 0.3, shopkeeper: 0.28, nadja: 0.3 };
 
 const normName = (n) => n.replace(/(_\d+)+$/, '').replace(/[^a-z0-9]/gi, '').toLowerCase().replace(/^(valvebiped|mixamorig)/, '');
 
@@ -143,7 +161,7 @@ function namedFingers(byNorm, valve, s) {
 }
 
 function namedRig(byNorm) {
-  const rig = byNorm.has('bip01pelvis') ? RIGS.valve : byNorm.has('hips') ? RIGS.mixamo : null;
+  const rig = byNorm.has('bip01pelvis') ? RIGS.valve : byNorm.has('spine02') ? RIGS.meshy : byNorm.has('hips') ? RIGS.mixamo : null;
   if (!rig) return null;
   const J = {};
   for (const k in rig) {

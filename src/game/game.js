@@ -9,6 +9,7 @@ import { Horde } from '../nav/horde.js';
 import { ZombieManager, ZOMBIE_TYPES, PART_MULT } from '../actors/zombie.js';
 import '../actors/biter.js'; // registers the Biter class with the zombie manager
 import { StalkerDirector } from '../actors/stalker.js'; // (also registers the Stalker class)
+import '../actors/crusher.js'; // registers the Crusher class (slam, charge, rage)
 import { LatchView } from '../fx/latchView.js';
 import { Teammate } from '../actors/teammate.js';
 import { FIRETEAM, LEGACY_LINEUPS, normalizeFireteam } from '../actors/fireteam.js';
@@ -53,6 +54,7 @@ const _n = new THREE.Vector3();
 const _dawnFog = new THREE.Color(0.42, 0.36, 0.36);
 const _dawnSun = new THREE.Color(1.0, 0.72, 0.52);
 const _wp = new THREE.Vector3();
+const LOOT_GUNS = ['p90', 'r201', 'spas12', 'devotion', 'sigma', 'softball']; // the Survivalist's stash (one you don't carry)
 const F_TAP = 0.25; // F released faster than this is a tap (flashlight / open the gun shop)
 const READY_HOLD = 1.2; // hold F this long in the buy phase to ready up
 
@@ -428,6 +430,11 @@ export class Game {
     const dogs = r >= 3 ? Math.max(2, Math.round(total * 0.18)) : 0;
     // Biters from round 4, in packs of 3-5 (rarer and at most 4 to a pack on easy)
     const biters = r >= 4 ? Math.max(3, Math.round(total * Math.min(0.16, 0.08 + (r - 4) * 0.01) * (d.biters ?? 1))) : 0;
+    // a Survivalist (it drops a stash) turns up in about every other round from round 2
+    if (r >= 2 && Math.random() < (r < 8 ? 0.4 : 0.55)) list.push('survivor');
+    // Workers (slower, hard hats) take a fifth of the plain infected from round 2
+    const workers = r >= 2 ? Math.round((total - dogs - biters - list.length) * 0.2) : 0;
+    for (let i = 0; i < workers; i++) list.push('worker');
     while (list.length < total - dogs - biters) list.push('mauler');
     // shuffle, but keep crushers in the second half of the wave
     for (let i = list.length - 1; i > 0; i--) {
@@ -473,7 +480,7 @@ export class Game {
     this.roundTotal = this.toSpawn.length;
     this.spawnT = 1.5;
     this.hud.setCountdown(null);
-    let sub = this.round === 3 ? 'Mutant dogs are hunting in packs' : this.round === 4 ? 'Biters hunt in packs · mash V to shake one off your back' : this.round === 5 ? 'Strikers have joined the horde' : this.round === 11 ? 'Crushers incoming — watch for the acid' : this.round === this.maxRounds ? 'Final wave — survive until dawn' : 'The infected are coming';
+    let sub = this.round === 2 ? 'Boomers and hard-hatted Workers join the horde' : this.round === 3 ? 'Mutant dogs are hunting in packs' : this.round === 4 ? 'Biters hunt in packs · mash V to shake one off your back' : this.round === 5 ? 'Strikers have joined the horde' : this.round === 11 ? 'Crushers incoming — watch for the acid' : this.round === this.maxRounds ? 'Final wave — survive until dawn' : 'The infected are coming';
     const milestone = this.endless && this.round > 20 && this.round % 5 === 0;
     if (milestone) sub = 'The horde grows stronger';
     this.hud.banner(`ROUND ${this.round}`, sub, 3, this.round === this.maxRounds || milestone ? 'danger' : 'normal');
@@ -679,8 +686,16 @@ export class Game {
     for (const h of hits) {
       const [f0, f1, fmin] = def.falloff || [30, 80, 0.6];
       const fall = h.t <= f0 ? 1 : h.t >= f1 ? fmin : 1 - (1 - fmin) * ((h.t - f0) / (f1 - f0));
-      const dmg = def.damage * fall * (PART_MULT[h.part] ?? 1) * mul;
+      const dmg = def.damage * fall * (h.zombie.type.partMult?.[h.part] ?? PART_MULT[h.part] ?? 1) * mul; // (the Crusher's skull is armoured)
       const pt = new THREE.Vector3().copy(origin).addScaledVector(dir, h.t);
+      // a hard hat (the Worker): some headshots glance off it with a spark and a ping, and the round is spent
+      if (h.part === 'head' && h.zombie.type.helmet && Math.random() < h.zombie.type.helmet) {
+        this.fx.impact(pt, _n.copy(dir).negate(), SURF.metal, { noDecal: true, silent: opts.pellet > 1 });
+        h.zombie.flinchVel.y += 3; // the head snaps back
+        endT = h.t;
+        stoppedByZombie = true;
+        break;
+      }
       const res = h.zombie.damage(dmg, h.part, dir, shooter, { weapon: def.id, headshot: h.part === 'head' });
       const bloodCol = h.zombie.typeName === 'crusher' ? [0.05, 0.12, 0.3] : null;
       this.fx.bloodHit(pt, dir, { amount: def.pellets > 1 ? 0.45 : 1, headshot: h.part === 'head', color: bloodCol });
@@ -833,14 +848,16 @@ export class Game {
     this.projectiles.launch40(pos, dir, owner, def);
   }
 
+  /** opts.burst: a Boomer bursting (flesh and bile, no fire and no flash; the blast itself is the same) */
   explode(pos, radius, damage, source, opts = {}) {
-    this.fx.explosion(pos, opts.scale ?? 1);
+    if (opts.burst) this.fx.fleshBurst(pos, opts.scale ?? 1);
+    else this.fx.explosion(pos, opts.scale ?? 1);
     this.barricades?.explosion(pos, radius, damage, source, opts);
     this.breach?.explosion(pos, radius, damage, source, opts);
     // camera shake by distance
     const dp = this.player.pos.distanceTo(pos);
     this.shake.add(clamp(1.2 - dp / 22, 0, 1) * (opts.scale ?? 1));
-    if (dp < 8) this.gr.grade.set('uFlash', 0.25 * (1 - dp / 8));
+    if (dp < 8 && !opts.burst) this.gr.grade.set('uFlash', 0.25 * (1 - dp / 8));
     this.alertNoise(pos, 30);
     const center = pos.clone().add(new THREE.Vector3(0, 0.6, 0));
     // zombies
@@ -848,7 +865,7 @@ export class Game {
       const cy = zombie.hipsWorld ? zombie.hipsWorld : zombie.pos;
       const los = this.world.lineOfSight(center.x, center.y, center.z, cy.x, cy.y, cy.z);
       const k = Math.max(0, 1 - d / radius);
-      const dmg = damage * (0.25 + 0.75 * k) * (los ? 1 : 0.3) * (zombie.typeName === 'crusher' ? 0.8 : 1.25);
+      const dmg = damage * (0.25 + 0.75 * k) * (los ? 1 : 0.3) * (zombie.type.blast ?? 1.25); // (the Crusher shrugs most of it off)
       const dir = zombie.pos.clone().sub(pos).setY(0.3).normalize();
       const res = zombie.damage(dmg, 'torso', dir, source, { weapon: opts.weapon ?? 'explosion', explosion: true, blast: k });
       zombie.body.vel.addScaledVector(dir, 6 * k / (zombie.type.mass ?? 1));
@@ -893,8 +910,9 @@ export class Game {
       const pos = z.pos.clone();
       const boom = () => {
         z.ragdoll?.anchor(pos); // a thrown Boomer pops where its body is now
-        this.explode(pos, 4.8, 170, info.selfDestruct ? null : src, { scale: 1.1, weapon: 'charger' });
-        this.fx.gore(pos.clone().add(new THREE.Vector3(0, 1.0, 0)), 1);
+        // the GLB Boomer bursts like a sack of rotten flesh; the procedural fallback (dynamite) still explodes
+        this.explode(pos, 4.8, 170, info.selfDestruct ? null : src, { scale: 1.1, weapon: 'charger', burst: !!z.glow });
+        if (!z.glow) this.fx.gore(pos.clone().add(new THREE.Vector3(0, 1.0, 0)), 1);
         z.deactivate();
         z.removed = true;
       };
@@ -920,7 +938,8 @@ export class Game {
 
     // drops
     const r = Math.random();
-    if (!info.selfDestruct) {
+    if (z.type.loot) this._dropLoot(z);
+    else if (!info.selfDestruct) {
       if (r < 0.045) this.pickups.spawnSupply('green', z.pos);
       else if (r < 0.075) this.pickups.spawnSupply('red', z.pos);
       else if (r < 0.14) this.pickups.spawnSupply('white', z.pos);
@@ -953,6 +972,19 @@ export class Game {
     }
     // money: any fireteam kill pays every wallet the same amount
     if (src && (src.isPlayer || src.stats)) this.economy.payAll(killReward(z.typeName, headshot), 'kill');
+  }
+
+  /** The Survivalist's stash: sometimes a good primary you don't carry yet, else a survival pack. */
+  _dropLoot(z) {
+    const guns = LOOT_GUNS.filter((id) => WEAPONS[id] && !this.weapons.slots.includes(id));
+    if (guns.length && Math.random() < 0.45) {
+      const id = pick(guns);
+      this.pickups.spawnWeapon(id, z.pos);
+      this.hud.banner('SURVIVALIST DOWN', `It dropped a ${WEAPONS[id].name} · press E to take it`, 2.8, 'success');
+    } else {
+      this.pickups.spawnSupply('pack', z.pos);
+      this.hud.banner('SURVIVALIST DOWN', 'It dropped a survival pack · HP, armor, ammo and throwables', 2.8, 'success');
+    }
   }
 
   onPlayerDied(player, source) {

@@ -31,7 +31,7 @@ export const BARRICADE = {
 };
 
 // damage of one claw swipe on the planks (× difficulty damage); unlisted types: 2.5 × their hit damage
-const CLAW = { mauler: 30, striker: 28, dog: 16, crusher: 170 };
+const CLAW = { mauler: 30, worker: 30, survivor: 30, striker: 28, dog: 16, crusher: 170 };
 const PLANK_T = 0.03;
 const solid = (b) => (b.flags & FLAG_NOBULLET) === 0;
 
@@ -471,7 +471,7 @@ export class Barricades {
       if (z.type.explodes) {
         if (z.fuse < 0) {
           z.fuse = 0;
-          audio.play('charger_fuse', { position: p, volume: 1 });
+          audio.play(z.glow ? 'boomer_swell' : 'charger_fuse', { position: p, volume: 1 });
         }
         return true;
       }

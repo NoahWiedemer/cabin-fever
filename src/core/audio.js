@@ -1786,6 +1786,52 @@ def('crusher_step', { d: 0.7, v: 4, gain: 0.65, rev: 0.25, max: 4, jit: 0.05, re
   b.crackle(t + 0.03, 0.4, 120, 0.4, b.fbus('bandpass', 3000, 0.7, 1));
 });
 
+// the Crusher's fists hitting the ground (or it running into a wall): a deep boom, a crack, earth and splinters
+def('crusher_slam', { d: 1.1, v: 4, gain: 0.85, rev: 0.35, max: 3, jit: 0.05, ref: 6 }, (b) => {
+  const t = 0.004;
+  b.click(t, 0.8, 0.004);
+  b.thump(t, { f0: rnd(62, 75), f1: 22, sweep: 0.18, a: 0.002, d: 0.7, g: 1.5, drive: 2.5 });
+  b.thump(t, { f0: rnd(140, 170), f1: 60, sweep: 0.06, a: 0.001, d: 0.2, g: 0.8, drive: 2 });
+  b.nb(t, { kind: 'brown', type: 'lowpass', f: 300, a: 0.002, d: 0.6, g: 1.1 });
+  b.nb(t, { type: 'bandpass', f: rnd(180, 230), q: 4, a: 0.002, d: 0.4, g: 0.7 });
+  b.nb(t, { type: 'bandpass', f: rnd(1600, 2200), q: 0.9, a: 0.0008, d: 0.08, g: 0.6, drive: 3 });
+  b.crackle(t + 0.01, 0.55, 260, 0.7, b.fbus('bandpass', 2600, 0.8, 1), { pow: 1.6, w: 3 });
+  b.rattle(t + 0.05, 0.3, 5, { f: 2200, g: 0.18 });
+});
+
+// the Boomer swelling up to burst (its 0.85 s fuse): a wet gurgle and a groan climbing in pitch, skin creaking taut
+def('boomer_swell', { d: 1.1, v: 3, gain: 0.75, rev: 0.2, max: 3, jit: 0.04, ref: 3 }, (b) => {
+  const t = 0.01;
+  const dur = 0.85;
+  const base = rnd(70, 90);
+  b.voice(t, dur, {
+    f0: [[0, base], [0.6, base * 1.6], [1, base * 2.4]], jit: 0.12, jitRate: 20, vib: [rnd(5, 8), 0.06],
+    formants: vowel('o', 0.75), formants2: vowel('uh', 0.85), breath: 0.7, fry: [rnd(20, 30), 0.9], drive: 8,
+    attack: 0.08, release: 0.05, lp: 2400, sub: 0.4, g: 0.8,
+  });
+  b.gurgle(t, dur, { rate: 45, f0: 120, f1: 520, g: 1 });
+  b.creak(t + dur * 0.35, dur * 0.6, { f: rnd(500, 700), g: 0.4, r0: 30, r1: 120, q: 10 });
+  b.nb(t, { kind: 'brown', type: 'lowpass', f: 260, f2: 520, a: dur * 0.8, d: 0.05, g: 0.6 });
+});
+
+// the Boomer bursting: a deep wet thump, flesh tearing, a spray and the patter of everything coming down
+def('boomer_burst', { d: 1.6, v: 3, gain: 0.95, rev: 0.3, max: 3, jit: 0.04, ref: 5 }, (b) => {
+  const t = 0.004;
+  b.thump(t, { f0: rnd(95, 115), f1: 34, sweep: 0.12, a: 0.002, d: 0.45, g: 1.4, drive: 2.5 });
+  b.nb(t, { kind: 'brown', type: 'lowpass', f: 420, a: 0.002, d: 0.4, g: 1.1, drive: 2 });
+  b.nb(t, { kind: 'pink', type: 'bandpass', f: 700, q: 0.6, a: 0.001, d: 0.3, g: 1.2, drive: 5 }); // the wet splat
+  b.scrape(t + 0.01, rnd(0.18, 0.26), { f0: rnd(1400, 1900), f1: 500, q: 1.2, g: 0.6, kind: 'pink' }); // tearing
+  b.gurgle(t + 0.02, 0.5, { rate: 90, f0: 200, f1: 900, g: 0.9 });
+  const sp = b.fbus('lowpass', 3200, 0, 0.8);
+  let tt = t + 0.1;
+  while (tt < 1.45) {
+    const x = (tt - t) / 1.4;
+    const f = rnd(300, 1500);
+    b.chirp(tt, f, f * rnd(0.6, 1.4), rnd(0.01, 0.04), rnd(0.2, 1) * Math.pow(1 - x, 1.2), sp); // the patter
+    tt += expRand(80 * (1 - x) + 10);
+  }
+});
+
 def('charger_fuse', { d: 1.0, xf: 0.06, xfLinear: true, loop: true, v: 1, gain: 0.45, rev: 0.15, max: 4, jit: 0 }, (b) => {
   const T = b.dur;
   const L = b.L;
