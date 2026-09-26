@@ -469,7 +469,7 @@ export class Game {
     this.toSpawn = this._composition(this.round);
     this.breach?.onRoundStart(this.toSpawn); // rarely: a Boomer blows a hole in the wall this round
     this.barnFire?.onRoundStart(); // rarely: lightning sets the barn on fire this round
-    this.stalker?.onRoundStart(this.round); // from round 3 (4 on easy), most rounds: the Stalker haunts this one
+    this.stalker?.onRoundStart(this.round); // every round from round 3 (4 on easy): the Stalker haunts it
     this.roundTotal = this.toSpawn.length;
     this.spawnT = 1.5;
     this.hud.setCountdown(null);
@@ -495,7 +495,7 @@ export class Game {
   _endRound() {
     this.state = this.round >= this.maxRounds ? 'victory' : 'shop';
     this.breach?.onRoundEnd();
-    this.stalker?.onRoundEnd(); // it isn't part of the wave: it just leaves
+    this.stalker?.onRoundEnd(); // not part of the wave: an attack breaks off, the scares go on into the buy phase
     this.revives?.onRoundEnd(); // the fallen get up anyway (below)
     if (this.state === 'victory') {
       this._finish(true);

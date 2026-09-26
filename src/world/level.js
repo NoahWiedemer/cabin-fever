@@ -404,11 +404,13 @@ export function buildLevel() {
     const rot = w.axis === 'x' ? 0 : Math.PI / 2;
     const fx = w.axis === 'x' ? cx : w.c;
     const fz = w.axis === 'x' ? w.c : cx;
+    let boarded = false;
     try {
       const fr = buildProp('windowFrame', { w: ww, h: wh, seed: Math.floor(rnd() * 1000) });
       B.placeProp(fr, fx, cy, fz, rot, { collide: false });
       const upper = w.y0 > 3;
       if (!upper || rnd() < 0.5) {
+        boarded = true;
         const bw = buildProp('boardedWindow', { w: ww + 0.1, h: wh + 0.1, seed: Math.floor(rnd() * 1000) });
         const off = (TE / 2 + 0.02) * w.outward;
         B.placeProp(bw, w.axis === 'x' ? fx : fx + off, cy, w.axis === 'x' ? fz + off : fz, rot + (w.outward < 0 ? Math.PI : 0), { collide: false });
@@ -416,9 +418,10 @@ export function buildLevel() {
     } catch (e) {
       console.warn('window prop failed', e);
     }
-    // block movement (bullets pass through gaps)
-    if (w.axis === 'x') world.add(w.a, w.y0, w.c - TE / 2, w.b, w.y1, w.c + TE / 2, SURF.wood, FLAG_NOBULLET);
-    else world.add(w.c - TE / 2, w.y0, w.a, w.c + TE / 2, w.y1, w.b, SURF.wood, FLAG_NOBULLET);
+    // block movement (bullets pass through gaps; the Stalker counts the planks as hiding it: actors/stalker.js)
+    const tag = boarded ? 'boardedWindow' : null;
+    if (w.axis === 'x') world.add(w.a, w.y0, w.c - TE / 2, w.b, w.y1, w.c + TE / 2, SURF.wood, FLAG_NOBULLET, tag);
+    else world.add(w.c - TE / 2, w.y0, w.a, w.c + TE / 2, w.y1, w.b, SURF.wood, FLAG_NOBULLET, tag);
   }
 
   // ------------------------------------------------------------------ lamps

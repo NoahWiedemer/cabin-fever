@@ -1714,6 +1714,16 @@ def('stalker_step', { d: 0.3, v: 5, gain: 0.5, rev: 0.15, max: 6, jit: 0.07, ref
   b.click(t, 0.3, 0.001);
 });
 
+// the same bare foot indoors: the floorboards boom and creak under it
+def('stalker_stomp', { d: 0.5, v: 5, gain: 0.6, rev: 0.2, max: 6, jit: 0.07, ref: 3 }, (b) => {
+  const t = 0.003;
+  b.thump(t, { f0: rnd(95, 115), f1: 42, sweep: 0.05, d: 0.16, g: 1.1, drive: 1.2 });
+  b.modal(t, [[rnd(170, 200), 0.5, 0.18], [rnd(300, 340), 0.35, 0.12], [rnd(510, 560), 0.2, 0.07], [rnd(880, 960), 0.12, 0.04]]);
+  b.nb(t, { kind: 'pink', type: 'bandpass', f: rnd(1400, 2000), q: 1.1, a: 0.001, d: 0.05, g: 0.45 });
+  b.nb(t, { kind: 'brown', type: 'lowpass', f: 380, a: 0.002, d: 0.12, g: 0.7 });
+  if (chance(0.3)) b.creak(t + rnd(0.03, 0.08), rnd(0.12, 0.22), { f: rnd(500, 800), g: 0.3, r0: 60, r1: 25 });
+});
+
 // rushing past you: air, flapping cloth, a panting snarl
 def('stalker_rush', { d: 0.9, v: 3, gain: 0.55, rev: 0.2, max: 2, jit: 0.05, ref: 3 }, (b) => {
   b.whoosh(0.01, rnd(0.45, 0.6), { f0: 300, fm: 1400, f1: 400, q: 0.9, g: 1, kind: 'pink', peak: 0.5 });
