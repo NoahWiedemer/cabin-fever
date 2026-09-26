@@ -17,6 +17,7 @@ export const MODELS = {
   bomber: '/models/zombies/bomber.glb', // Striker (gas mask, explosives)
   gasmask: '/models/zombies/gasmask.glb', // Mauler body variant
   biter: '/models/zombies/biter.glb', // Biter (small, pounces and latches on)
+  stalker: '/models/zombies/stalker.glb', // Stalker (haunts the fireteam, attacks now and then: actors/stalker.js)
   // weapons
   m16a2: '/models/weapons/m16a2.glb',
   spas12: '/models/weapons/spas12.glb',

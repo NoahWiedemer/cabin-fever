@@ -10,7 +10,7 @@ import { dirname, join } from 'node:path';
 const SRC = 'assets/source';
 const OUT = 'public/models';
 
-// [source, output, max texture size]
+// [source, output, max texture size, opts?]
 export const ASSETS = [
   ['coach_l4d2_with_rigging.glb', 'characters/coach.glb', 1024],
   ['ellis_l4d2.glb', 'characters/ellis.glb', 1024],
@@ -21,6 +21,7 @@ export const ASSETS = [
   ['zombie.glb', 'zombies/smoker.glb', 1024], // UniRig zombie (replaced the L4D2 smoker), bones mapped by topology
   ['gasmask_zombie.glb', 'zombies/gasmask.glb', 1024], // UniRig gas-mask zombie: a Mauler body variant (weights: fix-viper-weights)
   ['biter.glb', 'zombies/biter.glb', 1024], // UniRig "smallbiterzombie" kid: the Biter (weights: fix-viper-weights)
+  ['stalker.glb', 'zombies/stalker.glb', 2048, { simplify: 0.45 }], // UniRig mutant: the Stalker (weights: fix-viper-weights; 197k tris simplified; seen up close, so 2K textures)
   ['left_4_dead_2_-_charger_with_rig.glb', 'zombies/charger.glb', 1024],
   ['Mutant_dog.glb', 'zombies/dog.glb', 1024], // UniRig quadruped, bones mapped by topology
   ['Meshy_AI_Character_output.glb', 'characters/meshy.glb', 1024], // UniRig skeleton, bones mapped by topology
@@ -43,7 +44,9 @@ export const ASSETS = [
   ['arms_raw.glb', 'arms/arms.glb', 1024, { meshopt: false }], // skinned: keep float positions (UVs are projected at runtime)
 ];
 
-const cli = (...args) => execFileSync('npx', ['gltf-transform', ...args], { stdio: 'pipe' });
+// the CLI's own entry point under node (spawning `npx` directly fails on Windows, where it is a .cmd)
+const CLI = 'node_modules/@gltf-transform/cli/bin/cli.js';
+const cli = (...args) => execFileSync(process.execPath, [CLI, ...args], { stdio: 'pipe' });
 const filter = process.argv[2];
 
 for (const [src, out, size, opts = {}] of ASSETS) {
@@ -56,6 +59,8 @@ for (const [src, out, size, opts = {}] of ASSETS) {
   cli('resize', tmp, tmp, '--width', String(size), '--height', String(size));
   cli('webp', tmp, tmp, '--quality', '88');
   cli('prune', tmp, tmp, '--keep-leaves', 'true', '--keep-attributes', 'true'); // leaves = marker empties
+  // opts.simplify: keep about this share of the triangles (meshoptimizer; skin weights ride along on the kept vertices)
+  if (opts.simplify) cli('simplify', tmp, tmp, '--ratio', String(opts.simplify), '--error', '0.0008');
   if (opts.meshopt === false) renameSync(tmp, output);
   else {
     cli('meshopt', tmp, output, '--level', 'medium');

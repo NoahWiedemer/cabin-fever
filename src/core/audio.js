@@ -1637,6 +1637,116 @@ def('biter_shake', { d: 0.8, v: 3, gain: 0.7, rev: 0.22, max: 3, jit: 0.04, ref:
   b.rattle(hit + 0.02, 0.15, 3, { f: 2600, g: 0.1 });
 });
 
+// ----- Stalker (gaunt mutant, actors/stalker.js): a doubled voice (a roar under a torn screech), throat
+// clicks, rasping breath, bare feet at a sprint
+
+// the attack: a torn, ring-modulated screech over a low roar
+def('stalker_scream', { d: 1.6, v: 3, gain: 0.8, rev: 0.4, max: 2, jit: 0.03, ref: 5 }, (b) => {
+  const t = 0.01;
+  const dur = rnd(1.0, 1.3);
+  const base = rnd(360, 460);
+  const f0 = [[0, base * 0.6], [0.1, base * 1.2], [0.5, base * rnd(1.35, 1.55)], [0.85, base * 1.1], [1, base * 0.6]];
+  b.voice(t, dur, {
+    f0, jit: 0.08, jitRate: 30, vib: [rnd(9, 13), 0.05],
+    formants: vowel('a', 1.2, 1.1), formants2: vowel('ae', 1.25, 1.1),
+    breath: 0.9, fry: [rnd(80, 120), 0.45], drive: 14, attack: 0.02, release: 0.3,
+    lp: 8500, hp: 250, ring: [rnd(130, 190), 0.4], g: 1,
+  });
+  b.voice(t + 0.02, dur * 0.95, {
+    f0: f0.map(([x, y]) => [x, y * 0.23]), jit: 0.1, jitRate: 18,
+    formants: vowel('o', 0.8), formants2: vowel('a', 0.8),
+    breath: 0.6, fry: [rnd(28, 40), 0.9], drive: 9, attack: 0.03, release: 0.35, lp: 2500, sub: 0.4, g: 0.7,
+  });
+  b.nb(t, { kind: 'white', type: 'highpass', f: 3500, a: 0.02, h: dur * 0.5, d: dur * 0.4, g: 0.25 });
+});
+
+// a horror sting (not positional) when you catch sight of it: a sub hit under a cluster of detuned high strings
+def('stalker_sting', { d: 2.6, v: 2, gain: 0.55, rev: 0.5, max: 1, jit: 0.01 }, (b) => {
+  const t = 0.01;
+  b.thump(t, { f0: 70, f1: 30, sweep: 0.4, a: 0.004, d: 1.1, g: 1.1, drive: 1.5 });
+  b.nb(t, { kind: 'brown', type: 'lowpass', f: 180, a: 0.005, d: 0.9, g: 0.7 });
+  const root = rnd(880, 1040);
+  for (const [k, g] of [[1, 1], [1.059, 0.8], [1.414, 0.7], [0.5, 0.5]]) {
+    const f = root * k;
+    b.voice(t + rnd(0, 0.02), rnd(1.6, 2.1), {
+      f0: [[0, f], [0.15, f * 1.01], [1, f * rnd(0.9, 1.08)]], jit: 0.01, jitRate: 12, vib: [rnd(6, 8), 0.012],
+      formants: [[f * 1.5, 2, 1], [3000, 3, 0.5], [5200, 4, 0.3]], breath: 0.25, drive: 1.5,
+      attack: 0.015, release: 1.2, lp: 9000, hp: 400, g: 0.28 * g,
+    });
+  }
+  b.scrape(t, 0.9, { f0: 5200, f1: 2600, q: 1.5, g: 0.35, kind: 'white' });
+});
+
+// watching: a slow, wet, rasping breath in and out with a low fry
+def('stalker_breath', { d: 2.4, v: 3, gain: 0.5, rev: 0.25, max: 2, jit: 0.04 }, (b) => {
+  const t = 0.02;
+  const inh = rnd(0.7, 0.95), exh = rnd(0.9, 1.2);
+  b.nb(t, { kind: 'pink', type: 'bandpass', f: rnd(900, 1200), f2: rnd(1500, 1900), q: 1.8, a: inh * 0.6, h: inh * 0.2, d: inh * 0.3, g: 0.45 });
+  const t2 = t + inh + rnd(0.1, 0.2);
+  b.nb(t2, { kind: 'pink', type: 'bandpass', f: rnd(700, 900), f2: 450, q: 1.5, a: 0.08, h: exh * 0.4, d: exh * 0.6, g: 0.55 });
+  b.voice(t2, exh, {
+    f0: [[0, rnd(55, 70)], [1, rnd(42, 50)]], jit: 0.12, jitRate: 25, formants: vowel('uh', 0.85),
+    breath: 0.9, fry: [rnd(18, 28), 0.95], drive: 6, attack: 0.1, release: 0.5, lp: 1800, g: 0.45,
+  });
+  b.gurgle(t2 + 0.1, exh * 0.7, { rate: 22, f0: 180, f1: 420, g: 0.25 });
+});
+
+// throat clicks, a creaking "k-k-k-k" that speeds up: it's close, and it knows where you are
+def('stalker_click', { d: 1.0, v: 3, gain: 0.55, rev: 0.3, max: 2, jit: 0.05 }, (b) => {
+  let time = 0.01;
+  const n = Math.floor(rnd(7, 12));
+  const f = rnd(1100, 1500);
+  for (let k = 0; k < n; k++) {
+    const g = 0.5 + 0.5 * Math.sin((k / (n - 1)) * Math.PI);
+    b.click(time, 0.5 * g, 0.0015);
+    b.modal(time, [[f * rnd(0.95, 1.05), 0.35 * g, 0.03], [f * 2.3, 0.15 * g, 0.02], [f * 0.55, 0.2 * g, 0.04]]);
+    time += (0.085 - 0.04 * (k / n)) * rnd(0.85, 1.15);
+  }
+  b.nb(0.01, { kind: 'pink', type: 'bandpass', f: 600, q: 1, a: 0.1, h: time * 0.5, d: 0.2, g: 0.15 });
+});
+
+// a bare foot slapping down at a sprint
+def('stalker_step', { d: 0.3, v: 5, gain: 0.5, rev: 0.15, max: 6, jit: 0.07, ref: 3 }, (b) => {
+  const t = 0.003;
+  b.thump(t, { f0: rnd(100, 125), f1: 45, sweep: 0.04, d: 0.1, g: 1 });
+  b.nb(t, { kind: 'pink', type: 'bandpass', f: rnd(1500, 2200), q: 1.1, a: 0.001, d: 0.05, g: 0.6 });
+  b.nb(t, { kind: 'brown', type: 'lowpass', f: 400, a: 0.002, d: 0.08, g: 0.6 });
+  b.click(t, 0.3, 0.001);
+});
+
+// rushing past you: air, flapping cloth, a panting snarl
+def('stalker_rush', { d: 0.9, v: 3, gain: 0.55, rev: 0.2, max: 2, jit: 0.05, ref: 3 }, (b) => {
+  b.whoosh(0.01, rnd(0.45, 0.6), { f0: 300, fm: 1400, f1: 400, q: 0.9, g: 1, kind: 'pink', peak: 0.5 });
+  b.cloth(0.05, rnd(0.3, 0.4), { g: 0.5, f: 1600 });
+  const base = rnd(160, 210);
+  b.voice(0.12, rnd(0.3, 0.4), {
+    f0: [[0, base], [1, base * 0.7]], jit: 0.1, jitRate: 30, formants: vowel('uh', 1.1),
+    breath: 0.95, fry: [40, 0.8], drive: 8, attack: 0.03, release: 0.15, lp: 3500, hp: 150, g: 0.35,
+  });
+});
+
+// shot while it only watches: a furious hiss and a snarl, then it's gone
+def('stalker_hiss', { d: 0.9, v: 3, gain: 0.65, rev: 0.3, max: 2, jit: 0.04, ref: 4 }, (b) => {
+  const t = 0.005;
+  b.nb(t, { kind: 'white', type: 'bandpass', f: rnd(3200, 4200), q: 1.2, a: 0.01, h: 0.25, d: 0.3, g: 0.7 });
+  const base = rnd(260, 330);
+  b.voice(t + 0.02, rnd(0.45, 0.6), {
+    f0: [[0, base * 1.3], [0.3, base * 1.1], [1, base * 0.6]], jit: 0.12, jitRate: 40,
+    formants: vowel('e', 1.2, 1.1), formants2: vowel('uh', 1.2), breath: 0.9, fry: [rnd(45, 65), 0.85], drive: 12,
+    attack: 0.02, release: 0.2, lp: 6000, hp: 180, ring: [rnd(90, 140), 0.3], g: 0.9,
+  });
+});
+
+// it has you: the impact, its hands on your gear
+def('stalker_grab', { d: 0.7, v: 3, gain: 0.8, rev: 0.12, max: 2, jit: 0.03 }, (b) => {
+  const t = 0.004;
+  b.thump(t, { f0: 140, f1: 45, sweep: 0.06, a: 0.002, d: 0.25, g: 1.2, drive: 2 });
+  b.nb(t, { kind: 'brown', type: 'lowpass', f: 500, a: 0.002, d: 0.2, g: 0.9 });
+  b.cloth(t, 0.22, { g: 0.7, f: 1400 });
+  b.click(t, 0.6, 0.0015);
+  b.rattle(t + 0.02, 0.15, 4, { f: 2400, g: 0.15 });
+});
+
 def('crusher_roar', { d: 2.5, v: 3, gain: 0.9, rev: 0.4, max: 2, jit: 0.04, ref: 6 }, (b) => {
   const t = 0.02;
   const dur = rnd(1.6, 2.1);

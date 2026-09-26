@@ -1,7 +1,7 @@
 // First-person player controller: mouse look, run/sprint/crouch/jump, step-up smoothing,
 // footsteps by surface, recoil, damage (HP + AP), knockback, death camera.
 import * as THREE from 'three';
-import { clamp, damp } from '../core/utils.js';
+import { clamp, damp, wrapAngle } from '../core/utils.js';
 import { levelOf } from '../world/level.js';
 import { SURF } from '../world/collision.js';
 
@@ -54,6 +54,7 @@ export class Player {
     this.lastY = 0;
     this.flashlight = false;
     this.latchedBy = null; // a Biter clinging to your back (biter.js): slower, no sprint, no ADS
+    this.heldBy = null; // the Stalker holding you (stalker.js): no moving, your view dragged onto its face
     this.climbing = null; // on a ladder (actors/ladders.js)
     this.ladderCd = 0;
   }
@@ -82,6 +83,7 @@ export class Player {
     this.punchFov = 0;
     this.punchRoll = 0;
     this.latchedBy = null;
+    this.heldBy = null;
     this.climbing = null;
     this.ladderCd = 0;
   }
@@ -195,6 +197,14 @@ export class Player {
     }
     this.punchFov *= Math.exp(-18 * dt);
     this.punchRoll *= Math.exp(-16 * dt);
+    // held by the Stalker: the view is dragged onto its face (the mouse still fights it a little)
+    if (this.heldBy) {
+      this.heldBy.faceAt(_v);
+      const dx = _v.x - b.pos.x, dz = _v.z - b.pos.z;
+      const k = 1 - Math.exp(-12 * dt);
+      this.yaw += wrapAngle(Math.atan2(-dx, -dz) - this.yaw) * k;
+      this.pitch += (Math.atan2(_v.y - b.pos.y - this.eye, Math.hypot(dx, dz)) - this.pitch) * k;
+    }
 
     // ---- crouch
     // kneel: reviving a teammate (game/revive.js)
@@ -227,10 +237,11 @@ export class Player {
       return;
     }
     // Shift sprints (+40%, combat boots x1.15 on top: game/gear.js) while moving and standing
-    const sprinting = (input.down('ShiftLeft') || input.down('ShiftRight')) && (fw !== 0 || st !== 0) && !this.crouching && !this.noSprint && !this.latchedBy;
+    const sprinting = (input.down('ShiftLeft') || input.down('ShiftRight')) && (fw !== 0 || st !== 0) && !this.crouching && !this.noSprint && !this.latchedBy && !this.heldBy;
     this.sprinting = sprinting;
     let speed = this.crouching ? 2.0 : 5.1 * (sprinting ? 1.4 * (this.game.gear?.sprintMul?.() ?? 1) : 1);
     if (this.latchedBy) speed *= 0.6;
+    if (this.heldBy) speed = 0;
     speed *= weapons?.def?.moveMul ?? 1;
     if (weapons && weapons.ads > 0.5) speed *= 0.72;
     const sin = Math.sin(this.yaw), cos = Math.cos(this.yaw);
@@ -245,7 +256,7 @@ export class Player {
     const accel = b.onGround ? 11 : 2.2;
     b.vel.x = damp(b.vel.x, wx * speed, accel, dt);
     b.vel.z = damp(b.vel.z, wz * speed, accel, dt);
-    if (b.onGround && input.hit('Space') && !this.crouching) {
+    if (b.onGround && input.hit('Space') && !this.crouching && !this.heldBy) {
       b.vel.y = 5.2;
       b.onGround = false;
       this.game.audio.play('jump', { volume: 0.5 });

@@ -1,7 +1,8 @@
 // The Infected: Mauler (standard; some wear the L4D2 Smoker model), Boomer (type id 'charger':
 // explodes, weak spot on the gut), Striker (female, fast), Crusher (tank), Mutant Dog (quadruped
 // GLB, packs, pounce + bite; animated by dogAnim.js), Biter (small kid in packs that pounces and latches
-// onto your back; a Zombie subclass in biter.js).
+// onto your back; a Zombie subclass in biter.js), Stalker (a mutant that haunts the player outside the waves;
+// a Zombie subclass in stalker.js).
 // AI (alert → chase → attack), procedural animation, hitboxes. The chase:
 //   * target: the survivor nearest by PATH (the flow field labels each cell with it), sticky (a new one has
 //     to win twice in a row) and spread (a survivor already mobbed sheds zombies to others in the open)
@@ -34,6 +35,10 @@ export const ZOMBIE_TYPES = {
   // Biter class, its AI, pose and the latch). dmg / reach are its claw swipe when it can't pounce.
   // claws: false — it doesn't claw at barricades (nav/horde.js routes it round them)
   biter: { name: 'Biter', claws: false, body: ['biter'], hp: 62, walk: 1.7, run: 5.0, dmg: 6, reach: 0.85, attackTime: 0.5, radius: 0.24, scale: 1.0, score: 150, mass: 0.45, turn: 16, height: 1.0, eye: 0.8, pitch: 1.75, lunge: 0.5, hitAt: 0.45 },
+  // the gaunt mutant that haunts the fireteam (stalker.js: the Stalker class, its director and its poses; speeds
+  // and damage live in STALKER there). haunt: no part of a wave, so the round's end, the enemy count and the
+  // radar skip it
+  stalker: { name: 'Stalker', claws: false, haunt: true, body: ['stalker'], hp: 220, walk: 1.2, run: 9.4, dmg: 26, reach: 1.1, attackTime: 0.6, radius: 0.3, scale: 1.0, score: 600, mass: 1.6, turn: 12, height: 1.9, eye: 1.75, pitch: 0.8 },
 };
 // type name -> Zombie subclass (a module that defines one registers it here, e.g. biter.js)
 export const ZOMBIE_CLASSES = {};
@@ -1010,7 +1015,7 @@ export class ZombieManager {
   constructor(game, scene) {
     this.game = game;
     this.scene = scene;
-    this.pool = { mauler: [], charger: [], striker: [], crusher: [], dog: [], biter: [] };
+    this.pool = { mauler: [], charger: [], striker: [], crusher: [], dog: [], biter: [], stalker: [] };
     this.list = [];
     this.hash = new Map();
     this.cell = 1.5;
@@ -1021,7 +1026,7 @@ export class ZombieManager {
     return new (ZOMBIE_CLASSES[type] ?? Zombie)(type, this.game);
   }
 
-  prewarm(counts = { mauler: 14, charger: 5, striker: 6, crusher: 3, dog: 7, biter: 8 }) {
+  prewarm(counts = { mauler: 14, charger: 5, striker: 6, crusher: 3, dog: 7, biter: 8, stalker: 1 }) {
     for (const [type, n] of Object.entries(counts)) {
       for (let i = 0; i < n; i++) {
         const z = this._make(type);
@@ -1051,9 +1056,10 @@ export class ZombieManager {
     return z;
   }
 
+  /** the wave still on its feet (the haunting Stalker doesn't count) */
   get aliveCount() {
     let n = 0;
-    for (const z of this.list) if (z.alive) n++;
+    for (const z of this.list) if (z.alive && !z.type.haunt) n++;
     return n;
   }
 

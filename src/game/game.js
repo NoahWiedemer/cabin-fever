@@ -8,6 +8,7 @@ import { NavGrid } from '../nav/navgrid.js';
 import { Horde } from '../nav/horde.js';
 import { ZombieManager, ZOMBIE_TYPES, PART_MULT } from '../actors/zombie.js';
 import '../actors/biter.js'; // registers the Biter class with the zombie manager
+import { StalkerDirector } from '../actors/stalker.js'; // (also registers the Stalker class)
 import { LatchView } from '../fx/latchView.js';
 import { Teammate } from '../actors/teammate.js';
 import { FIRETEAM, LEGACY_LINEUPS, normalizeFireteam } from '../actors/fireteam.js';
@@ -141,6 +142,7 @@ export class Game {
     this.ladders = new Ladders(this); // the barn's hayloft ladder: player + infected climbing
     this.barnFire = new BarnFire(this); // the rare lightning strike that burns the barn (world/barnFire.js)
     this.latchView = new LatchView(this); // first person with a Biter on your back
+    this.stalker = new StalkerDirector(this); // when and where the Stalker haunts the player (actors/stalker.js)
     this.weather.onDripSplash = (p) => this.fx.dripSplash(p);
 
     await step(0.88, 'Cleaning weapons');
@@ -300,6 +302,7 @@ export class Game {
     this.horde?.reset();
 
     this.zombies.clear();
+    this.stalker?.reset();
     this.projectiles.clear();
     this.pickups.clear();
     this.fires = [];
@@ -399,6 +402,7 @@ export class Game {
     this.running = false;
     this.state = 'menu';
     this.zombies.clear();
+    this.stalker?.reset();
     this.projectiles.clear();
     this.pickups.clear();
     for (const b of this.bots) b.hide();
@@ -465,6 +469,7 @@ export class Game {
     this.toSpawn = this._composition(this.round);
     this.breach?.onRoundStart(this.toSpawn); // rarely: a Boomer blows a hole in the wall this round
     this.barnFire?.onRoundStart(); // rarely: lightning sets the barn on fire this round
+    this.stalker?.onRoundStart(this.round); // from round 3 (4 on easy), most rounds: the Stalker haunts this one
     this.roundTotal = this.toSpawn.length;
     this.spawnT = 1.5;
     this.hud.setCountdown(null);
@@ -490,6 +495,7 @@ export class Game {
   _endRound() {
     this.state = this.round >= this.maxRounds ? 'victory' : 'shop';
     this.breach?.onRoundEnd();
+    this.stalker?.onRoundEnd(); // it isn't part of the wave: it just leaves
     this.revives?.onRoundEnd(); // the fallen get up anyway (below)
     if (this.state === 'victory') {
       this._finish(true);
@@ -683,8 +689,9 @@ export class Game {
       if (isPlayer) {
         this.hitAccum += res.dealt ?? dmg;
         this.hitAccumHead = this.hitAccumHead || h.part === 'head';
-        this.hud.hitMarker(res.killed, h.part === 'head');
-        if (!res.killed) this._hitTick(h.part === 'head');
+        // res.immune: the Stalker outside an attack shrugs it off (no hit marker; it flees)
+        if (!res.immune) this.hud.hitMarker(res.killed, h.part === 'head');
+        if (!res.killed && !res.immune) this._hitTick(h.part === 'head');
       } else if (shooter && shooter.stats) {
         shooter.stats.score += Math.round((res.dealt ?? dmg) * 0.5);
       }
@@ -747,7 +754,7 @@ export class Game {
       const pt = best.hipsWorld.clone().addScaledVector(fwd, -0.2);
       this.fx.bloodHit(pt, fwd, { amount: heavy ? 1.3 : 0.8 });
       this.audio.play(def?.hitSound ?? 'knife_hit', { position: pt, volume: 0.9 });
-      this.hud.hitMarker(res.killed, false);
+      if (!res.immune) this.hud.hitMarker(res.killed, false);
       this.shake.add(0.12);
       return;
     }
@@ -896,6 +903,8 @@ export class Game {
     } else if (z.typeName === 'striker') {
       const pos = z.pos.clone();
       setTimeout(() => this.projectiles.strikerShells(pos), 150);
+    } else if (z.typeName === 'stalker') {
+      this.stalker?.onKilled(z); // a banner and an ammo box; it stays away for a round
     } else if (z.typeName === 'crusher') {
       const pos = z.pos.clone();
       this.fx.acidCloud(pos, 3.2, 8);
@@ -1078,6 +1087,7 @@ export class Game {
 
     // zombies
     this.zombies.update(dt, { team: this.team, world: this.world, nav: this.nav, horde: this.horde, time: this.time, roundTime: this.roundTime });
+    this.stalker?.update(dt);
     for (let i = this.pendingExplosions.length - 1; i >= 0; i--) {
       const e = this.pendingExplosions[i];
       e.t -= dt;
@@ -1203,7 +1213,7 @@ export class Game {
     const w = this.weapons;
     const info = w.hudInfo();
     const enemies = [];
-    for (const z of this.zombies.list) if (z.alive) enemies.push({ x: z.pos.x, z: z.pos.z, level: z.level });
+    for (const z of this.zombies.list) if (z.alive && !z.type.haunt) enemies.push({ x: z.pos.x, z: z.pos.z, level: z.level }); // (the Stalker never shows up on the radar)
     const allies = [];
     for (const b of this.bots) if (b.alive && this.team.includes(b)) allies.push({ x: b.pos.x, z: b.pos.z });
     hud.update(

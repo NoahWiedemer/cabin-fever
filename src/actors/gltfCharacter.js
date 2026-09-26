@@ -54,6 +54,8 @@ export const GLB_BODIES = {
   gasmask: { url: MODELS.gasmask, height: 1.78, armSpread: 0.12, fallback: 'mauler' },
   // the Biter: a feral kid (UniRig, modeled hunched; its canonical pose straightens it, biter.js crouches it again)
   biter: { url: MODELS.biter, height: 1.1, armSpread: 0.16, fallback: 'mauler2' },
+  // the Stalker: a gaunt UniRig mutant, taller than a survivor (actors/stalker.js hunches it)
+  stalker: { url: MODELS.stalker, height: 1.95, armSpread: 0.12, fallback: 'mauler2' },
   // the Crusher boss (zombie type scale 1.4 on top): heavy UniRig tank, arms held clear of the gut
   // the Striker: gas-mask bomber that scatters three charges when it dies
   bomber: { url: MODELS.bomber, height: 1.76, armSpread: 0.14, fallback: 'striker' },
@@ -69,7 +71,7 @@ export const GLB_BODIES = {
   nadja: { url: MODELS.nadja, height: 1.7, armSpread: 0.1, fallback: 'soldier' },
 };
 // finger curl per joint (rad): a rifle grip for the survivors, a loose claw for the infected
-const CURL = { coach: 0.5, ellis: 0.5, meshy: 0.45, viper: 0.45, smoker: 0.3, boomer: 0.3, woman: 0.3, tank: 0.35, bomber: 0.3, gasmask: 0.3, biter: 0.4, shopkeeper: 0.28, nadja: 0.3 };
+const CURL = { coach: 0.5, ellis: 0.5, meshy: 0.45, viper: 0.45, smoker: 0.3, boomer: 0.3, woman: 0.3, tank: 0.35, bomber: 0.3, gasmask: 0.3, biter: 0.4, stalker: 0.5, shopkeeper: 0.28, nadja: 0.3 };
 
 const normName = (n) => n.replace(/(_\d+)+$/, '').replace(/[^a-z0-9]/gi, '').toLowerCase().replace(/^(valvebiped|mixamorig)/, '');
 

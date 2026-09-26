@@ -322,8 +322,10 @@ export class NavGrid {
   /**
    * sources: [{level, x, z, ref?}] — compute distance field from all of them. The default field (no
    * distArr) also labels every cell with the index of its nearest source (this.owner / this.ownerRef).
+   * maxD: stop spreading past this distance (cells) for a cheap local field; beyond the rim just past it
+   * everything stays Infinity.
    */
-  compute(sources, distArr = null, cost = this.cost) {
+  compute(sources, distArr = null, cost = this.cost, maxD = Infinity) {
     const dist = distArr || this.dist;
     const owner = distArr ? null : this.owner;
     const C = cost || (this._zero ??= new Float32Array(this.N));
@@ -363,6 +365,7 @@ export class NavGrid {
       const i = this._pop();
       const d = dist[i];
       if (this._popKey > d + 1e-4) continue; // stale entry
+      if (d > maxD) break;
       const l = (i / per) | 0;
       const r = i - l * per;
       const iz = (r / nx) | 0;

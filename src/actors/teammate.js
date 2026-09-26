@@ -322,11 +322,12 @@ export class Teammate {
       const range = this.weapon.bot.range ?? 26;
       for (const z of game.zombies.list) {
         if (!z.alive || z.latchHost === this) continue; // a Biter on its own back gets shaken off, not shot
+        if (z.type.haunt && !z.exposed) continue; // the Stalker is the player's to see, until it attacks (stalker.js)
         const d = z.pos.distanceTo(pos);
         if (d > range) continue;
-        // a Biter latched onto anyone comes first (shots on it never hurt its host), then Boomers (they must
-        // die before they get close), then the fast dogs and Biters
-        const score = d * (z.latchHost ? 0.15 : z.typeName === 'charger' ? 0.5 : z.typeName === 'dog' || z.typeName === 'biter' ? 0.75 : 1);
+        // a Biter latched onto anyone comes first (shots on it never hurt its host), then an attacking Stalker and
+        // Boomers (they must die before they get close), then the fast dogs and Biters
+        const score = d * (z.latchHost ? 0.15 : z.type.haunt ? 0.4 : z.typeName === 'charger' ? 0.5 : z.typeName === 'dog' || z.typeName === 'biter' ? 0.75 : 1);
         if (score >= bd) continue;
         if (Math.abs(z.pos.y - pos.y) > 2.5) continue;
         const cy = z.hipsWorld ? z.hipsWorld.y : z.pos.y + 1.2;

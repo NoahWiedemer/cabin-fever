@@ -4,7 +4,7 @@
 
 export const ECON = {
   start: 500,
-  kill: { mauler: 60, charger: 90, boomer: 90, striker: 80, crusher: 400, dog: 70, biter: 75 },
+  kill: { mauler: 60, charger: 90, boomer: 90, striker: 80, crusher: 400, dog: 70, biter: 75, stalker: 400 },
   killDefault: 60,
   headshot: 20,
   roundBase: 250,
