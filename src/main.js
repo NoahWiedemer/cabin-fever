@@ -126,6 +126,7 @@ function closeShop() {
   hud.setVisible(true);
   input.lock();
   wantFullscreen();
+  game?.onShopClosed(); // (very rarely the Stalker is waiting right there)
   setTimeout(() => {
     if (started && !input.locked && !game?.paused && !store.isOpen) menu.showClickToPlay(true);
   }, 1200);

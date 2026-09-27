@@ -87,9 +87,12 @@ export const GLB_BODIES = {
   shopkeeper: { url: MODELS.shopkeeper, height: 1.76, armSpread: 0.1, fallback: 'soldier' },
   // lab tech behind the basement's armored glass (actors/labTech.js): never a bot or a target
   nadja: { url: MODELS.nadja, height: 1.7, armSpread: 0.1, fallback: 'soldier' },
+  // your own character (auto-rigged EmoSquad scan, Mixamo joint names): shown for you in the cutscenes and on the
+  // store paperdoll, never a bot (actors/fireteam.js PLAYER_CHARACTER)
+  emosquad: { url: MODELS.emosquad, height: 1.8, armSpread: 0.12, fallback: 'soldier' },
 };
 // finger curl per joint (rad): a rifle grip for the survivors, a loose claw for the infected
-const CURL = { coach: 0.5, ellis: 0.5, meshy: 0.45, viper: 0.45, smoker: 0.3, boomer: 0.3, woman: 0.3, tank: 0.35, bomber: 0.3, gasmask: 0.3, biter: 0.4, stalker: 0.5, normal: 0.3, worker: 0.3, survivor: 0.3, shopkeeper: 0.28, nadja: 0.3 };
+const CURL = { coach: 0.5, ellis: 0.5, meshy: 0.45, viper: 0.45, smoker: 0.3, boomer: 0.3, woman: 0.3, tank: 0.35, bomber: 0.3, gasmask: 0.3, biter: 0.4, stalker: 0.5, normal: 0.3, worker: 0.3, survivor: 0.3, shopkeeper: 0.28, nadja: 0.3, emosquad: 0.45 };
 
 const normName = (n) => n.replace(/(_\d+)+$/, '').replace(/[^a-z0-9]/gi, '').toLowerCase().replace(/^(valvebiped|mixamorig)/, '');
 

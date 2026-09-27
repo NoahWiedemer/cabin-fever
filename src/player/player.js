@@ -128,6 +128,8 @@ export class Player {
       this.game.hud?.damage(-rel, amount);
     }
     this.game.shake.add(Math.min(0.5, amount / 50));
+    // clawed (not a Biter's steady chewing, not the gas): blood on the lens
+    if (fromPos && !opts.quiet && amount >= 6 && Math.hypot(fromPos.x - this.pos.x, fromPos.z - this.pos.z) < 2.8) this.game.hud?.screenBlood?.(Math.min(1, amount / 26));
     if (!opts.quiet && Math.random() < 0.7) this.game.audio.play('player_hurt', { volume: 0.8 });
     if (this.hp <= 0) {
       this.hp = 0;

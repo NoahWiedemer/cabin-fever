@@ -8,7 +8,7 @@
 import * as THREE from 'three';
 import { HELI, buildReagentCase } from '../world/helicopter.js';
 import { ease, easeIn, easeOut, span } from './cinema.js';
-import { clamp, lerp } from '../core/utils.js';
+import { dampAngle, lerp } from '../core/utils.js';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const _p = V(), _l = V(), _a = V(), _b = V(), _c = V(), _d = V(), _s = V();
@@ -35,18 +35,15 @@ function floorAt(g, x, z, y) {
 }
 
 /**
- * Who is in a scene: the fireteam's bots in team order, and `double`, a stand-in for the player: a
- * character nobody picked (Scorpion first: the store's paperdoll wears that body), else none.
+ * Who is in a scene: the fireteam's bots in team order, and `double`, the player seen from outside: your own
+ * character (the EmoSquad operator, game.playerBody), or without its model a character nobody picked.
  */
 export function castOf(g) {
   const bots = g.team.filter((m) => !m.isPlayer);
-  let double = null;
+  let double = g.playerBody?.rig ? g.playerBody : null; // (rig: its GLB body loaded)
   for (const id of ['meshy', 'soldier', 'viper', 'ellis', 'coach']) {
-    const b = g.bots.find((x) => x.id === id && !g.team.includes(x));
-    if (b) {
-      double = b;
-      break;
-    }
+    if (double) break;
+    double = g.bots.find((x) => x.id === id && !g.team.includes(x)) ?? null;
   }
   return { bots, double, all: double ? [...bots, double] : bots.slice() };
 }
@@ -275,20 +272,54 @@ export function nadjaScene(g) {
   const { bots, double } = castOf(g);
   const cast = [double, ...bots].filter(Boolean).slice(0, 3);
   const glassMid = V(-4.6, FB + 1.5, 3.85);
-  const pp = g.player.pos;
-  // the player (or the stand-in in their place) where they stand at the glass, the others beside them
-  const p0 = V(clamp(pp.x, -6.2, -3.0), FB, clamp(pp.z, 1.6, 3.1));
-  const spots = [p0, V(p0.x + 1.15, FB, p0.z - 0.25), V(p0.x - 1.15, FB, p0.z - 0.4)];
+  const nadja = V(-4.65, FB + 1.55, 5.0); // where the team looks: at her, behind the glass
+  // the team lines up at the glass, the player (or the stand-in in their place) in the middle: fixed spots
+  // clear of the pillars, so the camera angles below all see past them wherever the player came down
+  const spots = [V(-4.85, FB, 2.7), V(-3.7, FB, 2.5), V(-6.0, FB, 2.45)];
   const keypad = lab.hackMount.keypad;
   const keyBot = bots[0] ?? null;
   const keyName = (keyBot ?? double)?.name?.toUpperCase() ?? 'YOU';
-  const keySpot = V(keypad.x - 0.1, FB, keypad.z - 0.62);
+  const keySpot = V(keypad.x + 0.2, FB, keypad.z - 0.6); // (its right hand, on its west side, in front of the pad)
+  // the keypad bot's right hand, keyed: [t, dx, dy, dz] off the keypad (dx null: hanging at its side). The wrist
+  // stops PRESS short of the pad (the fingers reach it); [4]: 'key' a key goes down, 'slap' the palm hits it
+  const PRESS = -0.13, HOVER = -0.23;
+  const HAND = [
+    [6.75, null],
+    [7.05, -0.01, 0.03, HOVER],
+    [7.12, -0.01, 0.03, PRESS, 'key'], [7.2, -0.01, 0.03, HOVER],
+    [7.3, -0.05, -0.01, PRESS, 'key'], [7.38, -0.05, -0.01, HOVER],
+    [7.48, 0, -0.04, PRESS, 'key'], [7.56, 0, -0.04, HOVER],
+    [7.66, -0.03, 0.05, PRESS, 'key'], [7.8, -0.03, 0.04, HOVER - 0.05],
+    [8.24, -0.03, 0, HOVER - 0.08], // (the LED: red)
+    [8.38, -0.04, 0, PRESS, 'key'], [8.46, -0.04, 0, HOVER],
+    [8.56, 0, 0.02, PRESS, 'key'], [8.7, 0, 0.03, HOVER - 0.06],
+    [8.9, -0.02, 0.08, HOVER - 0.14], // draws back...
+    [9.0, -0.02, 0.01, PRESS + 0.03, 'slap'], // ...and slaps it
+    [9.16, -0.02, -0.01, PRESS + 0.02],
+    [9.7, null],
+  ];
+  const DENY = [7.84, 8.72]; // the code goes in: two low buzzes, the LED flashes red
+  const restOf = (b, out) => {
+    // where Teammate.cine hangs the slung right hand: (-0.24, 0.86, 0.06) in the root's frame
+    const c = Math.cos(b.yaw), s = Math.sin(b.yaw);
+    return out.set(b.pos.x - 0.24 * c + 0.06 * s, b.pos.y + 0.86, b.pos.z + 0.24 * s + 0.06 * c);
+  };
+  const keyAt = (k, b, out) => (k[1] == null ? restOf(b, out) : out.set(keypad.x + k[1], keypad.y + k[2], keypad.z + k[3]));
+  const handAt = (t, b, out) => {
+    if (t <= HAND[0][0] || t >= HAND[HAND.length - 1][0]) return null;
+    let i = 1;
+    while (HAND[i][0] < t) i++;
+    const a = HAND[i - 1], z = HAND[i];
+    keyAt(a, b, _a);
+    keyAt(z, b, _b);
+    return out.lerpVectors(_a, _b, ease(span(t, a[0], z[0])));
+  };
   const dur = 21.2;
   const lines = [
     [0.9, 'NADJA', 'You made it! Please tell me that case is the reagent.', 3.2],
     [4.3, 'NADJA', 'I need it in here, now. The door is right there!', 2.7],
-    [7.5, keyName, 'Door is sealed tight. The keypad is dead.', 2.8],
-    [10.6, 'NADJA', "The lockdown fried the lock. I can't open it from in here...", 3.1],
+    [8.1, keyName, 'Door is sealed tight. The keypad is dead.', 2.4],
+    [10.7, 'NADJA', "The lockdown fried the lock. I can't open it from in here...", 3.0],
     [13.9, 'NADJA', "You'll have to hack it. It's the only way in.", 2.8],
     [17.0, 'COMMAND', 'Copy that, Fireteam. We will fly a hacking module in at the next lull. Hold on.', 3.9, true],
   ];
@@ -304,9 +335,11 @@ export function nadjaScene(g) {
         c.b.root.visible = true;
         c.b.alive = true;
         c.b.pos.copy(c.spot);
-        c.b.yaw = yawTo(c.spot, glassMid);
+        c.b.yaw = yawTo(c.spot, nadja);
       }
       S.key = keyBot ? S.cast.find((c) => c.b === keyBot) : null;
+      S.hand = 0; // the next HAND key with a sound
+      S.deny = 0;
       tech?.perform('talk', _a.copy(spots[0]).setY(FB + 1.6));
       S.phase = 0;
     },
@@ -317,7 +350,7 @@ export function nadjaScene(g) {
         S.phase = 1;
         tech?.perform('talk', _b.copy(keypad).setY(FB + 1.5));
       }
-      if (S.phase === 1 && t > 10.4) {
+      if (S.phase === 1 && t > 10.5) {
         S.phase = 2;
         tech?.perform('point', focus);
       }
@@ -325,49 +358,59 @@ export function nadjaScene(g) {
         S.phase = 3;
         tech?.perform('talk', focus);
       }
-      // the keypad: a teammate tries it (two dead beeps)
-      if (S.key) {
-        const b = S.key.b;
-        if (t > 5.0 && t < 7.0) {
-          const k = ease(span(t, 5.0, 6.8));
+      // the keypad: a teammate walks over, taps in a code (a dead buzz), tries again, slaps it, turns back
+      const b = S.key?.b;
+      if (b) {
+        let mode = 'stand', face = keypad, look = keypad;
+        if (t < 5.0) face = look = nadja;
+        else if (t < 6.75) {
+          const k = ease(span(t, 5.0, 6.6));
           b.pos.lerpVectors(S.key.spot, keySpot, k);
-          b.yaw = yawTo(b.pos, t < 6.4 ? keySpot : keypad);
-          b.cine(dt, { mode: k < 0.95 ? 'walk' : 'stand', speed: 1.4, sling: true });
-        } else if (t >= 7.0 && t < 9.8) {
+          if (k < 0.7) face = keySpot;
+          if (k < 0.97) mode = 'walk';
+        } else {
           b.pos.copy(keySpot);
-          b.yaw = yawTo(keySpot, keypad);
-          const press = (t > 7.1 && t < 7.4) || (t > 7.9 && t < 8.2);
-          b.cine(dt, { mode: 'stand', sling: true, touch: press ? keypad : _c.copy(keypad).add(_d.set(-0.05, -0.25, -0.2)), look: keypad });
-        } else if (t >= 9.8) {
-          b.pos.copy(keySpot);
-          b.yaw = yawTo(keySpot, glassMid);
-          b.cine(dt, { mode: 'stand', ready: 0.1, look: _d.set(-4.6, FB + 1.6, 5.0) });
-        } else b.cine(dt, { mode: 'stand', ready: 0.1, look: _d.set(-4.6, FB + 1.6, 5.0) });
-        if ((t > 7.1 && !S.beep1) || (t > 7.9 && !S.beep2)) {
-          if (!S.beep1) S.beep1 = true;
-          else S.beep2 = true;
-          g.audio.play('keypad_deny', { position: keypad, volume: 1 });
-          lab.setLock('jammed');
+          if (t > 9.55) face = look = nadja; // turns back to her
         }
-        if (t > 9.0 && S.beep2 && !S.lockBack) {
-          S.lockBack = true;
-          lab.setLock('locked');
-        }
-      } else if (t > 7.1 && !S.beep1) {
-        S.beep1 = true;
+        S.keyYaw = dampAngle(S.keyYaw ?? b.yaw, yawTo(b.pos, face), mode === 'walk' ? 7 : 5, dt);
+        b.yaw = S.keyYaw;
+        b.cine(dt, { mode, speed: 1.3, sling: true, touch: handAt(t, b, _c), look });
+      }
+      // what the keypad says: key clicks, the slap, the buzzes (the LED flashes red, then its slow blink again)
+      while (S.hand < HAND.length && HAND[S.hand][0] <= t) {
+        const k = HAND[S.hand++];
+        if (!b || !k[4]) continue;
+        if (k[4] === 'key') g.audio.play('keypad_key', { position: keypad, volume: 0.9 });
+        else g.audio.play('keypad_slap', { position: keypad, volume: 1 });
+      }
+      if (S.deny < DENY.length && t > DENY[S.deny] && (b || S.deny === 0)) {
+        S.deny++;
         g.audio.play('keypad_deny', { position: keypad, volume: 1 });
+        lab.setLock('jammed');
+        S.lockBack = t + 0.9;
+      }
+      if (S.lockBack && t > S.lockBack) {
+        S.lockBack = 0;
+        lab.setLock('locked');
       }
       for (const c of S.cast) {
         if (c === S.key) continue;
-        c.b.cine(dt, { mode: 'stand', ready: 0.15, look: _d.set(-4.6, FB + 1.6, 5.0) });
+        // the others watch the keypad while it's being tried
+        c.b.cine(dt, { mode: 'stand', ready: 0.15, look: t > 7.0 && t < 9.6 && b ? keypad : nadja });
       }
-      // the camera
-      if (t < 5.0) cam(g, _p.set(spots[0].x + 0.75, FB + 1.8, spots[0].z - 2.1), _l.set(-4.6, FB + 1.45, 5.0), 44, 0.006);
-      else if (t < 10.3) cam(g, _p.set(keypad.x - 1.35, FB + 1.55, keypad.z - 1.9), _l.set(keypad.x + 0.05, FB + 1.25, keypad.z), 48, 0.006);
-      else if (t < 16.8) cam(g, _p.set(-4.42, FB + 1.64, 3.3), _l.set(-4.62, FB + 1.52, 5.06), 38, 0.004);
+      // the camera: fixed angles, all past the pillars and under the beams
+      if (t < 6.5) {
+        // over their shoulders onto her, a slow push in (the one going for the keypad walks out right)
+        const k = ease(span(t, 0, 6.5));
+        cam(g, _p.set(-4.25, FB + 1.84, lerp(1.05, 1.45, k)), _l.set(-4.7, FB + 1.42, 5.0), 44, 0.005);
+      } else if (t < 10.3) {
+        // behind the right shoulder of the one at the keypad: the pad, the end of the glass, the door behind
+        cam(g, _p.set(-2.95, FB + 1.62, 2.35), _l.set(-1.95, FB + 1.3, 3.7), 46, 0.004);
+      } else if (t < 16.8) cam(g, _p.set(-4.42, FB + 1.64, 3.3), _l.set(-4.62, FB + 1.52, 5.06), 38, 0.004);
       else {
+        // wide: the team at the glass, the keypad and the door on the right
         const k = ease(span(t, 16.8, dur));
-        cam(g, _p.set(lerp(-6.9, -6.4, k), FB + 2.1, lerp(0.5, 0.9, k)), _l.set(-3.1, FB + 1.2, 3.8), 56, 0.006);
+        cam(g, _p.set(-6.2, FB + 2.05, lerp(0.3, 0.65, k)), _l.set(-5.0, FB + 1.15, 3.7), 60, 0.005);
       }
     },
     end(g, S) {

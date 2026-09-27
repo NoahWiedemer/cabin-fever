@@ -3,6 +3,11 @@
 import * as THREE from 'three';
 import { tex } from './textures.js';
 import { BARN, BARN_ROOF } from './ranchLayout.js';
+import { damp } from '../core/utils.js';
+
+// showers (Weather._showers): the rain's strength (0..1) ranges of a downpour, steady rain and a drizzle, how
+// long (s) each lasts, and the time constant (s) it eases to the next one with
+const RAIN = { heavy: [0.85, 1], steady: [0.5, 0.7], light: [0.14, 0.3], hold: [35, 90], ease: 9 };
 
 // the barn is turned: its roof test runs in its own frame (constants baked into the shaders)
 const BR = BARN_ROOF, f4 = (v) => v.toFixed(4);
@@ -73,6 +78,7 @@ uniform vec3 uCam;
 uniform vec4 uRoofA;
 uniform vec4 uRoofB;
 uniform vec4 uRoofC;
+uniform float uDensity;
 varying float vA;
 varying float vV;
 bool inRect(vec2 p, vec4 r) { return p.x > r.x && p.x < r.z && p.y > r.y && p.y < r.w; }
@@ -101,6 +107,7 @@ void main() {
   if (inRect(p.xz, uRoofC) && p.y < 3.3) vA = 0.0;
   if (p.y < ${BARN.ridge.toFixed(2)} && ${IN_BARN('p.xz')}) vA = 0.0; // barn (ranchLayout.js)
   if (p.y < -0.6) vA = 0.0;
+  if (fract(aSeed.x * 7.13 + aSeed.z * 3.71) > uDensity) vA = 0.0; // a shower easing off: fewer drops
   float dist = length(wp - uCam);
   vA *= smoothstep(1.5, 4.5, dist) * (1.0 - smoothstep(16.0, 26.0, dist)); // no fat streaks right at the lens
   vV = position.y;
@@ -125,6 +132,7 @@ uniform float uTime;
 uniform vec3 uCam;
 uniform vec4 uRoofA;
 uniform float uSize;
+uniform float uDensity;
 varying float vA;
 void main() {
   float period = 0.55 + aSeed.z * 0.4;
@@ -139,6 +147,7 @@ void main() {
   vA = (1.0 - ph) * step(ph, 0.35) * 2.5;
   if (p.x > uRoofA.x && p.x < uRoofA.z && p.y > uRoofA.y && p.y < uRoofA.w) vA = 0.0;
   if (${IN_BARN('p')}) vA = 0.0;
+  if (fract(aSeed.x * 5.31 + aSeed.y * 9.17) > uDensity) vA = 0.0;
   vec4 mv = viewMatrix * vec4(wp, 1.0);
   float dist = -mv.z;
   vA *= 1.0 - smoothstep(9.0, 14.0, length(wp - uCam));
@@ -292,6 +301,9 @@ export class Weather {
     this.scene = scene;
     this.level = level;
     this.time = 0;
+    this.rainK = 0.75; // how hard it rains (showers: _showers)
+    this.rainGoal = 0.75;
+    this.rainHold = 40;
 
     // Sky dome
     this.skyMat = new THREE.ShaderMaterial({
@@ -346,6 +358,7 @@ export class Weather {
         uRoofC: { value: new THREE.Vector4(3.8, 8.0, 11.2, 9.7) },
         uFlash: { value: 0 },
         uBright: { value: 0.5 },
+        uDensity: { value: 1 },
       },
       transparent: true,
       depthWrite: false,
@@ -378,6 +391,7 @@ export class Weather {
         uRoofA: { value: new THREE.Vector4(-12.2, -8.2, 12.2, 8.2) },
         uSize: { value: 60 },
         uFlash: { value: 0 },
+        uDensity: { value: 1 },
       },
       transparent: true,
       depthWrite: false,
@@ -541,8 +555,25 @@ export class Weather {
     this.boltT = 0.22;
   }
 
+  /**
+   * The rain comes and goes: now a downpour, now a drizzle, a while each (RAIN), easing between them. rainK
+   * (0..1) thins the streaks and splashes, and game.js hands it to the audio (the rain and roof loops).
+   */
+  _showers(dt) {
+    if ((this.rainHold = (this.rainHold ?? 0) - dt) <= 0) {
+      const r = Math.random();
+      const [lo, hi] = r < 0.3 ? RAIN.heavy : r < 0.65 ? RAIN.steady : RAIN.light;
+      this.rainGoal = lo + Math.random() * (hi - lo);
+      this.rainHold = RAIN.hold[0] + Math.random() * (RAIN.hold[1] - RAIN.hold[0]);
+    }
+    this.rainK = damp(this.rainK, this.rainGoal, 1 / RAIN.ease, dt);
+    this.rainMat.uniforms.uDensity.value = 0.12 + 0.88 * this.rainK;
+    this.splashMat.uniforms.uDensity.value = 0.08 + 0.92 * this.rainK;
+  }
+
   update(dt, camPos, lightning, fogColor, dawn = 0) {
     this.time += dt;
+    this._showers(dt);
     this.skyMat.uniforms.uDawn.value = dawn;
     this.skyMat.uniforms.uBlood.value = this.blood ?? 0; // game/events.js
     // additive streaks go through bloom + AgX: a little goes a long way

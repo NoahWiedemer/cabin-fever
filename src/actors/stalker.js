@@ -10,16 +10,19 @@
 //   dash    it sprints across your view (9-11 m/s): out of cover, through a spot you can see, into cover again
 //   house   it crashes in through one door of the farmhouse, runs through the house past you and out through
 //           another (you in the house or near it), its feet booming on the floorboards
-//   attack  now and then (never before three scares, never two within 70 s): it bursts out of cover in front of
-//           you, charges, lunges at your face and either holds you for a moment (no moving; you can shoot)
-//           and claws you, or slashes you in passing. Then it runs. It always comes at you from the front and
-//           circles round if you turn away. It holds you at most once an attack: no stun lock
+//   attack  now and then (it haunts you a good while first: never before five scares and 2.5 minutes, never two
+//           within 100 s): it bursts out of cover in front of you, charges, lunges at your face and either holds
+//           you for a moment (no moving; you can shoot) and claws you, or slashes you in passing. Then it runs. It
+//           always comes at you from the front and circles round if you turn away. It holds you at most once an
+//           attack: no stun lock
 //   flee    shot at any other time it flinches, hisses and runs, out of your sight
+//   scare   very rarely, as you close the gun shop's store, its screaming face is right in front of yours for a
+//           moment, then it's gone (STALKER.scare, StalkerDirector.shopScare)
 // Only while it attacks (and for a moment after) can it be hurt, and then it dies quickly. It appears and
 // vanishes only where you can't see it: no line of sight from the camera to its head or middle, or outside
-// your view. Killed, it stays away for the rest of that round and the next.
+// your view. Killed, it stays away: only now and then, rounds later, it comes back for a round (STALKER.back).
 // Debug: game.stalker.force('watch' | 'peek' | 'behind' | 'dash' | 'house' | 'attack') brings it now (in a fight
-// round; 'watch' is either watcher).
+// round; 'watch' is either watcher); game.stalker.force('scare') makes the next store close the jumpscare.
 import * as THREE from 'three';
 import { Zombie, ZOMBIE_CLASSES } from './zombie.js';
 import { clamp, damp, dampAngle, lerp, rand, smoothstep, wrapAngle } from '../core/utils.js';
@@ -35,8 +38,14 @@ export const STALKER = {
   shop: 1.6, // the buy phase: it keeps scaring you (never attacking), gaps this much longer (0: it leaves)
   // what a scare is (shares; a house run only with the player in the house or within house.near of it)
   mix: { watch: 0.5, dash: 0.25, house: 0.25 },
-  // an attack: after `scares` scares in a row, then with chance[n] (n = scares past that)
-  attack: { scares: 3, chance: [0.4, 0.7, 1], minGap: 70, grab: 0.6, spawn: [7, 16] },
+  // an attack: after `scares` scares in a row, then with chance[n] (n = scares past that); never within `minGap`
+  // s of the last one, and the first only once it has haunted the player `first` s (fight rounds and buy phases)
+  attack: { scares: 5, chance: [0.3, 0.55, 0.8, 1], minGap: 100, first: 150, grab: 0.6, spawn: [7, 16] },
+  // killed: it stays away; `after` rounds on, it may come back for a single round (`chance` a round)
+  back: { after: 3, chance: 0.06 },
+  // the jumpscare as you close the gun shop's store: `chance` a close, once it has shown itself `seen` times, at
+  // most once in `gap` rounds (never while it's dead); `t` s in your face, coming in from dist[0] to dist[1] m
+  scare: { chance: 0.06, seen: 2, gap: 4, t: 0.62, dist: [1.25, 0.8] },
   speed: { dash: [9, 11], house: [10, 11.5], charge: 9.4, flee: 9.5, slip: 1.15, emerge: 1.3 },
   // dist: m from the player (peekDist: stepping out into view; closer, indoors that's a doorway just ahead);
   // peek: share of watchers that step out of cover into view (the others wait out of view until you turn);
@@ -165,6 +174,37 @@ export class Stalker extends Zombie {
     this.animate(0);
   }
 
+  /** the jumpscare as the gun shop's store closes (StalkerDirector.shopScare): in your face, screaming, gone */
+  jumpscare(dir) {
+    this.dir = dir;
+    this.plan = null;
+    this._set('scare');
+    this.exposed = false;
+    this.stung = true;
+    const g = this.game;
+    g.audio.play('stalker_jumpscare', { volume: 1 });
+    g.audio.play('stalker_scream', { position: g.camera.position, volume: 1.1, pitch: 1.05 });
+    g.shake.add(0.85);
+    this._scare(0);
+  }
+
+  _scare(dt) {
+    const g = this.game, cam = g.camera, S = STALKER.scare;
+    if (this.sT >= S.t) return this._vanish();
+    cam.getWorldDirection(_d);
+    const l = Math.hypot(_d.x, _d.z) || 1;
+    const fx = _d.x / l, fz = _d.z / l;
+    const d = lerp(S.dist[0], S.dist[1], smoothstep(0, 1, clamp(this.sT / 0.1, 0, 1))); // it lunges in
+    this.pos.set(cam.position.x + fx * d, g.player.pos.y, cam.position.z + fz * d);
+    this.body.vel.set(0, 0, 0);
+    this.body.onGround = true;
+    this.moveSpeed = 0;
+    this.yaw = Math.atan2(-fx, -fz);
+    this.root.rotation.y = this.yaw;
+    g.shake.trauma = Math.max(g.shake.trauma, 0.45);
+    this.animate(dt);
+  }
+
   /** the round is over / the player is down: off it goes (at once, if nobody sees it) */
   leave() {
     if (!this.active || !this.alive || this.sstate === 'flee') return;
@@ -278,6 +318,9 @@ export class Stalker extends Zombie {
         break;
       case 'recover':
         this._recover(dt, ctx);
+        break;
+      case 'scare':
+        this._scare(dt);
         break;
       default:
         this._fleeing(dt, ctx);
@@ -782,6 +825,9 @@ export class Stalker extends Zombie {
       case 'grab':
         this._poseGrab(b, t);
         break;
+      case 'scare':
+        this._poseScare(b, t);
+        break;
       case 'strike':
         this._poseStand(b, t);
         this._poseSwipe(b);
@@ -941,6 +987,19 @@ export class Stalker extends Zombie {
     b.handR.rotation.set(0.9, 0, 0);
   }
 
+  /** the jumpscare: the grab's screaming face, the arms flung wide round you */
+  _poseScare(b, t) {
+    this._poseGrab(b, t);
+    const k = smoothstep(0, 1, clamp(this.sT / 0.1, 0, 1));
+    b.spine.rotation.x = 0.4;
+    b.upperArmL.rotation.set(-1.5, 0, lerp(0.3, 0.72, k));
+    b.upperArmR.rotation.set(-1.5, 0, -lerp(0.3, 0.72, k));
+    b.foreArmL.rotation.set(-0.75, 0, 0);
+    b.foreArmR.rotation.set(-0.75, 0, 0);
+    b.handL.rotation.set(1.0, 0, 0);
+    b.handR.rotation.set(1.0, 0, 0);
+  }
+
   /** one big claw swipe (over the standing pose) */
   _poseSwipe(b) {
     const a = clamp(this.sT / STALKER.strike.t, 0, 1);
@@ -983,13 +1042,25 @@ export class StalkerDirector {
     this.queue = null; // the kinds of appearance still to try, one a frame (_tryNext)
     this.draft = null;
     this.count = 0;
+    this.shown = 0; // appearances this game
     this.dread = 0; // appearances since its last attack
+    this.hauntT = 0; // s it has haunted the player (its first attack waits for STALKER.attack.first)
     this.lastAttack = -Infinity;
     this.killedRound = -99;
+    this.dead = false; // killed: it stays away, bar a rare round (STALKER.back)
+    this.scareRound = -99; // the round of the last store jumpscare
+    this.forceScare = false;
   }
 
-  /** debug: bring it now ('watch' | 'peek' | 'behind' | 'dash' | 'house' | 'attack'), in a fight round */
+  /**
+   * debug: bring it now ('watch' | 'peek' | 'behind' | 'dash' | 'house' | 'attack'), in a fight round; 'scare':
+   * the next close of the gun shop's store is the jumpscare
+   */
   force(kind = 'attack') {
+    if (kind === 'scare') {
+      this.forceScare = true;
+      return kind;
+    }
     this.forceNext = kind;
     if (this.game.state === 'combat') {
       this.on = true;
@@ -1000,7 +1071,9 @@ export class StalkerDirector {
 
   onRoundStart(round) {
     const S = STALKER;
-    this.on = round >= (S.firstRound[this.game.config?.difficulty] ?? 3) && round - this.killedRound > 1; // killed last round: it keeps away for one
+    this.on = round >= (S.firstRound[this.game.config?.difficulty] ?? 3);
+    // killed: gone for good, but now and then, some rounds later, it's back for a round
+    if (this.dead) this.on = round - this.killedRound > S.back.after && Math.random() < S.back.chance;
     this.count = 0;
     this.nextT = rand(S.firstAt[0], S.firstAt[1]);
     if (this.forceNext) {
@@ -1024,10 +1097,31 @@ export class StalkerDirector {
   onKilled(z) {
     const g = this.game;
     this.killedRound = g.round;
+    this.dead = true;
+    this.dread = 0; // back one day, it has to haunt its way up to an attack again
     this.on = false;
     this.z = null;
     g.pickups.spawnSupply('red', z.pos);
-    g.hud.banner('STALKER DOWN', 'It will not stay dead', 2.8, 'success');
+    g.hud.banner('STALKER DOWN', 'It won’t haunt you again. Probably.', 2.8, 'success');
+  }
+
+  /**
+   * main.js: the gun shop's store just closed. Very rarely (STALKER.scare) the Stalker's face is right there, a
+   * jumpscare: only once it has shown itself a few times, never while it's dead, never twice within a few rounds.
+   */
+  shopScare() {
+    const g = this.game, S = STALKER.scare;
+    if (this.z || !g.player.alive || g.state !== 'shop') return false;
+    const forced = this.forceScare;
+    this.forceScare = false;
+    if (!forced && (this.dead || this.shown < S.seen || g.round - this.scareRound < S.gap || Math.random() >= S.chance)) return false;
+    this.scareRound = g.round;
+    const z = g.zombies.spawn('stalker', g.player.pos.clone(), g.round, 1, 1);
+    this.z = z;
+    this.shown++;
+    this.dread++;
+    z.jumpscare(this);
+    return true;
   }
 
   update(dt) {
@@ -1040,6 +1134,7 @@ export class StalkerDirector {
       return;
     }
     if (!live || !this.on) return;
+    this.hauntT += dt;
     if (this.queue) return this._tryNext();
     if ((this.nextT -= shop ? dt / STALKER.shop : dt) > 0) return;
     this._appear();
@@ -1052,7 +1147,7 @@ export class StalkerDirector {
     this.nextT = rand(S.gap[0], S.gap[1]);
     if (!forced && this.count > 0 && Math.random() < S.skip) return; // this time, nothing
     const fight = g.state === 'combat'; // (the buy phase: scares only)
-    const due = fight && (forced === 'attack' || (!forced && this.dread >= A.scares && g.time - this.lastAttack > A.minGap && Math.random() < A.chance[Math.min(this.dread - A.scares, A.chance.length - 1)]));
+    const due = fight && (forced === 'attack' || (!forced && this.dread >= A.scares && this.hauntT >= A.first && g.time - this.lastAttack > A.minGap && Math.random() < A.chance[Math.min(this.dread - A.scares, A.chance.length - 1)]));
     const watch = () => (Math.random() < S.watch.peek ? ['peek', 'behind'] : ['behind', 'peek']);
     let order;
     if (forced) order = forced === 'attack' ? ['attack', ...watch(), 'dash'] : forced === 'watch' ? watch() : [forced];
@@ -1101,6 +1196,7 @@ export class StalkerDirector {
     const z = g.zombies.spawn('stalker', plan.start, r, g.diff.hp * (1 + 0.05 * Math.max(0, r - 3)), 1);
     this.z = z;
     this.count++;
+    this.shown++;
     if (plan.kind !== 'attack') this.dread++; // an attack resets it (onAttack)
     z.begin(plan, this);
   }

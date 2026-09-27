@@ -18,6 +18,7 @@ export const FLAG_STAIR = 1; // excluded from nav rasterization
 export const FLAG_NOBULLET = 2; // bullets pass through
 export const FLAG_NOWALK = 4; // not a walkable surface for nav (e.g. tables are fine, but roofs)
 export const FLAG_NAVIGNORE = 8; // ignored completely for nav (e.g. dynamic doors)
+export const FLAG_ZPASS = 16; // stops the fireteam, not the infected (a body with `pass` = this walks through it)
 
 export class CollisionWorld {
   constructor(minX = -80, minZ = -80, maxX = 80, maxZ = 80, cell = 2) {
@@ -152,15 +153,16 @@ export class CollisionWorld {
   }
 
   // Push a vertical cylinder (feet y, height h, radius r) out of boxes horizontally.
-  // Boxes whose top is within stepHeight of the feet are ignored (they are stepped on).
-  resolveHorizontal(pos, r, h, stepHeight) {
+  // Boxes whose top is within stepHeight of the feet are ignored (they are stepped on), and so are boxes
+  // with any of the `pass` flags (FLAG_ZPASS: the infected walk through them).
+  resolveHorizontal(pos, r, h, stepHeight, pass = 0) {
     let hit = false;
     for (let iter = 0; iter < 3; iter++) {
       let moved = false;
       const feet = pos.y + stepHeight;
       const head = pos.y + h;
       this.query(pos.x - r, pos.z - r, pos.x + r, pos.z + r, (b) => {
-        if (b.maxY <= feet || b.minY >= head) return;
+        if (b.maxY <= feet || b.minY >= head || b.flags & pass) return;
         if (b.obb) {
           const o = b.obb;
           if (o.mark === this.stamp) return; // one test per oriented box, not per piece
@@ -213,7 +215,7 @@ export class CollisionWorld {
     for (let i = 0; i < sub; i++) {
       pos.x += hx / sub;
       pos.z += hz / sub;
-      this.resolveHorizontal(pos, r, body.height, stepH);
+      this.resolveHorizontal(pos, r, body.height, stepH, body.pass ?? 0);
     }
     body.blocked = Math.abs(pos.x - bx - hx) + Math.abs(pos.z - bz - hz) > 0.001 * Math.max(1, dist * 10);
 

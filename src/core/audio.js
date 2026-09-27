@@ -1677,6 +1677,40 @@ def('stalker_sting', { d: 2.6, v: 2, gain: 0.55, rev: 0.5, max: 1, jit: 0.01 }, 
   b.scrape(t, 0.9, { f0: 5200, f1: 2600, q: 1.5, g: 0.35, kind: 'white' });
 });
 
+// its face right in yours as you step out of the gun shop (stalker.js shopScare): a shock chord slammed
+// on over a sub hit and a blast of noise, a screech on top (not positional)
+def('stalker_jumpscare', { d: 2.2, v: 2, gain: 0.9, rev: 0.35, max: 1, jit: 0.01 }, (b) => {
+  const t = 0.005;
+  b.click(t, 1, 0.002);
+  b.thump(t, { f0: 110, f1: 32, sweep: 0.25, a: 0.002, d: 0.9, g: 1.3, drive: 3 });
+  b.nb(t, { kind: 'white', type: 'highpass', f: 1200, a: 0.002, h: 0.05, d: 0.35, g: 0.8, drive: 2 });
+  const root = rnd(300, 360);
+  for (const [k, g] of [[1, 1], [1.06, 0.9], [1.5, 0.7], [2.12, 0.6], [2.83, 0.5]]) {
+    const f = root * k;
+    b.voice(t + rnd(0, 0.01), rnd(1.2, 1.6), {
+      f0: [[0, f * 1.04], [0.08, f], [1, f * rnd(0.85, 0.95)]], jit: 0.02, jitRate: 20, vib: [rnd(7, 10), 0.02],
+      formants: [[f * 1.5, 2, 1], [2800, 3, 0.6], [4800, 4, 0.35]], breath: 0.3, drive: 3,
+      attack: 0.004, release: 1.0, lp: 9000, hp: 200, g: 0.3 * g,
+    });
+  }
+  b.scrape(t, 0.7, { f0: 6000, f1: 2500, q: 1.2, g: 0.5, kind: 'white' });
+});
+
+// the coal tunnel (world/shaft.js): something coming up it, grit trickling, stones knocking down, a
+// body dragged over the rubble
+def('shaft_rubble', { d: 2.2, v: 3, gain: 0.8, rev: 0.45, max: 2, jit: 0.05, ref: 4 }, (b) => {
+  b.crackle(0.02, 1.6, 90, 0.8, b.fbus('bandpass', 1800, 0.7, 0.6), { pow: 1.3 });
+  let t = 0.03;
+  for (let i = 0; i < 6; i++) {
+    b.click(t, 0.35, 0.002);
+    b.thump(t, { f0: rnd(160, 260), f1: rnd(70, 110), sweep: 0.03, d: rnd(0.05, 0.1), g: rnd(0.35, 0.7) });
+    b.nb(t, { type: 'bandpass', f: rnd(500, 1100), q: 5, a: 0.0008, d: 0.06, g: rnd(0.2, 0.45) });
+    t += rnd(0.08, 0.3);
+  }
+  b.scrape(0.15, 1.1, { f0: 900, f1: 420, q: 1.2, g: 0.55, kind: 'pink' });
+  b.nb(0.1, { kind: 'brown', type: 'lowpass', f: 260, a: 0.2, h: 0.4, d: 0.6, g: 0.5 });
+});
+
 // watching: a slow, wet, rasping breath in and out with a low fry
 def('stalker_breath', { d: 2.4, v: 3, gain: 0.5, rev: 0.25, max: 2, jit: 0.04 }, (b) => {
   const t = 0.02;
@@ -2381,6 +2415,19 @@ def('hack_done', { d: 1.2, v: 1, gain: 0.5, rev: 0.25, max: 1, jit: 0, ref: 3 },
 def('keypad_deny', { d: 0.5, v: 1, gain: 0.45, rev: 0.12, max: 2, jit: 0, ref: 2 }, (b) => {
   for (const t of [0.002, 0.2]) b.tone(t, 220, { type: 'square', a: 0.003, h: 0.1, d: 0.04, g: 0.3, dest: b.fbus('lowpass', 1800, 0, 1) });
 });
+// a key pushed on it (the Nadja scene): the click of the key and its housing, no tone
+def('keypad_key', { d: 0.12, v: 3, gain: 0.4, rev: 0.08, max: 3, jit: 0.04, ref: 1.5 }, (b) => {
+  b.click(0.002, 0.6, 0.0012);
+  b.nb(0.002, { type: 'bandpass', f: rnd(2400, 3200), q: 4, a: 0.0006, d: 0.02, g: 0.35 });
+  b.thump(0.002, { f0: 420, f1: 260, sweep: 0.01, d: 0.02, g: 0.2 });
+});
+// a palm slapped on it: a flat thud, the steel housing ringing a little
+def('keypad_slap', { d: 0.5, v: 1, gain: 0.55, rev: 0.2, max: 1, jit: 0.03, ref: 2 }, (b) => {
+  b.click(0.002, 0.5, 0.002);
+  b.thump(0.002, { f0: 180, f1: 90, sweep: 0.03, d: 0.09, g: 0.9 });
+  b.nb(0.002, { kind: 'pink', type: 'bandpass', f: 900, q: 1.2, a: 0.001, d: 0.06, g: 0.6 });
+  b.modal(0.004, [[rnd(1900, 2300), 0.3, 0.12], [rnd(3100, 3500), 0.15, 0.08]], 0.35);
+});
 
 // the vault: bolts drawing back one by one, a hydraulic sigh; then the leaf swinging (a deep groan,
 // air rushing, the stop)
@@ -2458,8 +2505,8 @@ def('rain_loop', { d: 8, xf: 0.6, loop: true, v: 1, ch: 2, gain: 0.5, rev: 0, ma
       tt += expRand(7);
     }
   }
-  b.noise('pink', 0, T).connect(b.f('lowpass', 2200)).connect(b.g(0.45, b.out));
-  b.noise('brown', 0, T).connect(b.f('lowpass', 200)).connect(b.g(0.5, b.out));
+  b.noise('pink', 0, T).connect(b.f('lowpass', 2200)).connect(b.g(0.38, b.out));
+  b.noise('brown', 0, T).connect(b.f('lowpass', 200)).connect(b.g(0.16, b.out)); // (was the steady rumble under everything)
 });
 
 def('_rain_roof', { d: 6, xf: 0.5, loop: true, v: 1, ch: 2, sr: 24000, gain: 0.45, rev: 0, max: 1, jit: 0 }, (b) => {
@@ -2468,7 +2515,7 @@ def('_rain_roof', { d: 6, xf: 0.5, loop: true, v: 1, ch: 2, sr: 24000, gain: 0.4
     const p = b.pan(side);
     const drum = b.g(1);
     const pk = b.f('peaking', 260, 1.2);
-    pk.gain.value = 8;
+    pk.gain.value = 4.5;
     drum.connect(b.f('lowpass', 1600)).connect(pk).connect(b.g(0.9, p));
     b.crackle(0, T, 600, 1, drum, { flat: true, skew: 2.2, w: 4 });
     const drops = b.g(0.6, p);
@@ -2479,7 +2526,7 @@ def('_rain_roof', { d: 6, xf: 0.5, loop: true, v: 1, ch: 2, sr: 24000, gain: 0.4
       t += expRand(45);
     }
   }
-  b.noise('brown', 0, T).connect(b.f('lowpass', 350)).connect(b.g(0.5, b.out));
+  b.noise('brown', 0, T).connect(b.f('lowpass', 350)).connect(b.g(0.14, b.out));
 });
 
 def('wind_loop', { d: 8, xf: 0.6, loop: true, v: 1, ch: 2, sr: 24000, gain: 0.45, rev: 0, max: 2, jit: 0 }, (b) => {
@@ -2505,7 +2552,7 @@ def('wind_loop', { d: 8, xf: 0.6, loop: true, v: 1, ch: 2, sr: 24000, gain: 0.45
     wbp.connect(wam);
     wam.connect(b.g(0.5, p));
   }
-  b.noise('brown', 0, T).connect(b.f('lowpass', 160)).connect(b.g(0.4, b.out));
+  b.noise('brown', 0, T).connect(b.f('lowpass', 160)).connect(b.g(0.12, b.out));
 });
 
 def('_thunder', { d: 7, v: 3, ch: 2, sr: 22050, gain: 0.75, rev: 0, max: 3, jit: 0 }, (b) => {
@@ -3062,11 +3109,27 @@ export class AudioSystem {
     const A = this._ambNodes;
     if (A) {
       set(A.rainOut.gain, (1 - f) * 0.45); // outdoors: present, but under the gunfight (~-7 dB)
-      set(A.rainIn.gain, f * 1.4);
-      set(A.roof.gain, 0.12 + 0.88 * f);
+      set(A.rainIn.gain, f * 0.9);
+      set(A.roof.gain, 0.08 + 0.55 * f);
       set(A.windIn.gain, 1 - 0.55 * f);
       set(A.windLP.frequency, expLerp(Math.min(9000, this._maxCut), 650, f));
     }
+  }
+
+  /** How hard it rains, 0..1 (world/weather.js showers): the rain and the roof loops follow it. */
+  setRain(k) {
+    this._rain = clamp(+k || 0, 0, 1);
+    if (this._ready && Math.abs(this._rain - (this._rainSent ?? -1)) > 0.01) this._applyRain(0.5);
+  }
+
+  _applyRain(tc) {
+    const A = this._ambNodes;
+    if (!A) return;
+    const k = this._rain ?? 0.75;
+    this._rainSent = k;
+    const t = this.ctx.currentTime;
+    A.rainAmt.gain.setTargetAtTime(0.1 + 0.9 * k, t, tc);
+    A.roofAmt.gain.setTargetAtTime(0.04 + 0.96 * k * k, t, tc);
   }
 
   setGasLevel(v) {
@@ -3200,24 +3263,29 @@ export class AudioSystem {
     A.windIn = gain(1, A.level);
     A.windLP = lowpass(9000, A.windIn);
     A.windGust = gain(1, A.windLP);
+    A.rainAmt = gain(1, A.rainGust); // how hard it rains (setRain: the showers, world/weather.js)
+    A.roofAmt = gain(1, A.roof);
+    A.windAmt = gain(1, A.windGust); // a lull now and then (_ambTick)
 
     const rain = loopSrc('rain_loop');
-    if (rain) rain.s.connect(gain(rain.gain, A.rainGust));
+    if (rain) rain.s.connect(gain(rain.gain, A.rainAmt));
     const roof = loopSrc('_rain_roof');
-    if (roof) roof.s.connect(gain(roof.gain, A.roof));
+    if (roof) roof.s.connect(gain(roof.gain, A.roofAmt));
     const wind = loopSrc('wind_loop');
-    if (wind) wind.s.connect(gain(wind.gain, A.windGust));
+    if (wind) wind.s.connect(gain(wind.gain, A.windAmt));
     for (const x of [rain, roof, wind]) {
       if (!x) continue;
       x.s.start(t, Math.random() * x.s.buffer.duration);
       A.sources.push(x.s);
     }
-    A.level.gain.setTargetAtTime(1, t, 0.6);
+    A.level.gain.setTargetAtTime(0.8, t, 0.6);
     this._ambNodes = A;
     this._applyIndoor(0.01);
+    this._applyRain(0.01);
 
     const now = c.currentTime;
     this._nextGust = now + rnd(3, 8);
+    this._nextLull = now + rnd(25, 60);
     this._nextCreak = now + rnd(4, 10);
     this._nextMoan = now + rnd(5, 12);
     clearInterval(this._ambTimer);
@@ -3261,6 +3329,18 @@ export class AudioSystem {
     const A = this._ambNodes;
     if (!A || !this.ctx || this.ctx.state !== 'running') return;
     const now = this.ctx.currentTime;
+    if (now >= this._nextLull) {
+      // the wind drops away for a while, then picks up again
+      const len = rnd(12, 30);
+      this._nextLull = now + len + rnd(30, 70);
+      const p = A.windAmt.gain;
+      p.cancelScheduledValues(now);
+      p.setValueAtTime(p.value, now);
+      const low = rnd(0.2, 0.35);
+      p.linearRampToValueAtTime(low, now + rnd(4, 7));
+      p.setValueAtTime(low, now + len - 5);
+      p.linearRampToValueAtTime(1, now + len);
+    }
     if (now >= this._nextGust) {
       this._nextGust = now + rnd(6, 16);
       const peak = rnd(1.6, 2.6);

@@ -218,9 +218,11 @@ export class RandomEvents {
       const y = g.world.groundHeight(x, z, 0.3, 2);
       return V(x, y > -50 ? y : -0.5, z);
     };
-    const gun = pick(['chaingun', 'm32', 'l96a1'].filter((id) => WEAPONS[id] && !g.weapons.slots.includes(id))) ?? 'm32';
-    if (WEAPONS[gun]) g.pickups.spawnWeapon(gun, drop(0));
-    g.pickups.spawnSupply('red', drop(1.2));
+    // a special weapon (the two grenade launchers are found only like this and as rare loot) and an ammo
+    // box; both wait there, the weapon marked on the map
+    const gun = pick(['chaingun', 'm32', 'softball', 'l96a1'].filter((id) => WEAPONS[id] && !g.weapons._carried().includes(id))) ?? 'm32';
+    if (WEAPONS[gun]) g.pickups.spawnWeapon(gun, drop(0), { permanent: true, mark: true });
+    g.pickups.spawnSupply('red', drop(1.2), { life: 240 });
     setTimeout(() => {
       if (!g.running) return;
       g.story?.radioMsg('COMMAND', 'Reaper Two-Two is down near your position. Their cargo might still be intact, if you can reach it.');

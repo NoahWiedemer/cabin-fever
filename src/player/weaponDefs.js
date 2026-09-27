@@ -5,6 +5,9 @@ import { UPSTAIRS_ROUND } from '../game/modes.js';
 // recoilV / recoilH: aim kick per round in degrees (V up, H random left/right); nothing recovers while
 //   the gun keeps firing, then recoilRecover x2.5 (1/s) springs 3/4 of it back. kick: viewmodel +
 //   camera punch strength. shake: optional screen-shake trauma per round (heavy hitters).
+// noReload: one load, no reserve. fixedAmmo (the grenade launchers, special drops only): nothing refills
+//   it either; it takes your gun's place until it is empty, then it is tossed and your gun comes back
+//   (player/weapons.js giveWeapon / _toss), and a dropped one keeps the rounds it had left.
 export const WEAPONS = {
   m4a1: {
     id: 'm4a1', name: 'M4A1', slot: 0, model: 'm4a1', mode: 'auto', rpm: 780,
@@ -77,9 +80,9 @@ export const WEAPONS = {
     projectile: 'grenade40', damage: 260, radius: 4.8, velocity: 40, pellets: 1, penetration: 0,
     spreadHip: 0.8, spreadAds: 0.15, spreadMove: 0.7, spreadAir: 1.2, spreadPerShot: 0.5, spreadMax: 1,
     recoilV: 2.2, recoilH: 0.4, recoilRecover: 5.5, kick: 1.8, shake: 0.18,
-    mag: 6, reserve: 18, maxReserve: 30, reload: 2.6, reloadEmpty: 2.6, reloadType: 'mag',
+    mag: 24, reserve: 0, maxReserve: 0, noReload: true, fixedAmmo: true,
     adsZoom: 1.25, adsTime: 0.19, sound: 'm32_fire', shell: 'grenade40', tracerEvery: 0, moveMul: 0.92,
-    hip: [0.18, -0.19, -0.23], hipRot: [0.02, 0.07, 0.04], ammoKind: 'explosive', drawTime: 0.48, noEject: true,
+    hip: [0.18, -0.19, -0.23], hipRot: [0.02, 0.07, 0.04], ammoKind: 'explosive', drawTime: 0.48, noEject: true, special: true,
   },
   mozambique: {
     id: 'mozambique', name: 'SA-3 MOZAMBIQUE', slot: 1, model: 'mozambique', mode: 'semi', rpm: 280,
@@ -165,7 +168,7 @@ export const WEAPONS = {
     projectile: 'grenade40', damage: 330, radius: 5.5, velocity: 46, pellets: 1, penetration: 0,
     spreadHip: 0.6, spreadAds: 0.1, spreadMove: 0.6, spreadAir: 1, spreadPerShot: 0.5, spreadMax: 1,
     recoilV: 2.8, recoilH: 0.4, recoilRecover: 5, kick: 2.2, shake: 0.22,
-    mag: 6, reserve: 18, maxReserve: 24, reloadType: 'shell', reloadStart: 0.5, shellTime: 0.55, reloadEnd: 0.45,
+    mag: 30, reserve: 0, maxReserve: 0, noReload: true, fixedAmmo: true,
     adsZoom: 1.3, adsTime: 0.2, sound: 'm32_fire', shell: 'grenade40', tracerEvery: 0, moveMul: 0.9,
     hip: [0.19, -0.22, -0.15], hipRot: [0.02, 0.07, 0.04], ammoKind: 'explosive', drawTime: 0.5, special: true, noEject: true,
   },

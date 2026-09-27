@@ -10,8 +10,11 @@ const _s = new THREE.Vector3();
 const _p = new THREE.Vector3();
 const _z = new THREE.Vector3(0, 0, 1);
 
+const _tint = new THREE.Color();
+
 class DecalPool {
-  constructor(scene, set, { max = 200, atlas = false, roughness = 0.5, color = 0xffffff, envMapIntensity = 1, metalness = 0, order = 1, normalScale = 1 } = {}) {
+  /** tint: every decal gets its own shade (tint(color) fills it in: blood fresh or older) */
+  constructor(scene, set, { max = 200, atlas = false, roughness = 0.5, color = 0xffffff, envMapIntensity = 1, metalness = 0, order = 1, normalScale = 1, tint = null } = {}) {
     this.max = max;
     this.index = 0;
     this.count = 0;
@@ -63,6 +66,8 @@ class DecalPool {
     this.mesh.castShadow = false;
     this.mesh.renderOrder = order;
     this.atlas = atlas;
+    this.tint = tint;
+    if (tint) this.mesh.setColorAt(0, _tint.setRGB(1, 1, 1)); // the instance colours exist from the first frame (no recompile)
     scene.add(this.mesh);
   }
 
@@ -79,6 +84,10 @@ class DecalPool {
     _m.compose(_p, _q, _s);
     this.mesh.setMatrixAt(i, _m);
     this.frames[i] = frame ?? Math.floor(Math.random() * 4);
+    if (this.tint) {
+      this.mesh.setColorAt(i, this.tint(_tint));
+      this.mesh.instanceColor.needsUpdate = true;
+    }
     this.mesh.instanceMatrix.needsUpdate = true;
     this.aFrame.needsUpdate = true;
     this.mesh.count = this.count;
@@ -104,8 +113,14 @@ export class Decals {
     const hole = get('bulletHole');
     const scorch = get('scorch');
     const pool = get('bloodPool');
-    this.blood = blood ? new DecalPool(scene, blood, { max: 700, atlas: true, roughness: 0.25, order: 1, envMapIntensity: 1.4 }) : null;
-    this.pools = pool ? new DecalPool(scene, pool, { max: 40, atlas: false, roughness: 0.15, order: 0, envMapIntensity: 1.6 }) : null;
+    // blood: each splat its own shade, some darker, some gone brown (older, drying)
+    const bloodTint = (c) => {
+      const k = 0.62 + Math.random() * 0.4;
+      const brown = Math.random() < 0.35 ? 1.12 + Math.random() * 0.35 : 1;
+      return c.setRGB(k, k * brown, k * brown * 0.95);
+    };
+    this.blood = blood ? new DecalPool(scene, blood, { max: 700, atlas: true, roughness: 0.3, order: 1, envMapIntensity: 1.0, tint: bloodTint }) : null;
+    this.pools = pool ? new DecalPool(scene, pool, { max: 40, atlas: false, roughness: 0.15, order: 0, envMapIntensity: 1.3, tint: (c) => c.setScalar(0.78 + Math.random() * 0.22) }) : null;
     this.holes = hole ? new DecalPool(scene, hole, { max: 260, atlas: false, roughness: 0.9, order: 2 }) : null;
     this.scorch = scorch ? new DecalPool(scene, scorch, { max: 24, atlas: false, roughness: 1, order: 0, color: 0xffffff }) : null;
     // chips in armored glass (the lab window): a white spall with radial cracks

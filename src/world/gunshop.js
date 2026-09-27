@@ -15,6 +15,7 @@ import { MODELS } from '../core/assetList.js';
 import { SURF, FLAG_NOBULLET, FLAG_NAVIGNORE } from './collision.js';
 import { createShopkeeper } from '../actors/shopkeeper.js';
 import { powerLevel } from './power.js';
+import { tex } from './textures.js';
 
 const WALL_X = 2.56; // shop-side face of the wall shared with the old basement
 const F = -3.2; // cellar floor (FLOOR.basement)
@@ -92,6 +93,157 @@ function neonTex(text, color) {
   });
 }
 
+function mulberry(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function diamond(g, x, y, s) {
+  g.beginPath();
+  g.moveTo(x, y - s);
+  g.lineTo(x + s, y);
+  g.lineTo(x, y + s);
+  g.lineTo(x - s, y);
+  g.closePath();
+  g.fill();
+}
+
+/** a worn rug: dark red field, borders, a medallion, trodden pale in the middle */
+function rugTex() {
+  return canvasTex(512, 352, (g, w, h) => {
+    const r = mulberry(77);
+    g.fillStyle = '#34130f';
+    g.fillRect(0, 0, w, h);
+    g.lineWidth = 22;
+    g.strokeStyle = '#1a0a08';
+    g.strokeRect(16, 16, w - 32, h - 32);
+    g.lineWidth = 5;
+    g.strokeStyle = '#6b4a26';
+    g.strokeRect(36, 36, w - 72, h - 72);
+    g.strokeRect(50, 50, w - 100, h - 100);
+    g.fillStyle = '#5f3e1f';
+    for (let x = 30; x < w - 20; x += 22) for (const y of [16, h - 16]) diamond(g, x, y, 6);
+    for (let y = 30; y < h - 20; y += 22) for (const x of [16, w - 16]) diamond(g, x, y, 6);
+    g.fillStyle = '#4a1c14';
+    diamond(g, w / 2, h / 2, 96);
+    g.fillStyle = '#1c0d0a';
+    diamond(g, w / 2, h / 2, 60);
+    g.fillStyle = '#7c5628';
+    diamond(g, w / 2, h / 2, 18);
+    // wear: pale trodden patches in the middle, grime everywhere
+    for (let i = 0; i < 2200; i++) {
+      const x = r() * w, y = r() * h;
+      const mid = 1 - Math.min(1, Math.hypot((x - w / 2) / (w / 2), (y - h / 2) / (h / 2)));
+      g.fillStyle = r() < 0.5 ? `rgba(190,150,120,${0.02 + mid * 0.06})` : `rgba(10,6,4,${0.05 + r() * 0.08})`;
+      g.fillRect(x, y, 1 + r() * 4, 1 + r() * 2);
+    }
+  });
+}
+
+/** a shot-up paper silhouette target */
+function targetTex(seed) {
+  return canvasTex(256, 384, (g, w, h) => {
+    const r = mulberry(seed);
+    g.fillStyle = '#d8cdb0';
+    g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 400; i++) {
+      g.fillStyle = `rgba(120,95,60,${r() * 0.06})`;
+      g.fillRect(r() * w, r() * h, 2 + r() * 8, 1 + r() * 3);
+    }
+    g.fillStyle = '#1c1c1e';
+    g.beginPath();
+    g.arc(w / 2, 96, 40, 0, Math.PI * 2);
+    g.fill();
+    g.beginPath();
+    g.moveTo(w / 2 - 34, 132);
+    g.lineTo(w / 2 + 34, 132);
+    g.lineTo(w / 2 + 96, 190);
+    g.lineTo(w / 2 + 104, h - 20);
+    g.lineTo(w / 2 - 104, h - 20);
+    g.lineTo(w / 2 - 96, 190);
+    g.closePath();
+    g.fill();
+    g.strokeStyle = 'rgba(235,228,210,0.75)';
+    g.lineWidth = 3;
+    for (const rad of [22, 48, 76]) {
+      g.beginPath();
+      g.arc(w / 2, 250, rad, 0, Math.PI * 2);
+      g.stroke();
+    }
+    g.beginPath();
+    g.arc(w / 2, 96, 18, 0, Math.PI * 2);
+    g.stroke();
+    g.fillStyle = '#b8231a';
+    g.font = 'bold 20px Arial, sans-serif';
+    g.textAlign = 'center';
+    g.fillText(String(5 + Math.floor(r() * 5)), w / 2, 256);
+    // the holes: a tight group in the chest, a couple in the head, some strays
+    for (let i = 0; i < 16; i++) {
+      const head = i < 3;
+      const x = w / 2 + (r() - 0.5) * (head ? 40 : i < 12 ? 70 : 170);
+      const y = head ? 96 + (r() - 0.5) * 40 : 250 + (r() - 0.5) * (i < 12 ? 80 : 200);
+      g.fillStyle = 'rgba(245,238,220,0.9)';
+      g.beginPath();
+      g.arc(x, y, 5.5, 0, Math.PI * 2);
+      g.fill();
+      g.fillStyle = '#060606';
+      g.beginPath();
+      g.arc(x, y, 3.4, 0, Math.PI * 2);
+      g.fill();
+    }
+    // tape at the corners
+    g.fillStyle = 'rgba(210,200,160,0.85)';
+    for (const [x, y, a] of [[18, 14, 0.5], [w - 18, 14, -0.5], [18, h - 14, -0.5], [w - 18, h - 14, 0.5]]) {
+      g.save();
+      g.translate(x, y);
+      g.rotate(a);
+      g.fillRect(-18, -7, 36, 14);
+      g.restore();
+    }
+  });
+}
+
+/** camouflage netting: a cord mesh hung with cloth scraps (alpha-tested) */
+function netTex() {
+  return canvasTex(512, 512, (g, w, h) => {
+    const r = mulberry(31);
+    g.clearRect(0, 0, w, h);
+    g.strokeStyle = 'rgba(38,36,26,1)';
+    g.lineWidth = 3;
+    for (let i = -h; i < w + h; i += 36) {
+      g.beginPath();
+      g.moveTo(i, 0);
+      g.lineTo(i + h, h);
+      g.stroke();
+      g.beginPath();
+      g.moveTo(i, 0);
+      g.lineTo(i - h, h);
+      g.stroke();
+    }
+    const cols = ['#3b4728', '#55553a', '#2c3120', '#665638', '#48502e'];
+    for (let i = 0; i < 700; i++) {
+      g.fillStyle = cols[i % cols.length];
+      g.save();
+      g.translate(r() * w, r() * h);
+      g.rotate(r() * Math.PI);
+      const l = 14 + r() * 26, t = 6 + r() * 9;
+      g.beginPath();
+      g.moveTo(-l / 2, 0);
+      g.lineTo(0, -t / 2);
+      g.lineTo(l / 2, 0);
+      g.lineTo(0, t / 2);
+      g.closePath();
+      g.fill();
+      g.restore();
+    }
+  });
+}
+
 // ---------------------------------------------------------------- build
 export function buildGunShop(scene, level, world) {
   const info = level.shop;
@@ -129,7 +281,7 @@ export function buildGunShop(scene, level, world) {
   const pegMat = getMaterial('metalDark');
   const rows = [
     { y: F + 2.42, ids: ['m16a2', 'devotion', 'sigma', 'r201'] },
-    { y: F + 1.66, ids: ['m4a1', 'p90', 'spas12', 'm4super90', 'softball'] },
+    { y: F + 1.66, ids: ['m4a1', 'p90', 'spas12', 'm4super90'] },
   ];
   const displayed = [];
   for (const row of rows) {
@@ -288,6 +440,81 @@ export function buildGunShop(scene, level, world) {
   const openSign = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.225), openMat);
   place(openSign, 11.68, F + 2.62, -5.2, -Math.PI / 2); // just proud of the east wall face (x 11.7)
 
+  // the look: the neon light spilling onto the bricks, a worn rug, crates along the south wall under
+  // shot-up paper targets, and a camo net sagging from the beams over the counter
+  let glowMap = null;
+  try {
+    glowMap = tex('glow').map;
+  } catch {
+    /* no glow texture: no spill */
+  }
+  const spill = (w, h, color, x, y, z, ry) => {
+    if (!glowMap) return null;
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: glowMap, color, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, fog: false }));
+    m.renderOrder = 3;
+    m.userData.base = color.clone();
+    return place(m, x, y, z, ry);
+  };
+  const neonSpill = spill(5.6, 2.8, new THREE.Color(1, 0.16, 0.07), 7.4, F + 2.25, 0.84, Math.PI); // (the wall face: z 0.85)
+  const openSpill = spill(1.9, 0.95, new THREE.Color(0.12, 1, 0.4), 11.69, F + 2.62, -5.2, -Math.PI / 2);
+  {
+    const rug = new THREE.Mesh(new THREE.BoxGeometry(3.1, 0.008, 2.15), new THREE.MeshStandardMaterial({ map: rugTex(), roughness: 1, color: 0x9a9088 }));
+    rug.receiveShadow = true;
+    place(rug, 7.45, F + 0.004, -3.1, 0.05);
+  }
+  const target = (x, y, seed, tilt) => {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(0.52, 0.78), new THREE.MeshStandardMaterial({ map: targetTex(seed), roughness: 0.95 }));
+    place(m, x, y, 0.843, Math.PI);
+    m.rotation.z = tilt;
+    m.receiveShadow = true;
+  };
+  target(5.15, F + 1.55, 11, 0.03);
+  target(9.75, F + 1.6, 23, -0.05);
+  target(10.4, F + 1.72, 5, 0.08);
+  const solid = (x0, x1, z0, z1, y1) => world.add(x0, F, z0, x1, F + y1, z1, SURF.wood);
+  const propAt = (type, seed, x, y, z, ry) => {
+    const p = buildProp(type, { seed });
+    if (!p) return null;
+    p.object.traverse((o) => {
+      if (o.isMesh) {
+        o.castShadow = true;
+        o.receiveShadow = true;
+      }
+    });
+    return place(p.object, x, y, z, ry);
+  };
+  // long weapon crates stacked under the first target, a stack of ammo cans by the crate in the corner
+  propAt('crateLong', 4, 5.55, F, 0.42, 0);
+  propAt('crateLong', 9, 5.62, F + 0.4, 0.4, 0.06);
+  solid(4.88, 6.3, 0.15, 0.7, 0.8);
+  propAt('ammoCrate', 12, 9.5, F, 0.38, 0.12);
+  solid(9.25, 9.8, 0.1, 0.7, 0.55);
+  if (crate) {
+    propAt('crate', 8, 10.62, F + 0.8, -0.24, 0.12); // a second one on the corner crate
+    world.add(10.2, F + 0.8, -0.66, 11.04, F + 1.6, 0.18, SURF.wood);
+  }
+  propAt('radio', 2, 10.5, F + 1.6, -0.3, -0.5); // on top of the stack, facing the room
+  {
+    // the net: a sagging sheet under the beams, from behind the clerk over the counter
+    const W = 2.3, L = 5.6, nx = 10, nz = 24;
+    const geo = new THREE.PlaneGeometry(W, L, nx, nz);
+    const pos = geo.attributes.position;
+    const r = mulberry(9);
+    for (let i = 0; i < pos.count; i++) {
+      const u = pos.getX(i) / W + 0.5, v = pos.getY(i) / L + 0.5;
+      // hung from the wall edge (u 0) and from the beams (two lines across), sagging between
+      const alongV = Math.abs(Math.sin(v * Math.PI * 2.2));
+      const sag = 0.32 * Math.sin(Math.PI * Math.min(1, u * 1.15)) * (0.45 + 0.55 * alongV) + (r() - 0.5) * 0.05;
+      pos.setZ(i, -sag); // the plane lies flat after the rotation below: its z is down
+    }
+    geo.computeVertexNormals();
+    const net = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: netTex(), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 1 }));
+    net.rotation.x = Math.PI / 2; // +z -> -y: the sag hangs down
+    net.position.set(WALL_X + W / 2 - 0.05, F + 2.62, -2.65);
+    net.receiveShadow = true;
+    root.add(net);
+  }
+
   // stairwell gate (hinged grate at the top of the stairs, swings over the stairs to open)
   const gate = new THREE.Group();
   gate.position.set(3.94, 0, -7.7);
@@ -386,6 +613,8 @@ export function buildGunShop(scene, level, world) {
       neonMat.color.setScalar(0.06 + 2.34 * flick * pw);
       openMat.color.setScalar(0.06 + 1.94 * pw);
       openMat.opacity = open ? 1 : 0.15;
+      if (neonSpill) neonSpill.material.color.copy(neonSpill.userData.base).multiplyScalar(0.75 * flick * pw);
+      if (openSpill) openSpill.material.color.copy(openSpill.userData.base).multiplyScalar(0.3 * pw * (open ? 1 : 0.12));
     },
   };
   shop.setOpen(false);

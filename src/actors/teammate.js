@@ -135,10 +135,11 @@ export function reach(upper, fore, hand, target, pole, along, palm, h) {
 }
 
 export class Teammate {
-  constructor(game, index) {
+  /** character: a roster entry of its own (fireteam.js PLAYER_CHARACTER: your body in the cutscenes), else FIRETEAM[index] */
+  constructor(game, index, character = null) {
     this.game = game;
     this.index = index;
-    const c = (this.character = FIRETEAM[index % FIRETEAM.length]);
+    const c = (this.character = character ?? FIRETEAM[index % FIRETEAM.length]);
     this.id = c.id;
     this.name = c.name;
     this.rank = c.rank;

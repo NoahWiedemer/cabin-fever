@@ -55,6 +55,9 @@ export class WeaponSystem {
   reset(primaryId = 'm4a1') {
     this.slots = [primaryId, 'm9', 'knife', 'm67', 'barricade', 'gascan', null];
     this.packStash = null; // the backpack gun while the backpack is off (see setBackpack)
+    this.stash = {}; // primary slot -> the gun set aside while a grenade launcher (fixedAmmo) holds that slot
+    this.tossT = 0; // > 0: an emptied launcher is tossed when it runs out (_toss)
+    this.tossId = null;
     this.owned = new Set([primaryId, 'm9']); // store inventory
     this.upgrades = {}; // id -> { dmg, mag, reload, rate } (replaced, never mutated)
     this.akimbo = new Set(); // pistols with the akimbo upgrade (player/akimbo.js)
@@ -110,17 +113,73 @@ export class WeaponSystem {
   }
 
   /**
-   * Put a found weapon in a primary slot and draw it. Returns the id that was dropped. With the weapon
-   * backpack it goes into the backpack while that is empty (nothing dropped), or replaces the primary
-   * in your hands.
+   * Put a found weapon in a primary slot and draw it. With the weapon backpack it goes into the backpack
+   * while that is empty, or replaces the primary in your hands. Returns what falls to the ground:
+   * [{ id, ammo }] (ammo: the rounds a grenade launcher had left, else null).
+   * A grenade launcher (fixedAmmo) doesn't drop your gun: that goes on your back (this.stash) and comes
+   * out again once the launcher is empty (_toss). `ammo`: a dropped launcher's rounds ({ mag }).
    */
-  giveWeapon(id, slot = this._pickupSlot()) {
-    const old = this.slots[slot];
-    this.slots[slot] = id;
+  giveWeapon(id, slot = this._pickupSlot(), ammo = null) {
     const d = WEAPONS[id];
-    this.ammo[id] = { mag: d.mag, reserve: d.reserve };
+    const old = this.slots[slot];
+    const oldDef = WEAPONS[old];
+    const dropped = [];
+    if (d.fixedAmmo && old === id) {
+      // the same launcher again: its rounds go into the one you carry
+      const a = this.ammo[id];
+      a.mag = Math.min(d.mag, a.mag + (ammo?.mag ?? d.mag));
+      this.switchTo(slot, true);
+      return dropped;
+    }
+    if (oldDef?.fixedAmmo) {
+      dropped.push({ id: old, ammo: { mag: this.ammo[old]?.mag ?? 0, reserve: 0 } });
+      delete this.ammo[old];
+      if (this.tossId === old) this.tossId = null;
+    }
+    if (d.fixedAmmo) {
+      if (old && !oldDef?.fixedAmmo) this.stash[slot] = old; // your gun goes on your back
+    } else {
+      // a regular gun takes the slot: whatever was set aside for a launcher there falls too
+      const back = this.stash[slot];
+      delete this.stash[slot];
+      if (back && back !== id) dropped.push({ id: back, ammo: null });
+      if (old && !oldDef?.fixedAmmo && old !== id) dropped.push({ id: old, ammo: null });
+    }
+    this.slots[slot] = id;
+    this.ammo[id] = d.fixedAmmo && ammo ? { mag: Math.max(0, Math.min(d.mag, ammo.mag | 0)), reserve: 0 } : { mag: d.mag, reserve: d.reserve };
     this.switchTo(slot, true);
-    return old;
+    return dropped;
+  }
+
+  /** The guns you carry: the slots plus any gun set aside for a grenade launcher. */
+  _carried() {
+    const ids = this.slots.filter(Boolean);
+    for (const id of Object.values(this.stash)) if (id && !ids.includes(id)) ids.push(id);
+    return ids;
+  }
+
+  /** A grenade launcher that shot its last round (_fire): tossed a beat later, your gun comes back. */
+  _toss(id) {
+    const s = this.slots.indexOf(id);
+    this.tossId = null;
+    if (s !== 0 && s !== PACK_SLOT) return;
+    const P = PACK_SLOT;
+    let back = this.stash[s] ?? null;
+    delete this.stash[s];
+    delete this.ammo[id];
+    if (!back && s === 0) {
+      // slot 1 is never empty: the backpack's gun moves up (or you get a rifle back)
+      back = this.slots[P] ?? 'm4a1';
+      if (this.slots[P]) this.slots[P] = null;
+      this._initAmmo(back);
+    }
+    this.slots[s] = back;
+    const held = this.cur === s || (this.cur === P && !this.slots[P]);
+    if (this.prev === P && !this.slots[P]) this.prev = 0;
+    if (held) this.switchTo(this.slots[s] ? s : 0, true);
+    this.game.audio.play('weapon_switch', { volume: 0.7 });
+    this.game.audio.play('plank_drop', { volume: 0.45 });
+    this.game.hud?.popScore(0, `${WEAPONS[id]?.name ?? 'LAUNCHER'} EMPTY`);
   }
 
   /**
@@ -170,6 +229,7 @@ export class WeaponSystem {
     const S = PACK_SLOT;
     if (!this.slots[S]) return false;
     [this.slots[0], this.slots[S]] = [this.slots[S], this.slots[0]];
+    [this.stash[0], this.stash[S]] = [this.stash[S], this.stash[0]]; // a launcher's set-aside gun moves with it
     if (this.cur === 0 || this.cur === S) this.switchTo(this.cur, true);
     return true;
   }
@@ -182,9 +242,9 @@ export class WeaponSystem {
   }
 
   restock() {
-    for (const id of this.slots) {
+    for (const id of this._carried()) {
       const d = this.defOf(id);
-      if (!d || !d.mag || !this.ammo[id]) continue;
+      if (!d || !d.mag || !this.ammo[id] || d.fixedAmmo) continue; // (a grenade launcher is never refilled)
       const a = this.ammo[id];
       if (d.noReload) {
         a.mag = Math.max(a.mag, Math.round(d.mag * 0.5));
@@ -196,9 +256,9 @@ export class WeaponSystem {
   }
 
   refillFull() {
-    for (const id of this.slots) {
+    for (const id of this._carried()) {
       const d = this.defOf(id);
-      if (!d || !d.mag || !this.ammo[id]) continue;
+      if (!d || !d.mag || !this.ammo[id] || d.fixedAmmo) continue;
       const a = this.ammo[id];
       if (d.noReload) a.mag = d.mag;
       else a.reserve = Math.max(a.reserve, d.maxReserve ?? d.reserve);
@@ -207,10 +267,12 @@ export class WeaponSystem {
   }
 
   addRifleAmmo() {
-    const id = this.slots[this.cur === PACK_SLOT ? PACK_SLOT : 0]; // the primary in your hands (or slot 1's)
+    const s = this.cur === PACK_SLOT ? PACK_SLOT : 0;
+    let id = this.slots[s]; // the primary in your hands (or slot 1's)
+    if (WEAPONS[id]?.fixedAmmo) id = this.stash[s]; // a grenade launcher: the gun on your back gets it
     const d = WEAPONS[id];
     const a = this.ammo[id];
-    if (!a) return false;
+    if (!a || !d) return false;
     if (d.noReload) {
       a.mag = Math.min(d.mag, a.mag + 300);
       return true;
@@ -310,6 +372,7 @@ export class WeaponSystem {
 
   // ------------------------------------------------------------------ update
   update(dt, input) {
+    if (this.tossId && (this.tossT -= dt) <= 0) this._toss(this.tossId); // an emptied grenade launcher
     const p = this.player;
     const d = this.def;
     this.stateT += dt;
@@ -703,6 +766,11 @@ export class WeaponSystem {
       this._ejectShell('shotgun', 1);
     }
     game.alertNoise(p.pos, d.id === 'l96a1' ? 45 : 30);
+    if (d.fixedAmmo && a.mag <= 0) {
+      // the last grenade: the launcher is tossed once the shot is off (update -> _toss)
+      this.tossId = d.id;
+      this.tossT = 0.55;
+    }
     if ((d.akimbo ? akimboRounds(a) : a.mag) === 0 && d.mode !== 'bolt' && d.mode !== 'pump' && !d.noReload) {
       // auto-reload after a short beat
       setTimeout(() => {
@@ -732,6 +800,7 @@ export class WeaponSystem {
       reserve: a ? a.reserve : 0,
       showAmmo: d.mode !== 'melee' && d.mode !== 'build' && d.mode !== 'pour',
       reloading: this.state === 'reload' || this.state === 'shellReload',
+      noReload: !!d.noReload, // one load (chain gun, grenade launchers): no reserve to show
       dual: d.akimbo && a ? { l: a.mag2 ?? 0, r: a.mag } : null, // akimbo: both guns' mags
     };
   }
@@ -765,8 +834,10 @@ export class WeaponSystem {
   equipFromStore(id, slot = WEAPONS[id]?.slot === 1 ? 1 : 0) {
     if (!WEAPONS[id]) return false;
     const kept = this.ammo[id]?.reserve ?? 0; // reserve carried from an earlier stint
-    if (slot === 0 || slot === PACK_SLOT) this.giveWeapon(id, slot);
-    else this.slots[1] = id;
+    if (slot === 0 || slot === PACK_SLOT) {
+      // a grenade launcher it replaces falls at your feet with its rounds (the store has none to give back)
+      for (const drop of this.giveWeapon(id, slot)) if (drop.ammo) this.game.pickups?.dropWeapon(drop, this.player.pos);
+    } else this.slots[1] = id;
     const d = this.defOf(id);
     if (d.mag) this.ammo[id] = { mag: d.mag, mag2: d.mag, reserve: Math.max(kept, d.reserve) }; // mag2: an akimbo left gun
     if (slot === 1 && this.cur === 1) this.switchTo(1, true);
@@ -776,10 +847,10 @@ export class WeaponSystem {
   /** Store ammo crate: carried guns to max reserve. `dry` only reports whether anything would change. */
   refillReserves(dry = false) {
     let changed = false;
-    for (const id of this.slots) {
+    for (const id of this._carried()) {
       const d = this.defOf(id);
       const a = this.ammo[id];
-      if (!d || !d.mag || !a) continue;
+      if (!d || !d.mag || !a || d.fixedAmmo) continue;
       if (d.noReload) {
         if (a.mag < d.mag) changed = true;
         if (!dry) a.mag = Math.max(a.mag, d.mag);

@@ -26,6 +26,7 @@ export const ASSETS = [
   ['worker.glb', 'zombies/worker.glb', 1024], // construction worker in a hard hat: the Worker (weights: fix-viper-weights)
   ['normal_zombie.glb', 'zombies/normal.glb', 1024], // plain zombie in a torn shirt: a Mauler body variant (weights: fix-viper-weights)
   ['survival_zombie.glb', 'zombies/survivor.glb', 1024], // survivalist with a big pack: the Survivalist (drops loot)
+  ['emosquad.glb', 'characters/emosquad.glb', 2048], // your own character (1.1M-tri scan, rigged at 40k tris): cutscenes + the store paperdoll, seen up close
   ['left_4_dead_2_-_charger_with_rig.glb', 'zombies/charger.glb', 1024],
   ['Mutant_dog.glb', 'zombies/dog.glb', 1024], // UniRig quadruped, bones mapped by topology
   ['Meshy_AI_Character_output.glb', 'characters/meshy.glb', 1024], // UniRig skeleton, bones mapped by topology

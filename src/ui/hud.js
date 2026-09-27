@@ -205,7 +205,73 @@ const DMG_ARC_SVG = `<svg class="cf-dmg-arc" viewBox="-160 -160 320 320" aria-hi
 
 /* ------------------------------------------------------------------ markup */
 
+/**
+ * Blood on the lens (HUD.screenBlood): a few splat images drawn once on canvases: an irregular wet blob
+ * (dark at the heart, a thin bright rim), satellite drops, runs dripping down, a wet highlight.
+ */
+function screenBloodImages(n = 4) {
+  const out = [];
+  for (let k = 0; k < n; k++) {
+    const S = 256;
+    const c = document.createElement('canvas');
+    c.width = c.height = S;
+    const g = c.getContext('2d');
+    let seed = 991 + k * 7919;
+    const r = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
+    const cx = S * (0.42 + r() * 0.16), cy = S * (0.36 + r() * 0.12);
+    const R = S * (0.15 + r() * 0.08);
+    const blob = (x, y, rad, lobes) => {
+      g.beginPath();
+      const ph = r() * 6.28;
+      for (let i = 0; i <= 48; i++) {
+        const a = (i / 48) * Math.PI * 2;
+        const rr = rad * (1 + 0.16 * Math.sin(a * lobes + ph) + 0.08 * Math.sin(a * (lobes + 3) + ph * 2) + (r() - 0.5) * 0.08);
+        const px = x + Math.cos(a) * rr, py = y + Math.sin(a) * rr;
+        if (i) g.lineTo(px, py);
+        else g.moveTo(px, py);
+      }
+      g.closePath();
+      g.fill();
+    };
+    const grad = g.createRadialGradient(cx, cy, R * 0.1, cx, cy, R * 1.4);
+    grad.addColorStop(0, 'rgba(38,0,0,0.95)');
+    grad.addColorStop(0.6, 'rgba(78,4,3,0.9)');
+    grad.addColorStop(1, 'rgba(120,10,6,0.82)');
+    g.fillStyle = grad;
+    blob(cx, cy, R, 5 + Math.floor(r() * 4));
+    for (let i = 0; i < 3; i++) blob(cx + (r() - 0.5) * R * 1.4, cy + (r() - 0.5) * R * 1.2, R * (0.3 + r() * 0.3), 4);
+    // runs: drips running down from the splat
+    const runs = 2 + Math.floor(r() * 3);
+    for (let i = 0; i < runs; i++) {
+      const x = cx + (r() - 0.5) * R * 1.3, w = S * (0.012 + r() * 0.018), len = S * (0.18 + r() * 0.35);
+      const lg = g.createLinearGradient(0, cy, 0, cy + len);
+      lg.addColorStop(0, 'rgba(70,3,2,0.9)');
+      lg.addColorStop(1, 'rgba(95,6,4,0.75)');
+      g.fillStyle = lg;
+      g.beginPath();
+      g.moveTo(x - w, cy);
+      g.lineTo(x + w, cy);
+      g.lineTo(x + w * 0.7, cy + len);
+      g.arc(x, cy + len, w * 1.25, 0, Math.PI);
+      g.closePath();
+      g.fill();
+    }
+    // satellite drops flung out of it
+    g.fillStyle = 'rgba(90,5,3,0.9)';
+    for (let i = 0; i < 26; i++) {
+      const a = r() * Math.PI * 2, d = R * (1.2 + r() * 1.6);
+      blob(cx + Math.cos(a) * d, cy + Math.sin(a) * d, S * (0.004 + r() * 0.016), 3);
+    }
+    // a wet glint
+    g.fillStyle = 'rgba(255,190,180,0.16)';
+    blob(cx - R * 0.35, cy - R * 0.4, R * 0.18, 3);
+    out.push(c.toDataURL());
+  }
+  return out;
+}
+
 const HUD_HTML = `
+<div class="cf-sblood"></div>
 <div class="cf-vig cf-vig-low"><div class="cf-vig-beat"></div></div>
 <div class="cf-vig cf-vig-gas"></div>
 <div class="cf-vig cf-vig-dmg"></div>
@@ -232,6 +298,7 @@ const HUD_HTML = `
 <div class="cf-gaswarn">${HAZARD_SVG}<span>TOXIC GAS</span>${HAZARD_SVG}</div>
 <div class="cf-mask">${GASMASK_SVG}<div class="cf-mask-bar"><i></i></div><b>0.0s</b></div>
 <div class="cf-wp"><i class="cf-wp-dia"></i><span class="cf-wp-l"></span><b class="cf-wp-d"></b><i class="cf-wp-arrow"></i></div>
+<div class="cf-marks"></div>
 <div class="cf-radar">
   <div class="cf-radar-disc"><canvas class="cf-radar-cv"></canvas></div>
   <div class="cf-round"><span class="cf-round-num">00/00</span><span class="cf-round-lbl">ROUND</span></div>
@@ -296,6 +363,7 @@ export class HUD {
 
     const q = (s) => root.querySelector(s);
     this.$ = {
+      sblood: q('.cf-sblood'),
       vigLow: q('.cf-vig-low'),
       vigGas: q('.cf-vig-gas'),
       vigDmg: q('.cf-vig-dmg'),
@@ -364,6 +432,7 @@ export class HUD {
       wpL: q('.cf-wp-l'),
       wpD: q('.cf-wp-d'),
       wpArrow: q('.cf-wp-arrow'),
+      marks: q('.cf-marks'),
       cash: q('.cf-cash'),
       cashVal: q('.cf-cash-val'),
       cashPops: q('.cf-cash-pops'),
@@ -536,7 +605,7 @@ export class HUD {
     this._cls($.weapon, 'dual', 'dual', !!dual);
     if (showAmmo) {
       this._text($.mag, 'ammo', pad(ammo, dual ? 2 : 3));
-      this._text($.res, 'res', `/${pad(reserve, 3)}`);
+      this._text($.res, 'res', state.noReload ? '/---' : `/${pad(reserve, 3)}`); // one load: no reserve
       const low = mag > 0 && ammo / mag < 0.25;
       this._cls($.ammo, 'low', 'ammoLow', low && ammo > 0);
       this._cls($.ammo, 'empty', 'ammoEmpty', ammo === 0);
@@ -889,6 +958,66 @@ export class HUD {
     if (wp.edge && this._set('wpA', a)) $.wpArrow.style.transform = `rotate(${a}rad)`;
   }
 
+  /**
+   * Blood on the lens: `amount` 0..1 (a claw across your face, a kill at arm's length, a Boomer bursting
+   * next to you) throws 1-3 splats toward the edges of the screen; they run down and fade.
+   */
+  screenBlood(amount = 0.5) {
+    const host = this.$.sblood;
+    if (!host || !this._visible) return;
+    this._sbImg ??= screenBloodImages();
+    const n = Math.max(1, Math.min(3, Math.round(amount * 3)));
+    for (let i = 0; i < n; i++) {
+      while (host.childElementCount >= 6) host.firstElementChild.remove();
+      const el = document.createElement('i');
+      el.className = 'cf-sblood-s';
+      // toward the edges and corners, never over the crosshair
+      const side = Math.random() < 0.5 ? -1 : 1;
+      const x = 50 + side * (22 + Math.random() * 30);
+      const y = 12 + Math.random() * 70;
+      const s = (16 + Math.random() * 20) * (0.7 + amount * 0.5);
+      const dur = 2.4 + Math.random() * 1.8;
+      el.style.cssText = `left:${x.toFixed(1)}%;top:${y.toFixed(1)}%;width:${s.toFixed(1)}vmin;height:${s.toFixed(1)}vmin;background-image:url(${this._sbImg[Math.floor(Math.random() * this._sbImg.length)]});--rot:${Math.round(Math.random() * 40 - 20)}deg;--dur:${dur.toFixed(2)}s`;
+      host.appendChild(el);
+      setTimeout(() => el.remove(), dur * 1000 + 150);
+    }
+  }
+
+  /**
+   * Markers for special weapons lying around (an event's cargo, a special spawn): a list of screen-space
+   * { x, y, label, dist, edge, angle } like setWaypoint's, drawn smaller and in the weapon glow's blue.
+   */
+  setMarks(list = []) {
+    const host = this.$.marks;
+    this._marks ??= [];
+    while (this._marks.length < list.length) {
+      const el = document.createElement('div');
+      el.className = 'cf-wp cf-mark';
+      el.innerHTML = '<i class="cf-wp-dia"></i><span class="cf-wp-l"></span><b class="cf-wp-d"></b><i class="cf-wp-arrow"></i>';
+      host.appendChild(el);
+      this._marks.push({ el, l: el.querySelector('.cf-wp-l'), d: el.querySelector('.cf-wp-d'), arrow: el.querySelector('.cf-wp-arrow'), c: {} });
+    }
+    for (let i = 0; i < this._marks.length; i++) {
+      const m = this._marks[i];
+      const wp = list[i];
+      const on = !!wp;
+      if (m.c.on !== on) m.el.classList.toggle('on', (m.c.on = on));
+      if (!on) continue;
+      if (m.c.edge !== wp.edge) m.el.classList.toggle('edge', (m.c.edge = wp.edge));
+      const label = String(wp.label ?? '');
+      if (m.c.label !== label) m.l.textContent = m.c.label = label;
+      const dist = `${Math.max(0, wp.dist | 0)}m`;
+      if (m.c.dist !== dist) m.d.textContent = m.c.dist = dist;
+      const x = Math.round(wp.x), y = Math.round(wp.y);
+      if (m.c.xy !== x * 10000 + y) {
+        m.c.xy = x * 10000 + y;
+        m.el.style.transform = `translate3d(${x}px,${y}px,0)`;
+      }
+      const a = Math.round((wp.angle || 0) * 50) / 50;
+      if (wp.edge && m.c.a !== a) m.arrow.style.transform = `rotate(${(m.c.a = a)}rad)`;
+    }
+  }
+
   /** The dead player's revive line: { text, frac (0..1 progress or null), urgent } or null. */
   setRevive(r) {
     const $ = this.$;
@@ -1101,9 +1230,30 @@ export class HUD {
       for (let i = 0; i < pk.length; i++) {
         const p = pk[i];
         const dx = p.x - px, dz = p.z - pz;
-        const x = c + (dx * cy - dz * sy) * s;
-        const y = c + (dx * sy + dz * cy) * s;
+        let x = c + (dx * cy - dz * sy) * s;
+        let y = c + (dx * sy + dz * cy) * s;
         const d2 = (x - c) * (x - c) + (y - c) * (y - c);
+        if (p.mark) {
+          // a special weapon (an event's cargo): always shown, pinned to the rim when out of range
+          const rim = R - 5 * dpr, d = Math.sqrt(d2);
+          if (d > rim) {
+            x = c + ((x - c) * rim) / d;
+            y = c + ((y - c) * rim) / d;
+          }
+          const k = 4.4 * dpr;
+          ctx.fillStyle = '#8fd0ff';
+          ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+          ctx.lineWidth = 1.2 * dpr;
+          ctx.beginPath();
+          ctx.moveTo(x, y - k);
+          ctx.lineTo(x + k, y);
+          ctx.lineTo(x, y + k);
+          ctx.lineTo(x - k, y);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+          continue;
+        }
         if (d2 > R * R) continue;
         const kind = String(p.kind || '');
         ctx.fillStyle = /health|med/i.test(kind) ? '#6dff8a' : /ammo/i.test(kind) ? '#ffd24a' : kind === 'generator' ? '#ff4a32' : kind === 'gascan' ? '#ff9a3c' : kind === 'revive' ? '#7dffa0' : kind === 'objective' ? '#58d2ff' : kind === 'objectiveAlert' ? '#ff5a3a' : '#ffe38a';

@@ -13,7 +13,7 @@ import { StalkerDirector } from '../actors/stalker.js'; // (also registers the S
 import '../actors/crusher.js'; // registers the Crusher class (slam, charge, rage)
 import { LatchView } from '../fx/latchView.js';
 import { Teammate } from '../actors/teammate.js';
-import { FIRETEAM, LEGACY_LINEUPS, normalizeFireteam } from '../actors/fireteam.js';
+import { FIRETEAM, LEGACY_LINEUPS, PLAYER_CHARACTER, normalizeFireteam } from '../actors/fireteam.js';
 import { prebuildCharacters } from '../actors/rig.js';
 import { Effects } from '../fx/effects.js';
 import { Player } from '../player/player.js';
@@ -41,6 +41,7 @@ import { buildGunShop } from '../world/gunshop.js';
 import { createLabTech } from '../actors/labTech.js';
 import { Barricades } from '../world/barricades.js';
 import { Breach } from '../world/breach.js';
+import { Shaft } from '../world/shaft.js';
 import { Ladders } from '../actors/ladders.js';
 import { BarnFire } from '../world/barnFire.js';
 import { Power } from '../world/power.js';
@@ -62,7 +63,10 @@ const _n = new THREE.Vector3();
 const _dawnFog = new THREE.Color(0.42, 0.36, 0.36);
 const _dawnSun = new THREE.Color(1.0, 0.72, 0.52);
 const _wp = new THREE.Vector3();
-const LOOT_GUNS = ['p90', 'r201', 'spas12', 'devotion', 'sigma', 'softball']; // the Survivalist's stash (one you don't carry)
+const LOOT_GUNS = ['p90', 'r201', 'spas12', 'devotion', 'sigma']; // the Survivalist's stash (one you don't carry)
+// ...and from round LAUNCHER_LOOT.round on, now and then the Softball grenade launcher (a special: no
+// store sells it, one load and no reloads, marked on the map)
+const LAUNCHER_LOOT = { round: 7, chance: 0.22 };
 const F_TAP = 0.25; // F released faster than this is a tap (flashlight / open the gun shop)
 const READY_HOLD = 1.2; // hold F this long in the buy phase to ready up
 
@@ -115,6 +119,7 @@ export class Game {
     this.world = this.level.world;
     scene.add(this.level.group);
     this.breach = new Breach(this, scene); // the rare wall breach (world/breach.js): its wall patches collide from the start
+    this.shaft = new Shaft(this); // the coal tunnel the infected come up once the basement is open (world/shaft.js)
 
     await step(0.64, 'Wiring the lights');
     this.quality = QUALITY[this.settings.quality] || QUALITY.high;
@@ -170,6 +175,11 @@ export class Game {
       scene.add(b.root);
       this.bots.push(b);
     }
+    // your own character (fireteam.js PLAYER_CHARACTER): the body the cutscenes show for you, never a bot
+    this.playerBody = new Teammate(this, FIRETEAM.length, PLAYER_CHARACTER);
+    this.playerBody.spawn(new THREE.Vector3(0, -50, 0), 0); // (fills in its animation state: the scenes only pose it)
+    this.playerBody.hide();
+    scene.add(this.playerBody.root);
 
     this.cinema = new Cinema(this); // cutscenes (game/cutscenes.js)
     this.mission = new Mission(this); // the story: intro, Nadja, the hacking mission, the finale
@@ -192,6 +202,7 @@ export class Game {
     };
     for (const list of Object.values(this.zombies.pool)) for (const z of list) reveal(z.root);
     for (const b of this.bots) reveal(b.root);
+    reveal(this.playerBody.root);
     for (const m of Object.values(this.viewmodel.models)) reveal(m.root);
     try {
       this.gr.renderer.compile(scene, this.camera);
@@ -375,6 +386,7 @@ export class Game {
     this.maskBreathT = 0;
     this.gunshop?.setOpen(false);
     this.breach?.reset(); // whole walls again (before the barricades: it drops its barricade spot)
+    this.shaft?.reset();
     this.barnFire?.reset(); // an unburnt barn
     this.barricades?.reset();
     this.power?.start();
@@ -453,6 +465,7 @@ export class Game {
     this.projectiles.clear();
     this.pickups.clear();
     for (const b of this.bots) b.hide();
+    this.playerBody?.hide();
     this.weapons._stopLoops?.();
     this.power?.stop();
     this.revives?.onRoundEnd();
@@ -540,7 +553,7 @@ export class Game {
         const spot = this.level.specialSpots[s.spot];
         if (s.spot === 'l96a1' && !this.unlocked.basement) continue;
         if (s.spot === 'goldenPunisher' && !this.unlocked.upstairs) continue;
-        this.pickups.spawnWeapon(s.weapon, spot, { permanent: true });
+        this.pickups.spawnWeapon(s.weapon, spot, { permanent: true, mark: true }); // (marked on the map)
         setTimeout(() => this.hud.banner(s.banner, `has appeared ${s.where}`, 3, 'success'), 3400);
       }
     }
@@ -648,6 +661,11 @@ export class Game {
     this.onShopOpen();
   }
 
+  /** main.js: the player closed the store. Very rarely the Stalker's face is right there (actors/stalker.js). */
+  onShopClosed() {
+    this.stalker?.shopScare();
+  }
+
   _toggleFlashlight() {
     this.lighting.flashlightOn = !this.lighting.flashlightOn;
     this.audio.play('flashlight', { volume: 0.5 });
@@ -697,6 +715,17 @@ export class Game {
   }
 
   _spawnOne(type) {
+    const r = this.round;
+    const hpMult = this.diff.hp * (1 + 0.065 * (r - 1));
+    const spd = this.diff.speed * (1 + 0.01 * Math.min(r - 1, 30)) * (this.events?.speedMul ?? 1);
+    // once the basement is open, some come up the coal tunnel by the lab (world/shaft.js)
+    const up = this.shaft?.spawnPoint(type);
+    if (up) {
+      const z = this.zombies.spawn(type, up, r, hpMult, spd);
+      this.breach?.onSpawn(z);
+      if (z) this.shaft.onSpawn(z);
+      return;
+    }
     // choose a spawn point far from the player, in the fog
     const pts = this.level.spawnPoints;
     let best = null, bs = -Infinity;
@@ -712,9 +741,6 @@ export class Game {
     }
     best = this.breach?.spawnPoint(pts) ?? best; // a breached wall: part of the horde comes from that side
     const pos = best.clone().add(new THREE.Vector3(rand(-2.5, 2.5), 0.05, rand(-2.5, 2.5)));
-    const r = this.round;
-    const hpMult = this.diff.hp * (1 + 0.065 * (r - 1));
-    const spd = this.diff.speed * (1 + 0.01 * Math.min(r - 1, 30)) * (this.events?.speedMul ?? 1);
     this.breach?.onSpawn(this.zombies.spawn(type, pos, r, hpMult, spd)); // (the round's wall-breaching Boomer)
     // the rest of a dog / Biter pack queued right behind comes in with its leader
     while ((type === 'dog' || type === 'biter') && this.toSpawn[0] === type && this.zombies.aliveCount < this.maxAlive) {
@@ -915,6 +941,7 @@ export class Game {
     const dp = this.player.pos.distanceTo(pos);
     this.shake.add(clamp(1.2 - dp / 22, 0, 1) * (opts.scale ?? 1));
     if (dp < 8 && !opts.burst) this.gr.grade.set('uFlash', 0.25 * (1 - dp / 8));
+    if (opts.burst && dp < 4.5 && this.player.alive) this.hud.screenBlood?.(1 - dp / 6); // a Boomer bursting in your face
     this.alertNoise(pos, 30);
     const center = pos.clone().add(new THREE.Vector3(0, 0.6, 0));
     // zombies
@@ -1009,6 +1036,9 @@ export class Game {
     if (src && src.isPlayer) {
       this.player.stats.kills++;
       if (headshot) this.player.stats.headshots++;
+      // a kill at arm's length (the knife, a shotgun blast): it spatters the lens
+      const near = z.pos.distanceTo(this.player.pos);
+      if (near < 2.2 && z.typeName !== 'charger') this.hud.screenBlood?.(headshot ? 0.7 : 0.45);
       this.comboT <= 0 ? (this.combo = 1) : this.combo++;
       this.comboT = 3;
       const pts = Math.round((z.type.score * (headshot ? 1.5 : 1) + (this.combo > 1 ? 40 * this.combo : 0)) * mult);
@@ -1033,7 +1063,13 @@ export class Game {
 
   /** The Survivalist's stash: sometimes a good primary you don't carry yet, else a survival pack. */
   _dropLoot(z) {
-    const guns = LOOT_GUNS.filter((id) => WEAPONS[id] && !this.weapons.slots.includes(id));
+    const carried = this.weapons._carried();
+    if (this.round >= LAUNCHER_LOOT.round && WEAPONS.softball && !carried.includes('softball') && Math.random() < LAUNCHER_LOOT.chance) {
+      this.pickups.spawnWeapon('softball', z.pos, { mark: true, life: 150 });
+      this.hud.banner('SURVIVALIST DOWN', `It dropped a ${WEAPONS.softball.name} grenade launcher · press E to take it`, 3, 'success');
+      return;
+    }
+    const guns = LOOT_GUNS.filter((id) => WEAPONS[id] && !carried.includes(id));
     if (guns.length && Math.random() < 0.45) {
       const id = pick(guns);
       this.pickups.spawnWeapon(id, z.pos);
@@ -1304,6 +1340,7 @@ export class Game {
     this.indoor = damp(this.indoor ?? 1, sheltered, 3, dt);
     this.lighting.indoor = this.indoor;
     this.audio.setIndoor(this.indoor);
+    this.audio.setRain?.(this.weather.rainK); // the showers come and go (world/weather.js)
     this.audio.setLowHealth(player.alive ? clamp(1 - player.hp / 35, 0, 1) : 0);
 
     // post fx
@@ -1319,6 +1356,27 @@ export class Game {
     // audio listener
     const fwd = this.camera.getWorldDirection(_p);
     this.audio.setListener(this.camera.position, fwd, this.camera.up);
+  }
+
+  /**
+   * A world point `lift` m above `pos` on screen for a HUD marker: { x, y (px), edge, angle }; off screen
+   * (or behind you: the bottom edge) it's pinned to the edge at `rim` (NDC) and `angle` points toward it.
+   */
+  _screenMark(pos, lift, rim) {
+    _wp.copy(pos).setY(pos.y + lift).project(this.camera);
+    let x = _wp.x, y = _wp.y;
+    const behind = _wp.z > 1;
+    if (behind) {
+      x = -x;
+      y = -y - 1; // behind you: pin it to the bottom edge
+    }
+    const m = Math.max(Math.abs(x), Math.abs(y));
+    const edge = behind || m > rim;
+    if (edge && m > 0) {
+      x *= rim / m;
+      y *= rim / m;
+    }
+    return { x: (x * 0.5 + 0.5) * window.innerWidth, y: (-y * 0.5 + 0.5) * window.innerHeight, edge, angle: Math.atan2(-y, x) };
   }
 
   _updateHud(dt) {
@@ -1350,6 +1408,7 @@ export class Game {
         ammo: w.def.mode === 'grenade' ? w.grenades : info.ammo,
         magSize: info.magSize,
         reserve: info.reserve,
+        noReload: info.noReload, // one load (chain gun, grenade launchers)
         dual: info.dual, // akimbo pistols: both mags
         grenades: w.grenades,
         molotovs: w.molotovs,
@@ -1404,22 +1463,25 @@ export class Game {
       wpLabel = g?.label;
     }
     if (ent && player.alive && !this.shopOpen) {
-      _wp.copy(ent).setY(ent.y + 0.8).project(this.camera);
-      let x = _wp.x, y = _wp.y;
-      const behind = _wp.z > 1;
-      if (behind) {
-        x = -x;
-        y = -y - 1; // behind you: pin it to the bottom edge
-      }
-      const m = Math.max(Math.abs(x), Math.abs(y));
-      const edge = behind || m > 0.9;
-      if (edge && m > 0) {
-        x *= 0.9 / m;
-        y *= 0.9 / m;
-      }
-      wp = { x: (x * 0.5 + 0.5) * window.innerWidth, y: (-y * 0.5 + 0.5) * window.innerHeight, dist: Math.round(ent.distanceTo(player.pos)), label: wpLabel, edge, angle: Math.atan2(-y, x) };
+      wp = this._screenMark(ent, 0.8, 0.9);
+      wp.dist = Math.round(ent.distanceTo(player.pos));
+      wp.label = wpLabel;
     }
     hud.setWaypoint?.(wp);
+    // special weapons lying around (an event's cargo, the special spawns): marked with name + distance
+    const marks = [];
+    if (player.alive && !this.shopOpen) {
+      for (const p of this.pickups.list) {
+        if (!p.mark) continue;
+        const d = p.obj.position.distanceTo(player.pos);
+        if (d < 2.5) continue; // close enough for the pickup prompt
+        const m = this._screenMark(p.obj.position, 0.55, 0.86);
+        m.dist = Math.round(d);
+        m.label = WEAPONS[p.id]?.name ?? 'WEAPON';
+        marks.push(m);
+      }
+    }
+    hud.setMarks?.(marks);
 
     // gas mask filter
     const mask = this.gear.mask;

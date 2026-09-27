@@ -2784,9 +2784,10 @@ function composeBlood(size, D, noise, cell) {
       const a = sstep(0.06, 0.26, d + nz * 0.04);
       const thick = sstep(0.25, 1.1, d);
       const nk = 1 + nz * 0.14;
-      let r = lerp(0.45, 0.2, thick) * nk;
-      let g = lerp(0.035, 0.013, thick) * nk;
-      let b = lerp(0.03, 0.013, thick) * nk;
+      // thin spatter a little browner (it dries first), the thick of it near black
+      let r = lerp(0.36, 0.13, thick) * nk;
+      let g = lerp(0.048, 0.01, thick) * nk;
+      let b = lerp(0.034, 0.01, thick) * nk;
       const rim = a * (1 - sstep(0.26, 0.5, d));
       const rk = 1 - rim * 0.3;
       R[i] = r * rk;

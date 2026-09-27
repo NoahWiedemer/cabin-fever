@@ -302,6 +302,14 @@ export class Effects {
         this.decals.bloodSplat(_v, UP, rand(0.35, 0.8));
       }
     }
+    // the spray comes down too: a trail of small drops on the floor, thrown out along the shot
+    const drops = Math.round((headshot ? 4 : 2) * amount + Math.random());
+    for (let i = 0; i < drops; i++) {
+      const d = rand(0.3, headshot ? 2.2 : 1.5);
+      const x = p.x + dir.x * d + rand(-0.35, 0.35), z = p.z + dir.z * d + rand(-0.35, 0.35);
+      const down = this.world.raycast(x, p.y, z, 0, -1, 0, 3, null, {});
+      if (down) this.decals.bloodSplat(_v.set(x, p.y - down.t, z), UP, rand(0.1, 0.26));
+    }
   }
 
   bloodPoolAt(pos) {

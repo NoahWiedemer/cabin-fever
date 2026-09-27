@@ -8,6 +8,7 @@ export const MODELS = {
   viper: '/models/characters/viper.glb',
   shopkeeper: '/models/characters/shopkeeper.glb', // gun shop clerk (not a bot)
   nadja: '/models/characters/nadja.glb', // lab tech behind the basement's armored glass (not a bot)
+  emosquad: '/models/characters/emosquad.glb', // your own character (cutscenes, the store paperdoll; not a bot)
   // infected
   boomer: '/models/zombies/boomer.glb',
   smoker: '/models/zombies/smoker.glb',

@@ -78,6 +78,7 @@ export class Lighting {
     this.q = quality;
     this.time = 0;
     this.lightning = 0;
+    this.dipT = 0;
     this.lightningQueue = [];
     this.nextLightning = 8 + Math.random() * 10;
     this.onThunder = null;
@@ -160,10 +161,32 @@ export class Lighting {
       L.seed = Math.random() * 1000;
     }
 
-    // visuals: glow sprites + light cones
+    // visuals: glow sprites + light cones, and the pool of light a bare bulb throws on the ceiling it hangs
+    // from (the spots only light downward, so without it the ceilings stay black holes)
     this.cones = [];
     const glowTex = safeTex('glow');
     for (const L of lamps) {
+      if (glowTex && L.ceil != null && L.fx !== false && !L.fire) {
+        const size = 2.2 + Math.min(1.6, (L.ceil - L.pos.y) * 2.2); // a longer cable spreads it wider
+        const mat = new THREE.MeshBasicMaterial({
+          map: glowTex,
+          color: new THREE.Color(L.color).multiplyScalar(0.5),
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+          transparent: true,
+          fog: false,
+          polygonOffset: true,
+          polygonOffsetFactor: -2,
+          polygonOffsetUnits: -2,
+        });
+        const pool = new THREE.Mesh(new THREE.PlaneGeometry(size, size), mat);
+        pool.rotation.x = Math.PI / 2; // facing down
+        pool.position.set(L.pos.x, L.ceil - 0.012, L.pos.z);
+        pool.renderOrder = 3;
+        scene.add(pool);
+        L.pool = pool;
+        L.poolColor = mat.color.clone();
+      }
       // fx: false = a bare light (the lab's ceiling panels are their own visuals): no glow, cone or motes
       if (glowTex && L.fx !== false) {
         const sm = new THREE.SpriteMaterial({
@@ -240,7 +263,7 @@ export class Lighting {
             uTime: { value: 0 },
             uSize: { value: 12 },
             uMap: { value: dustTex },
-            uColor: { value: new THREE.Color(0xffd9a8).multiplyScalar(0.32) },
+            uColor: { value: new THREE.Color(0xffd9a8).multiplyScalar(0.4) },
           },
           transparent: true,
           depthWrite: false,
@@ -291,6 +314,7 @@ export class Lighting {
   }
 
   triggerLightning(intensity = 1) {
+    if (intensity > 0.95) this.dipT = 0.6; // close: the lights stutter
     const n = 2 + Math.floor(Math.random() * 3);
     let t = 0;
     for (let i = 0; i < n; i++) {
@@ -328,9 +352,11 @@ export class Lighting {
     const pw = this.mains;
     this.hemi.color.copy(this.hemiOutSky).lerp(this._c.copy(this.hemiDarkSky).lerp(this.hemiInSky, pw), ind);
     this.hemi.groundColor.copy(this.hemiOutGround).lerp(this._c.copy(this.hemiDarkGround).lerp(this.hemiInGround, pw), ind);
-    this.hemi.intensity = 0.8 + ind * (0.12 + 1.18 * pw) + this.lightning * 2.2;
+    this.hemi.intensity = 0.8 + ind * (0.06 + 0.86 * pw) + this.lightning * 2.2;
 
-    // lamp flicker + weights
+    // lamp flicker + weights; a close lightning strike makes the mains stutter for a moment (dipT)
+    const dip = this.dipT > 0 ? 0.5 + 0.5 * Math.min(1, (0.6 - this.dipT) / 0.6) : 1;
+    if (this.dipT > 0) this.dipT -= dt;
     for (const L of this.lamps) {
       let f = 1;
       if (L.flicker > 0) {
@@ -345,11 +371,12 @@ export class Lighting {
         }
         if (L.fire) f = 0.75 + 0.25 * Math.sin(t * 11 + L.seed) * Math.sin(t * 4.3 + L.seed * 0.7) + Math.random() * 0.1;
       }
-      if (!L.fire && L.mains !== false) f *= this.mains;
+      if (!L.fire && L.mains !== false) f *= this.mains * dip * (dip < 1 ? 0.55 + 0.45 * (Math.sin(t * 53 + L.seed) > 0.1 ? 1 : 0.2) : 1);
       L.cur = f;
       if (L.glow) L.glow.material.opacity = f;
+      if (L.pool) L.pool.material.color.copy(L.poolColor).multiplyScalar(f);
       if (L.cone) {
-        L.cone.material.uniforms.uIntensity.value = 0.055 * f * (L.level === playerLevel ? 1 : 0.6);
+        L.cone.material.uniforms.uIntensity.value = 0.07 * f * (L.level === playerLevel ? 1 : 0.6);
         L.cone.material.uniforms.uTime.value = t;
       }
     }

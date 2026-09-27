@@ -17,6 +17,7 @@
 import * as THREE from 'three';
 import { clamp, lerp, rand, smoothstep } from '../core/utils.js';
 import { WEAPONS } from '../player/weaponDefs.js';
+import { FLAG_ZPASS } from '../world/collision.js';
 
 export const RAGDOLL = {
   chance: 0.2, // ordinary kills
@@ -247,7 +248,7 @@ function entryFace(b, r) {
 }
 
 function contactCb(b) {
-  if (b.maxY < C.minY || b.minY > C.maxY) return;
+  if (b.maxY < C.minY || b.minY > C.maxY || b.flags & FLAG_ZPASS) return; // (the coal tunnel's stop: only for the living)
   const r = C.r, rd = C.rd;
   const f = entryFace(b, r);
   if (f >= 0) {

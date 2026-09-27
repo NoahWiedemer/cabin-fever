@@ -64,6 +64,42 @@
   display: block;
 }
 
+/* ---------------- blood on the lens (hud.screenBlood) ---------------- */
+
+.cf-sblood {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  z-index: 2;
+  pointer-events: none;
+}
+.cf-sblood-s {
+  position: absolute;
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  transform: translate(-50%, -50%) rotate(var(--rot, 0deg));
+  animation: cf-sblood var(--dur, 3s) cubic-bezier(0.35, 0, 0.8, 1) forwards;
+  will-change: transform, opacity;
+}
+@keyframes cf-sblood {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) rotate(var(--rot, 0deg)) scale(0.82);
+  }
+  6% {
+    opacity: 0.92;
+    transform: translate(-50%, -50%) rotate(var(--rot, 0deg)) scale(1);
+  }
+  55% {
+    opacity: 0.8;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -38%) rotate(var(--rot, 0deg)) scale(1.02);
+  }
+}
+
 /* ---------------- screen vignettes ---------------- */
 
 .cf-vig {
@@ -1719,6 +1755,40 @@
 }
 .cf-wp.edge .cf-wp-arrow {
   display: block;
+}
+/* special weapons lying around (hud.setMarks): smaller, in the weapon glow's blue */
+.cf-marks {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+}
+.cf-mark {
+  z-index: 3;
+  gap: calc(var(--u) * 1.5);
+}
+.cf-mark .cf-wp-dia {
+  width: calc(var(--u) * 9);
+  height: calc(var(--u) * 9);
+  border-color: #8fd0ff;
+  background: rgba(120, 190, 255, 0.22);
+  box-shadow: 0 0 8px rgba(110, 180, 255, 0.75);
+  animation: none;
+}
+.cf-mark .cf-wp-l {
+  font-size: calc(var(--u) * 10);
+  letter-spacing: 0.18em;
+  color: #a6dbff;
+}
+.cf-mark .cf-wp-d {
+  font-size: calc(var(--u) * 14);
+}
+.cf-mark .cf-wp-arrow::after {
+  border-color: transparent transparent transparent #8fd0ff;
+}
+.cf-hud.scoped .cf-marks {
+  display: none;
 }
 
 .cf-mask {

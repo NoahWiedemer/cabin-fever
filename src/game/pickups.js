@@ -67,7 +67,7 @@ export class Pickups {
     return obj;
   }
 
-  spawnSupply(kind, pos) {
+  spawnSupply(kind, pos, { life = null } = {}) {
     const g = new THREE.Group();
     const box = this._proto(kind).clone();
     box.traverse((o) => {
@@ -86,10 +86,15 @@ export class Pickups {
     g.position.set(pos.x, (ground > -50 ? ground : pos.y) + 0.02, pos.z);
     g.rotation.y = Math.random() * Math.PI * 2;
     this.scene.add(g);
-    this.list.push({ type: 'supply', kind, obj: g, glow: gl, life: kind === 'pack' ? 60 : 35, t: Math.random() * 10, baseY: g.position.y });
+    this.list.push({ type: 'supply', kind, obj: g, glow: gl, life: life ?? (kind === 'pack' ? 60 : 35), t: Math.random() * 10, baseY: g.position.y });
   }
 
-  spawnWeapon(id, pos, { permanent = false, announce = false } = {}) {
+  /**
+   * A weapon to pick up. permanent: stays until taken (else `life` s, default 60); ammo: the rounds a
+   * dropped grenade launcher had left ({ mag }); mark: a special weapon (an event's cargo, a special
+   * spawn): shown on the radar at any range and by a marker on screen (game._updateHud).
+   */
+  spawnWeapon(id, pos, { permanent = false, announce = false, ammo = null, mark = false, life = 60 } = {}) {
     const g = new THREE.Group();
     let w;
     try {
@@ -110,9 +115,18 @@ export class Pickups {
     if (gl) g.add(gl);
     g.position.copy(pos).add(new THREE.Vector3(0, 0.12, 0));
     this.scene.add(g);
-    const item = { type: 'weapon', id, obj: g, glow: gl, life: permanent ? Infinity : 60, t: 0, baseY: g.position.y, weapon: w };
+    const item = { type: 'weapon', id, obj: g, glow: gl, life: permanent ? Infinity : life, t: 0, baseY: g.position.y, weapon: w, ammo, mark };
     this.list.push(item);
     return item;
+  }
+
+  /** Something the player let go of ({ id, ammo } from WeaponSystem.giveWeapon) lands at their feet. */
+  dropWeapon(drop, pos) {
+    const n = this.list.filter((p) => p.type === 'weapon' && p.obj.position.distanceToSquared(pos) < 1).length;
+    const a = n * 2.4;
+    const at = pos.clone().add(new THREE.Vector3(Math.cos(a) * 0.35 * Math.min(n, 1), 0.3, Math.sin(a) * 0.35 * Math.min(n, 1)));
+    // a launcher with rounds left lies there longer: it's the only one you'll find for a while
+    return this.spawnWeapon(drop.id, at, { ammo: drop.ammo, life: drop.ammo ? 150 : 60 });
   }
 
   clear() {
@@ -156,16 +170,18 @@ export class Pickups {
     }
     if (prompt) {
       const def = WEAPONS[prompt.id];
-      game.hud?.setPickupPrompt(`Press [E] to pick up ${def.name}`);
+      const rounds = def.fixedAmmo ? prompt.ammo?.mag ?? def.mag : null; // a grenade launcher: its load
+      game.hud?.setPickupPrompt(`Press [E] to pick up ${def.name}${rounds != null ? ` (${rounds} rounds)` : ''}`);
       if (input && input.hit('KeyE')) {
-        const dropped = game.weapons.giveWeapon(prompt.id);
+        const dropped = game.weapons.giveWeapon(prompt.id, undefined, prompt.ammo);
         this.scene.remove(prompt.obj);
         this.list.splice(this.list.indexOf(prompt), 1);
         game.audio.play('pickup_weapon', { volume: 0.9 });
-        game.hud?.banner(def.name, 'Weapon acquired', 1.8, 'success');
-        if (dropped && dropped !== prompt.id) {
-          this.spawnWeapon(dropped, player.pos.clone().add(new THREE.Vector3(0, 0.3, 0)), { permanent: false });
-        }
+        const back = WEAPONS[game.weapons.stash[game.weapons.cur]]; // the gun a launcher sent onto your back
+        const load = game.weapons.ammo[prompt.id]?.mag ?? rounds;
+        const sub = rounds == null ? 'Weapon acquired' : `${load} rounds · no reloads${back ? ` · ${back.name} on your back` : ''}`;
+        game.hud?.banner(def.name, sub, rounds != null ? 2.8 : 1.8, 'success');
+        for (const d of dropped) this.dropWeapon(d, player.pos);
       }
     } else {
       game.hud?.setPickupPrompt(null);
@@ -204,6 +220,6 @@ export class Pickups {
   }
 
   radarList() {
-    return this.list.map((p) => ({ x: p.obj.position.x, z: p.obj.position.z, kind: p.type === 'weapon' ? 'weapon' : p.kind }));
+    return this.list.map((p) => ({ x: p.obj.position.x, z: p.obj.position.z, kind: p.type === 'weapon' ? (p.mark ? 'special' : 'weapon') : p.kind, mark: !!p.mark }));
   }
 }

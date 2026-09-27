@@ -9,6 +9,10 @@ export const FIRETEAM = [
   { id: 'soldier', name: 'Soldier', body: 'soldier', weapon: 'm4a1', gun: 'M4A1', rank: 3 },
 ];
 
+// your own character: never a bot and never picked. The EmoSquad operator stands in for you wherever you're
+// seen from outside: in the cutscenes (game/cutscenes.js castOf) and on the store's paperdoll (ui/storeDoll.js)
+export const PLAYER_CHARACTER = { id: 'player', name: 'You', body: 'emosquad', weapon: 'm4a1', gun: 'M4A1', rank: 3 };
+
 export const FIRETEAM_IDS = FIRETEAM.map((c) => c.id);
 export const FIRETEAM_BY_ID = Object.fromEntries(FIRETEAM.map((c) => [c.id, c]));
 

@@ -20,6 +20,7 @@ import { poseDog, resetDog } from './dogAnim.js';
 import { RagdollSystem } from './ragdoll.js';
 import { clamp, lerp, damp, dampAngle, rand, rayCapsule, raySphere, wrapAngle } from '../core/utils.js';
 import { levelOf } from '../world/level.js';
+import { FLAG_ZPASS } from '../world/collision.js';
 
 // walk/run of the original four are 90 % of their first tuning; the dog is 110 % of the old mauler.
 // Optional: leap {min, max distance, vy, t, cd: [min, max], snd, pitch}, turn (yaw rate), height
@@ -104,6 +105,7 @@ export class Zombie {
       stepHeight: 0.52,
       onGround: true,
       gravity: 18,
+      pass: FLAG_ZPASS, // the stop in the coal tunnel's mouth keeps only the fireteam out (world/shaft.js)
     };
     this.hitParts = this._buildHitParts(char.hit);
     this.active = false;
@@ -728,7 +730,7 @@ export class Zombie {
       const lo = p.y + b.stepHeight, hi = p.y + b.height;
       let fx = 0, fz = 0;
       ctx.world.query(p.x - r, p.z - r, p.x + r, p.z + r, (bx) => {
-        if (bx.maxY <= lo || bx.minY >= hi) return;
+        if (bx.maxY <= lo || bx.minY >= hi || bx.flags & b.pass) return;
         const cx = p.x < bx.minX ? bx.minX : p.x > bx.maxX ? bx.maxX : p.x;
         const cz = p.z < bx.minZ ? bx.minZ : p.z > bx.maxZ ? bx.maxZ : p.z;
         const dx = p.x - cx, dz = p.z - cz;

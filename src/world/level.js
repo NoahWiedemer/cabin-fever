@@ -15,6 +15,7 @@ import { buildProp, clearPropCache } from './propsSafe.js';
 import { getMaterial } from './materials.js';
 import { buildStairCage } from './stairCage.js';
 import { buildLab, LAB, LAB_OPENINGS } from './lab.js';
+import { buildShaft, SHAFT } from './shaft.js';
 import { buildRanch, ranchClear, adjustSpawns } from './ranch.js';
 import { BARN, inBarn } from './ranchLayout.js';
 
@@ -80,6 +81,7 @@ export function buildLevel() {
     [2.4, 12, -8, 1], // gun shop cellar footprint (its stairs come down from the back room)
     [-17.4, -12, -3.25, -1.35], // cellar stairwell
     LAB.mudHole, // the lab behind the basement's south wall (world/lab.js re-covers the yard over it)
+    SHAFT.hole, // the coal tunnel off the basement (world/shaft.js), under the house
   ], { mat: 'mud', surface: SURF.mud, grime: 0, skip: ['ny'], castShadow: false });
 
   // invisible world boundary
@@ -211,11 +213,13 @@ export function buildLevel() {
   const bWallOpts = { mat: 'concrete', surface: SURF.concrete, floorY: FLOOR.basement, ceilY: BCEIL, jamb: 'concrete' };
   B.wall('z', -12 + TE / 2, -8, 4, FLOOR.basement, 0, TE, [{ a: -3.0, b: -1.6, y0: FLOOR.basement, y1: FLOOR.basement + 2.6 }], bWallOpts);
   B.wall('x', -8 + TE / 2, -12, 2.4, FLOOR.basement, 0, TE, [], bWallOpts);
-  B.wall('z', 2.4, -8, 4, FLOOR.basement, 0, TE, [], bWallOpts);
+  // east wall: broken open at its south end, into the old coal tunnel the infected come up (world/shaft.js)
+  B.wall('z', SHAFT.x, -8, 4, FLOOR.basement, 0, TE, [{ a: SHAFT.z0, b: SHAFT.z1, y0: FLOOR.basement, y1: SHAFT.top }], bWallOpts);
   B.wall('x', 4, -12, 2.55, FLOOR.basement, 0, TE, LAB_OPENINGS, bWallOpts);
   // behind it: the vault door, the armored window and the lab (world/lab.js)
   const lab = buildLab(B, world, lamps);
   dynamic.add(lab.door.pivot); // the vault door leaf swings open at the end of the story (game/cutscenes.js)
+  const shaft = buildShaft(B, world);
   // basement pillars
   for (const [px, pz] of [[-7, -2.8], [-3, -2.8], [-7, 1.4], [-3, 1.4]]) {
     B.box(px - 0.2, FLOOR.basement, pz - 0.2, px + 0.2, BCEIL, pz + 0.2, { mat: 'concrete', surface: SURF.concrete, floorY: FLOOR.basement, ceilY: BCEIL });
@@ -434,6 +438,7 @@ export function buildLevel() {
     lamps.push({
       pos: bulb,
       level,
+      ceil: ceilY, // the ceiling it hangs from (lighting.js: the pool of light the bulb throws up there)
       color: opts.color ?? 0xffb46b,
       intensity: (opts.intensity ?? 34) * 2.3,
       angle: opts.angle ?? 1.2,
@@ -550,7 +555,7 @@ export function buildLevel() {
   prop('workbench', 1.9, FLOOR.basement, 1.3, -Math.PI / 2); // east wall: the south wall has the lab window
   prop('barrel', -11.0, FLOOR.basement, -5.8, 0);
   prop('barrel', -10.3, FLOOR.basement, -5.2, 0);
-  prop('crate', 1.4, FLOOR.basement, 3.2, 0.2);
+  prop('crate', 1.6, FLOOR.basement, -4.3, 0.2); // (clear of the coal tunnel's mouth)
   prop('cardboardStack', -8.3, FLOOR.basement, 3.35, 0.3);
   prop('crateLong', 0.4, FLOOR.basement, -6.9, 0);
   prop('lantern', 1.95, FLOOR.basement + 0.92, 1.6, 0);
@@ -784,6 +789,7 @@ export function buildLevel() {
     generator: genProp ? { object: genProp.object, anchors: genProp.anchors, x: GEN.x, y: FLOOR.basement, z: GEN.z, rot: GEN.rot, panel: new THREE.Vector3(-11.85 + TE / 2 + 0.02, FLOOR.basement + 1.55, 2.25) } : null,
     defensePosts,
     lab,
+    shaft, // the coal tunnel's mouth (world/shaft.js)
     playerSpawn: new THREE.Vector3(0.2, 0, -0.8),
     shop: {
       bounds: [2.55, 11.85, -7.85, 0.85], // x0, x1, z0, z1 of the cellar

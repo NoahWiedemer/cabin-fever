@@ -5,7 +5,7 @@
 // lights up, and a box flashes when an item goes on. The store owns the state and the clicks
 // (.cf-st-ds[data-slot]); this only draws.
 //
-// The figure is a teammate body (FIG_BODY: the masked Scorpion operator), rendered ONCE by
+// The figure is your own character (FIG_BODY: the EmoSquad operator), rendered ONCE by
 // actors/portraits.js (the fireteam portraits' throwaway renderer and three-point light) standing at
 // ease without a gun; the leader-line anchors are projected with the same camera. About 0.1 s of
 // work, done in idle time after boot (Store.warmup) or when GEAR first opens, then cached for the
@@ -37,9 +37,9 @@ const ANCHOR_PTS = {
   feet: ['footL', 0.03, -0.04, 0.13],
 };
 
-// the body: the masked Scorpion operator (actors/gltfCharacter.js 'meshy'; the procedural soldier if its
-// GLB is missing), a faceless stand-in for you
-const FIG_BODY = 'meshy';
+// the body: your own character, the EmoSquad operator (actors/fireteam.js PLAYER_CHARACTER, gltfCharacter.js
+// 'emosquad'; the procedural soldier if its GLB is missing)
+const FIG_BODY = 'emosquad';
 // the render: a tall, slightly turned full-body shot, top of the head to below the boots
 const FIG_W = 320;
 const FIG_H = 704;
