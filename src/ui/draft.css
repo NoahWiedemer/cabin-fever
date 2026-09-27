@@ -1,0 +1,497 @@
+/* =====================================================================
+   CABIN FEVER — the Gauntlet's card drafts (ui/draft.js)
+   Three cards dealt onto a dark table: rarity colors (steel, blue,
+   purple, gold), curses in blood red. Builds on the .cf-menu tokens.
+   ===================================================================== */
+
+.cf-menu.cf-draft {
+  z-index: 60; /* under the pause menu, like the store */
+  display: none;
+  pointer-events: auto;
+  --amber: #f5a524;
+}
+.cf-menu.cf-draft.on {
+  display: block;
+  animation: cf-fade-in 0.3s ease-out both;
+}
+
+/* ---------------- backdrop ---------------- */
+
+.cf-dr-bg {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.cf-dr-bg > div {
+  position: absolute;
+}
+.cf-dr-dim {
+  inset: 0;
+  background: radial-gradient(ellipse 90% 80% at 50% 42%, rgba(12, 13, 16, 0.84), rgba(3, 4, 6, 0.96));
+  -webkit-backdrop-filter: blur(7px) saturate(0.5);
+  backdrop-filter: blur(7px) saturate(0.5);
+}
+.cf-dr-glow {
+  left: 50%;
+  top: 56%;
+  width: 130vmin;
+  height: 70vmin;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(ellipse at center, rgba(255, 170, 60, 0.13), transparent 62%);
+  transition: background 0.5s;
+}
+.cf-draft[data-kind='curse'] .cf-dr-glow {
+  background: radial-gradient(ellipse at center, rgba(220, 30, 20, 0.2), transparent 62%);
+}
+.cf-draft .cf-bg-noise {
+  opacity: 0.06;
+}
+
+.cf-dr-wrap {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: calc(var(--u) * 30);
+  padding: calc(var(--u) * 28) calc(var(--u) * 20);
+  overflow-y: auto;
+}
+
+/* ---------------- header ---------------- */
+
+.cf-dr-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  animation: cf-rise 0.45s cubic-bezier(0.2, 0.9, 0.3, 1) both;
+}
+.cf-dr-k {
+  font-family: var(--f-mono);
+  font-size: calc(var(--u) * 14);
+  letter-spacing: 0.3em;
+  color: var(--amber);
+}
+.cf-draft[data-kind='curse'] .cf-dr-k {
+  color: #ff5a46;
+}
+.cf-dr-t {
+  margin: calc(var(--u) * 8) 0 0;
+  font-family: var(--f-stencil);
+  font-weight: 400;
+  font-size: calc(var(--u) * 64);
+  line-height: 1;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+  color: #f3ecdf;
+  text-shadow: 0 0 2px #000, 0 4px 0 rgba(0, 0, 0, 0.5), 0 0 34px rgba(255, 180, 60, 0.35);
+}
+.cf-draft[data-kind='curse'] .cf-dr-t {
+  color: #e8321f;
+  text-shadow: 0 0 2px #000, 0 4px 0 rgba(0, 0, 0, 0.5), 0 0 36px rgba(230, 30, 20, 0.6);
+}
+.cf-dr-sub {
+  margin-top: calc(var(--u) * 10);
+  font-weight: 600;
+  font-size: calc(var(--u) * 17);
+  letter-spacing: 0.08em;
+  color: #aaa399;
+}
+.cf-dr-steps {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--u) * 10);
+  margin-top: calc(var(--u) * 14);
+}
+.cf-dr-steps:empty {
+  display: none;
+}
+.cf-dr-steps span {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--u) * 7);
+  padding: calc(var(--u) * 4) calc(var(--u) * 12) calc(var(--u) * 3) calc(var(--u) * 5);
+  font-weight: 700;
+  font-size: calc(var(--u) * 12);
+  letter-spacing: 0.26em;
+  color: #6e737a;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+}
+.cf-dr-steps span b {
+  display: grid;
+  place-items: center;
+  width: calc(var(--u) * 18);
+  height: calc(var(--u) * 18);
+  font-family: var(--f-num);
+  font-size: calc(var(--u) * 15);
+  letter-spacing: 0;
+  color: #0d0e10;
+  background: #5b6066;
+}
+.cf-dr-steps span.on {
+  color: #f3ecdf;
+  border-color: rgba(245, 165, 36, 0.55);
+  background: rgba(245, 165, 36, 0.1);
+}
+.cf-dr-steps span.on b {
+  background: var(--amber);
+}
+.cf-draft[data-kind='curse'] .cf-dr-steps span.on {
+  border-color: rgba(255, 70, 50, 0.6);
+  background: rgba(255, 60, 40, 0.12);
+}
+.cf-draft[data-kind='curse'] .cf-dr-steps span.on b {
+  background: #ff4a36;
+}
+.cf-dr-steps span.done {
+  color: #9aa0a6;
+}
+.cf-dr-steps span.done b {
+  background: #9aa0a6;
+}
+.cf-dr-steps i {
+  width: calc(var(--u) * 28);
+  height: 1px;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* ---------------- cards ---------------- */
+
+.cf-dr-cards {
+  display: flex;
+  justify-content: center;
+  align-items: stretch;
+  gap: calc(var(--u) * 28);
+  perspective: 1400px;
+}
+.cf-dr-card {
+  --rc: #b8c0c8; /* rarity color */
+  --rg: rgba(184, 192, 200, 0.3);
+  position: relative;
+  display: block;
+  width: min(calc(var(--u) * 292), 30vw);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  outline: none;
+}
+.cf-dr-card.r-rare {
+  --rc: #4fb0ff;
+  --rg: rgba(79, 176, 255, 0.34);
+}
+.cf-dr-card.r-epic {
+  --rc: #c27dff;
+  --rg: rgba(194, 125, 255, 0.36);
+}
+.cf-dr-card.r-legendary {
+  --rc: #ffb52e;
+  --rg: rgba(255, 181, 46, 0.42);
+}
+.cf-dr-card.r-curse {
+  --rc: #ff4a36;
+  --rg: rgba(255, 60, 40, 0.4);
+}
+.cf-dr-card.r-curse.next {
+  --rc: #ff8b3d;
+  --rg: rgba(255, 130, 50, 0.38);
+}
+.cf-dr-face {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: min(calc(var(--u) * 440), 62vh);
+  min-height: calc(var(--u) * 360);
+  padding: calc(var(--u) * 14) calc(var(--u) * 18) calc(var(--u) * 14);
+  background:
+    radial-gradient(ellipse 120% 60% at 50% 0%, var(--rg), transparent 60%),
+    linear-gradient(180deg, rgba(30, 33, 38, 0.97), rgba(11, 12, 15, 0.98));
+  border: 1px solid color-mix(in srgb, var(--rc) 45%, transparent);
+  clip-path: polygon(calc(var(--u) * 16) 0, 100% 0, 100% calc(100% - var(--u) * 16), calc(100% - var(--u) * 16) 100%, 0 100%, 0 calc(var(--u) * 16));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transition: transform 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.2), filter 0.22s;
+  overflow: hidden;
+}
+/* a thin inner frame in the rarity color */
+.cf-dr-face::before {
+  content: '';
+  position: absolute;
+  inset: calc(var(--u) * 5);
+  border: 1px solid color-mix(in srgb, var(--rc) 22%, transparent);
+  clip-path: polygon(calc(var(--u) * 12) 0, 100% 0, 100% calc(100% - var(--u) * 12), calc(100% - var(--u) * 12) 100%, 0 100%, 0 calc(var(--u) * 12));
+  pointer-events: none;
+}
+/* the shine that sweeps over a card when it's hovered (legendary ones every few seconds) */
+.cf-dr-face::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 38%, rgba(255, 255, 255, 0.16) 50%, transparent 62%);
+  background-size: 250% 100%;
+  background-position: 140% 0;
+  pointer-events: none;
+}
+.cf-dr-card.r-legendary .cf-dr-face::after {
+  animation: cf-dr-shine 3.2s 1s ease-in-out infinite;
+}
+.cf-dr-card:hover .cf-dr-face::after,
+.cf-dr-card:focus-visible .cf-dr-face::after {
+  animation: cf-dr-shine 0.9s ease-out both;
+}
+.cf-dr-card.r-curse .cf-dr-face {
+  background:
+    radial-gradient(ellipse 120% 60% at 50% 0%, var(--rg), transparent 60%),
+    repeating-linear-gradient(135deg, rgba(255, 40, 20, 0.025) 0 calc(var(--u) * 6), transparent calc(var(--u) * 6) calc(var(--u) * 12)),
+    linear-gradient(180deg, rgba(40, 13, 11, 0.97), rgba(13, 6, 6, 0.98));
+}
+
+.cf-dr-card:hover .cf-dr-face,
+.cf-dr-card:focus-visible .cf-dr-face {
+  transform: translateY(calc(var(--u) * -12)) scale(1.035);
+  filter: drop-shadow(0 0 calc(var(--u) * 18) var(--rg)) drop-shadow(0 calc(var(--u) * 18) calc(var(--u) * 26) rgba(0, 0, 0, 0.6));
+  border-color: var(--rc);
+}
+
+.cf-dr-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: relative;
+}
+.cf-dr-top .cf-kc {
+  min-width: calc(var(--u) * 26);
+}
+.cf-dr-type {
+  font-weight: 700;
+  font-size: calc(var(--u) * 13);
+  letter-spacing: 0.32em;
+  margin-right: -0.32em;
+  color: var(--rc);
+}
+.cf-dr-art {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  height: calc(var(--u) * 170);
+  margin: calc(var(--u) * 8) calc(var(--u) * -6) calc(var(--u) * 6);
+  background: radial-gradient(circle at 50% 55%, var(--rg), transparent 62%);
+}
+.cf-dr-art > svg.cf-ci {
+  width: calc(var(--u) * 104);
+  height: calc(var(--u) * 104);
+  color: var(--rc);
+  stroke-width: 1.7;
+  filter: drop-shadow(0 0 calc(var(--u) * 10) var(--rg)) drop-shadow(0 2px 0 rgba(0, 0, 0, 0.8));
+  transition: transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.3);
+}
+.cf-dr-art img {
+  max-width: 96%;
+  max-height: calc(var(--u) * 160);
+  object-fit: contain;
+  filter: drop-shadow(0 calc(var(--u) * 8) calc(var(--u) * 10) rgba(0, 0, 0, 0.7));
+  transition: transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.3);
+}
+.cf-dr-sil svg {
+  width: calc(var(--u) * 230);
+  height: calc(var(--u) * 72);
+  color: #dfe3e8;
+  filter: drop-shadow(0 0 calc(var(--u) * 10) var(--rg)) drop-shadow(0 2px 0 rgba(0, 0, 0, 0.8));
+}
+.cf-dr-card:hover .cf-dr-art > svg.cf-ci,
+.cf-dr-card:hover .cf-dr-art img,
+.cf-dr-card:focus-visible .cf-dr-art > svg.cf-ci,
+.cf-dr-card:focus-visible .cf-dr-art img {
+  transform: scale(1.08) rotate(-2deg);
+}
+.cf-dr-name {
+  font-family: var(--f-num);
+  font-weight: 600;
+  font-size: calc(var(--u) * 38);
+  line-height: 0.9;
+  padding-top: 0.12em;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #f5f0e6;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.6);
+}
+.cf-dr-tag {
+  margin-top: calc(var(--u) * 5);
+  font-family: var(--f-mono);
+  font-size: calc(var(--u) * 12.5);
+  letter-spacing: 0.1em;
+  color: var(--rc);
+  min-height: 1.2em;
+}
+.cf-dr-rule {
+  height: 1px;
+  margin: calc(var(--u) * 12) 0;
+  background: linear-gradient(90deg, var(--rc), transparent);
+  opacity: 0.55;
+}
+.cf-dr-text {
+  flex: 1;
+  font-weight: 600;
+  font-size: calc(var(--u) * 17);
+  line-height: 1.25;
+  letter-spacing: 0.02em;
+  color: #cfc8bd;
+}
+.cf-dr-rar {
+  align-self: flex-end;
+  display: flex;
+  align-items: center;
+  gap: calc(var(--u) * 7);
+  font-weight: 700;
+  font-size: calc(var(--u) * 11);
+  letter-spacing: 0.34em;
+  margin-right: -0.34em;
+  color: var(--rc);
+}
+.cf-dr-rar:not(:empty)::before {
+  content: '';
+  width: calc(var(--u) * 7);
+  height: calc(var(--u) * 7);
+  background: var(--rc);
+  transform: rotate(45deg);
+  box-shadow: 0 0 calc(var(--u) * 8) var(--rc);
+}
+
+/* dealt in, picked, thrown away */
+.cf-dr-cards.deal .cf-dr-card {
+  animation: cf-dr-deal 0.7s calc(var(--i) * 0.09s + 0.08s) cubic-bezier(0.2, 0.9, 0.25, 1.08) both;
+}
+.cf-dr-card.picked .cf-dr-face {
+  animation: cf-dr-flare 0.56s cubic-bezier(0.2, 0.9, 0.3, 1) both;
+  border-color: var(--rc);
+}
+.cf-dr-card.gone {
+  animation: cf-dr-fall 0.45s ease-in both !important;
+  pointer-events: none;
+}
+.cf-dr-card.picked {
+  pointer-events: none;
+}
+@keyframes cf-dr-deal {
+  from { opacity: 0; transform: translateY(calc(var(--u) * 90)) rotate(calc((var(--i) - 1) * 7deg)) scale(0.92); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes cf-dr-flare {
+  0% { transform: translateY(calc(var(--u) * -12)) scale(1.035); filter: brightness(1); }
+  30% { transform: translateY(calc(var(--u) * -20)) scale(1.09); filter: brightness(1.9) drop-shadow(0 0 calc(var(--u) * 30) var(--rc)); }
+  100% { transform: translateY(calc(var(--u) * -30)) scale(1.02); filter: brightness(1.1); opacity: 0; }
+}
+@keyframes cf-dr-fall {
+  to { opacity: 0; transform: translateY(calc(var(--u) * 60)) rotate(calc((var(--i) - 1) * 5deg)) scale(0.94); }
+}
+@keyframes cf-dr-shine {
+  from { background-position: 140% 0; }
+  to { background-position: -40% 0; }
+}
+
+/* ---------------- the run so far ---------------- */
+
+.cf-dr-foot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(var(--u) * 8);
+  max-width: min(calc(var(--u) * 1000), 96vw);
+  animation: cf-rise 0.5s 0.35s both;
+}
+.cf-dr-foot:empty {
+  display: none;
+}
+.cf-dr-have {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: calc(var(--u) * 6);
+}
+.cf-dr-have-h {
+  margin-right: calc(var(--u) * 6);
+  font-weight: 700;
+  font-size: calc(var(--u) * 11);
+  letter-spacing: 0.3em;
+  color: #6c737a;
+}
+.cf-dr-have small {
+  font-weight: 700;
+  font-size: calc(var(--u) * 11);
+  letter-spacing: 0.2em;
+  color: #4b5056;
+}
+.cf-dr-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--u) * 6);
+  padding: calc(var(--u) * 3) calc(var(--u) * 10) calc(var(--u) * 3) calc(var(--u) * 5);
+  border: 1px solid rgba(245, 165, 36, 0.28);
+  background: rgba(245, 165, 36, 0.07);
+  color: #ffd27f;
+}
+.cf-dr-chip svg {
+  width: calc(var(--u) * 18);
+  height: calc(var(--u) * 18);
+}
+.cf-dr-chip b {
+  font-weight: 700;
+  font-size: calc(var(--u) * 12);
+  letter-spacing: 0.1em;
+  color: #e9e2d6;
+}
+.cf-dr-chip em {
+  font-style: normal;
+  font-family: var(--f-num);
+  font-size: calc(var(--u) * 16);
+  line-height: 1;
+  color: #ffd27f;
+}
+.cf-dr-chip.curse {
+  border-color: rgba(255, 70, 50, 0.32);
+  background: rgba(255, 50, 30, 0.08);
+  color: #ff6a55;
+}
+.cf-dr-chip.curse em {
+  color: #ff6a55;
+}
+.cf-dr-chip.next {
+  border-style: dashed;
+  color: #ff9a5a;
+}
+
+@media (max-width: 900px), (max-height: 640px) {
+  .cf-dr-cards {
+    gap: calc(var(--u) * 14);
+  }
+  .cf-dr-t {
+    font-size: calc(var(--u) * 46);
+  }
+  .cf-dr-art {
+    height: calc(var(--u) * 120);
+  }
+  .cf-dr-art > svg.cf-ci {
+    width: calc(var(--u) * 76);
+    height: calc(var(--u) * 76);
+  }
+  .cf-dr-name {
+    font-size: calc(var(--u) * 30);
+  }
+  .cf-dr-text {
+    font-size: calc(var(--u) * 15);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cf-dr-cards.deal .cf-dr-card,
+  .cf-dr-card.r-legendary .cf-dr-face::after {
+    animation: none;
+  }
+}

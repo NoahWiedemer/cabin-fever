@@ -9,6 +9,8 @@
  * elements are only touched when their value actually changes. The radar is a
  * <canvas> redrawn each frame.
  */
+import { insigniaSvg, masterySvg } from './insignia.js';
+import { cardIcon } from './cardIcons.js';
 
 const FONT_HREF =
   'https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&family=Teko:wght@400;500;600;700&display=swap';
@@ -305,6 +307,7 @@ const HUD_HTML = `
   <div class="cf-infected"><span>INFECTED</span><b>0</b></div>
   <div class="cf-gen">${BOLT_SVG}<div class="cf-gen-bar"><i></i></div><b>100%</b></div>
 </div>
+<div class="cf-career"></div>
 <div class="cf-banner">
   <div class="cf-banner-title"></div>
   <div class="cf-banner-rule"><i></i></div>
@@ -343,6 +346,7 @@ const HUD_HTML = `
     </div>
     <div class="cf-sb-row cf-sb-hdr"><span></span><span>NAME</span><span>SCORE</span><span>KILLS</span><span>DEATHS</span><span>HEADSHOTS</span></div>
     <div class="cf-board-rows"></div>
+    <div class="cf-board-run"></div>
     <div class="cf-board-foot"><span>CABIN FEVER</span><span class="cf-board-foot-r"></span></div>
   </div>
 </div>
@@ -388,6 +392,7 @@ export class HUD {
       infected: q('.cf-infected'),
       infectedNum: q('.cf-infected b'),
       banner: q('.cf-banner'),
+      career: q('.cf-career'),
       bTitle: q('.cf-banner-title'),
       bSub: q('.cf-banner-sub'),
       reload: q('.cf-reload'),
@@ -449,6 +454,7 @@ export class HUD {
       boardMeta: q('.cf-board-meta'),
       boardRows: q('.cf-board-rows'),
       boardFoot: q('.cf-board-foot-r'),
+      boardRun: q('.cf-board-run'),
     };
 
     this._c = new Map(); // value cache for DOM writes
@@ -822,6 +828,39 @@ export class HUD {
     }
   }
 
+  /** a promotion (game/progress.js RANKS): the new insignia punches in, gold, with what it unlocked */
+  promotion(rank, index, unlock = null) {
+    this._careerToast(
+      'promo',
+      `<div class="cf-cr-ins">${insigniaSvg(index)}</div>` +
+        `<div class="cf-cr-t"><small>PROMOTED</small><b>${esc(rank.name)}</b><span>${esc(rank.short)} · GRADE ${index + 1} / 23</span>${unlock ? `<em>${esc(unlock)} UNLOCKED</em>` : ''}</div>`,
+      unlock ? 6.5 : 5.2
+    );
+  }
+
+  /** a weapon's mastery went up a level (and a camo with it, at some levels) */
+  masteryUp(weapon, level, unlock = null) {
+    this._careerToast(
+      'mastery',
+      `<div class="cf-cr-ins">${masterySvg(level)}</div>` +
+        `<div class="cf-cr-t"><small>WEAPON MASTERY</small><b>${esc(weapon)} <i>LV ${level}</i></b>${unlock ? `<em>${esc(unlock)} UNLOCKED</em>` : ''}</div>`,
+      unlock ? 4.6 : 3.4
+    );
+  }
+
+  _careerToast(kind, html, secs) {
+    const box = this.$.career;
+    const el = document.createElement('div');
+    el.className = `cf-cr cf-cr-${kind}`;
+    el.innerHTML = html + '<i class="cf-cr-shine"></i>';
+    box.appendChild(el);
+    while (box.children.length > 3) box.firstElementChild.remove();
+    setTimeout(() => {
+      el.classList.add('out');
+      setTimeout(() => el.remove(), 480);
+    }, secs * 1000);
+  }
+
   banner(title, subtitle, durationSec = 3, style = 'normal') {
     const b = {
       title: String(title ?? ''),
@@ -927,9 +966,12 @@ export class HUD {
     const $ = this.$;
     this._cls($.buy, 'on', 'buyOn', !!info);
     if (!info) return;
-    const where = info.gunshop ? 'Gun shop in the cellar' : 'Tap <b class="cf-key">F</b> for the gun shop';
+    // the Gauntlet has no shop: a breather between the cards and the next wave
+    const where = info.rogue ? 'No shop in the Gauntlet' : info.gunshop ? 'Gun shop in the cellar' : 'Tap <b class="cf-key">F</b> for the gun shop';
     const html = `${where} <i>·</i> hold <b class="cf-key">F</b> when ready for round ${pad(info.next, 2)}`;
     if (this._set('buyS', html)) $.buyS.innerHTML = html;
+    const t = info.rogue ? 'BREATHER' : 'BUY PHASE';
+    if (this._set('buyT', t)) $.buy.querySelector('.cf-buy-t').textContent = t;
   }
 
   /** Hold ring under the crosshair: progress 0..1 or null; `label` (HTML) replaces the ready-up hint. */
@@ -1067,7 +1109,7 @@ export class HUD {
     const list = Array.isArray(rows) ? rows.slice() : [];
     list.sort((a, b) => (b.score || 0) - (a.score || 0));
     let key = '';
-    for (const r of list) key += `${r.name}|${r.score}|${r.kills}|${r.deaths}|${r.headshots}|${r.isPlayer ? 1 : 0}|${r.rank};`;
+    for (const r of list) key += `${r.name}|${r.score}|${r.kills}|${r.deaths}|${r.headshots}|${r.isPlayer ? 1 : 0}|${r.rank}|${r.insignia};`;
     if (key === this._boardKey) return;
     this._boardKey = key;
     let html = '';
@@ -1075,7 +1117,7 @@ export class HUD {
       const r = list[i];
       html +=
         `<div class="cf-sb-row${r.isPlayer ? ' me' : ''}">` +
-        `<span class="cf-sb-rank">${rankSvg(r.rank)}</span>` +
+        `<span class="cf-sb-rank">${r.insignia != null ? insigniaSvg(r.insignia) : rankSvg(r.rank)}</span>` +
         `<span class="cf-sb-name"><i>${i + 1}</i>${esc(r.name ?? '')}</span>` +
         `<span class="cf-sb-num">${pad(r.score, 6)}</span>` +
         `<span class="cf-sb-num">${Math.max(0, r.kills | 0)}</span>` +
@@ -1084,6 +1126,14 @@ export class HUD {
         `</div>`;
     }
     this.$.boardRows.innerHTML = html;
+  }
+
+  /** the Gauntlet's run on the scoreboard: { perks, curses } (game/rogue.js summary) or null */
+  setBoardRun(run) {
+    const key = run ? JSON.stringify(run) : '';
+    if (!this._set('boardRun', key)) return;
+    const chip = (x, curse) => `<span class="cf-br-chip${curse ? ' curse' : ''}${x.next ? ' next' : ''}">${cardIcon(x.icon)}<b>${esc(x.name)}</b>${x.n > 1 ? `<em>×${x.n}</em>` : ''}</span>`;
+    this.$.boardRun.innerHTML = run ? `${run.perks.map((x) => chip(x)).join('')}${run.curses.map((x) => chip(x, true)).join('')}` : '';
   }
 
   _updateBoardMeta() {
@@ -1265,6 +1315,48 @@ export class HUD {
         ctx.lineTo(x - k, y);
         ctx.closePath();
         ctx.fill();
+      }
+    }
+
+    // the NOX squad (actors/merc.js): red wedges pointing where each one faces, pinned to the rim when far; where
+    // their helicopter drops them, a pulsing ring
+    const th = r.threats;
+    if (th && th.length) {
+      const rim = R - 5 * dpr;
+      for (let i = 0; i < th.length; i++) {
+        const q = th[i];
+        const dx = q.x - px, dz = q.z - pz;
+        let x = (dx * cy - dz * sy) * s;
+        let y = (dx * sy + dz * cy) * s;
+        const d = Math.hypot(x, y);
+        if (d > rim) {
+          x *= rim / d;
+          y *= rim / d;
+        }
+        x += c;
+        y += c;
+        if (q.drop) {
+          const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 180);
+          ctx.strokeStyle = `rgba(255,70,50,${0.45 + 0.45 * pulse})`;
+          ctx.lineWidth = 1.6 * dpr;
+          ctx.beginPath();
+          ctx.arc(x, y, (5 + 3 * pulse) * dpr, 0, Math.PI * 2);
+          ctx.stroke();
+          continue;
+        }
+        const hx = Math.sin(q.yaw ?? 0), hz = Math.cos(q.yaw ?? 0);
+        const ax = hx * cy - hz * sy, ay = hx * sy + hz * cy; // its heading on the radar
+        const k = 5.2 * dpr;
+        ctx.fillStyle = '#ff3b2e';
+        ctx.strokeStyle = 'rgba(20,0,0,0.85)';
+        ctx.lineWidth = 1 * dpr;
+        ctx.beginPath();
+        ctx.moveTo(x + ax * k, y + ay * k);
+        ctx.lineTo(x - ax * k * 0.6 - ay * k * 0.62, y - ay * k * 0.6 + ax * k * 0.62);
+        ctx.lineTo(x - ax * k * 0.6 + ay * k * 0.62, y - ay * k * 0.6 - ax * k * 0.62);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
       }
     }
 

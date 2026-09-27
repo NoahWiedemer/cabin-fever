@@ -7,6 +7,7 @@ import { AudioSystem } from './core/audio.js';
 import { HUD } from './ui/hud.js';
 import { Menu } from './ui/menu.js';
 import { Store } from './ui/store.js';
+import { Draft } from './ui/draft.js';
 import { MenuMusic } from './ui/music.js';
 import { generateAllTextures } from './world/textures.js';
 import { Game } from './game/game.js';
@@ -41,12 +42,12 @@ const menu = new Menu(document.getElementById('menu'), {
     input.lock();
     wantFullscreen();
     setTimeout(() => {
-      if (started && !input.locked && !game.paused && !store.isOpen) menu.showClickToPlay(true);
+      if (started && !input.locked && !game.paused && !overlayOpen()) menu.showClickToPlay(true);
     }, 1200);
   },
   onResume: () => {
-    // paused from the store: back to shopping, the pointer stays free
-    if (store.isOpen) {
+    // paused from the store (or a Gauntlet draft): back to it, the pointer stays free
+    if (overlayOpen()) {
       if (game) game.paused = false;
       menu.showClickToPlay(false);
       return;
@@ -56,6 +57,7 @@ const menu = new Menu(document.getElementById('menu'), {
   },
   onQuit: () => {
     closeStore();
+    draft.close();
     // a run abandoned after round 1 still goes on the local leaderboard
     const run = game?.quitStats?.();
     game?.quit();
@@ -70,6 +72,7 @@ const menu = new Menu(document.getElementById('menu'), {
     if (!game || !game.config) return;
     gameOverShown = false;
     closeStore();
+    draft.close();
     hud.setVisible(true);
     game.start(game.config);
     started = true;
@@ -101,6 +104,38 @@ const store = new Store(document.getElementById('menu'), {
   onClose: () => closeShop(),
 });
 
+// The Gauntlet's card drafts (game/rogue.js -> game.onDraft): like the store, the pointer is free while the
+// cards are on the table; the last pick puts you back in the game.
+const draft = new Draft(document.getElementById('menu'), {
+  thumb: (k) => store.thumbOf(k),
+  onSfx: (name) => audio.play(name, { volume: 0.55 }),
+  onDone: () => closeDraft(),
+});
+const overlayOpen = () => store.isOpen || draft.isOpen;
+
+function openDraft(spec) {
+  input.enabled = false;
+  input.keys.clear();
+  hud.setVisible(false);
+  menu.showClickToPlay(false);
+  draft.open(spec);
+  input.unlock();
+}
+
+function closeDraft() {
+  if (!draft.isOpen) return;
+  draft.close();
+  hud.setVisible(true);
+  setTimeout(() => {
+    if (!overlayOpen()) input.enabled = true;
+  }, 0);
+  input.lock();
+  wantFullscreen();
+  setTimeout(() => {
+    if (started && !input.locked && !game?.paused && !overlayOpen()) menu.showClickToPlay(true);
+  }, 1200);
+}
+
 function openStore() {
   input.enabled = false; // no walking / firing while shopping
   input.keys.clear();
@@ -128,7 +163,7 @@ function closeShop() {
   wantFullscreen();
   game?.onShopClosed(); // (very rarely the Stalker is waiting right there)
   setTimeout(() => {
-    if (started && !input.locked && !game?.paused && !store.isOpen) menu.showClickToPlay(true);
+    if (started && !input.locked && !game?.paused && !overlayOpen()) menu.showClickToPlay(true);
   }, 1200);
 }
 
@@ -153,7 +188,7 @@ document.addEventListener('fullscreenchange', () => {
 });
 addEventListener('keydown', (e) => {
   // Esc no longer releases the pointer by itself while it's locked to the page: pause like it would
-  if (e.code === 'Escape' && fullscreen.escLocked && input.locked && !store.isOpen) input.unlock();
+  if (e.code === 'Escape' && fullscreen.escLocked && input.locked && !overlayOpen()) input.unlock();
 });
 
 // Browsers keep audio locked until a user gesture: unlock the synth (menu sounds, thunder) on
@@ -176,8 +211,8 @@ input.onLockChange = (locked) => {
     menu.showClickToPlay(false);
     menu.hideAll();
     game.paused = false;
-  } else if (store.isOpen) {
-    // released for the store: not a pause
+  } else if (overlayOpen()) {
+    // released for the store or a draft: not a pause
   } else if (game.state !== 'victory' && game.state !== 'defeat' && !inMenu) {
     game.paused = true;
     menu.showPause();
@@ -185,7 +220,7 @@ input.onLockChange = (locked) => {
 };
 // clicking the canvas during play re-locks the pointer
 gr.renderer.domElement.addEventListener('click', () => {
-  if (!started || input.locked || game?.paused || store.isOpen) return;
+  if (!started || input.locked || game?.paused || overlayOpen()) return;
   input.lock();
   wantFullscreen();
 });
@@ -200,11 +235,12 @@ async function boot() {
   game = new Game({ gr, audio, hud, input, settings });
   await game.load((f, label) => menu.setLoading(f, label));
   game.onShopOpen = openStore;
+  game.onDraft = openDraft; // the Gauntlet's cards
   // fireteam picker portraits: every character rendered once, off screen
   menu.setLoading(1, 'Briefing the fireteam');
   await new Promise((r) => setTimeout(r, 0));
   try {
-    menu.setPortraits(renderPortraits(game.bots));
+    menu.setPortraits(renderPortraits([...game.bots, game.playerBody])); // (+ your own operator, the career screen)
   } catch (e) {
     console.warn('portraits failed', e);
   }
@@ -215,6 +251,7 @@ async function boot() {
       if (gameOverShown) return;
       gameOverShown = true;
       closeStore();
+      draft.close();
       started = false;
       input.unlock();
       hud.setVisible(false);
@@ -233,6 +270,7 @@ async function boot() {
   // debug handles (used for automated testing when rAF is throttled)
   window.__game = game;
   window.__store = store;
+  window.__draft = draft;
   window.__music = music;  window.__step = (n = 1, dt = 1 / 60) => {
     for (let i = 0; i < n; i++) {
       game.update(dt);

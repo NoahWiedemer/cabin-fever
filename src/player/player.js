@@ -69,7 +69,7 @@ export class Player {
     this.body.onGround = true;
     this.yaw = yaw;
     this.pitch = 0;
-    this.hp = 100;
+    this.hp = this.maxHp; // (100; the Gauntlet's THICK SKIN raises it)
     this.ap = 100;
     this.alive = true;
     this.deadT = 0;
@@ -131,6 +131,7 @@ export class Player {
     // clawed (not a Biter's steady chewing, not the gas): blood on the lens
     if (fromPos && !opts.quiet && amount >= 6 && Math.hypot(fromPos.x - this.pos.x, fromPos.z - this.pos.z) < 2.8) this.game.hud?.screenBlood?.(Math.min(1, amount / 26));
     if (!opts.quiet && Math.random() < 0.7) this.game.audio.play('player_hurt', { volume: 0.8 });
+    if (this.hp <= 0 && this.game.rogue?.secondWind(this)) return; // the Gauntlet's SECOND WIND: 1 HP, a moment's grace
     if (this.hp <= 0) {
       this.hp = 0;
       this.alive = false;
@@ -245,6 +246,7 @@ export class Player {
     if (this.latchedBy) speed *= 0.6;
     if (this.heldBy) speed = 0;
     speed *= weapons?.def?.moveMul ?? 1;
+    speed *= this.game.rogue?.moveMul ?? 1; // the Gauntlet's ADRENALINE / HEAVY BOOTS
     if (weapons && weapons.ads > 0.5) speed *= 0.72;
     const sin = Math.sin(this.yaw), cos = Math.cos(this.yaw);
     // forward is -Z rotated by yaw

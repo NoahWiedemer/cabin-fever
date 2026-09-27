@@ -355,6 +355,15 @@ export class Teammate {
         bd = score;
         best = z;
       }
+      // the NOX squad (actors/merc.js) shoots back: it comes first
+      for (const m of game.mercs?.list ?? []) {
+        if (m === this || !m.alive || !m.inPlay) continue;
+        const d = m.pos.distanceTo(pos);
+        if (d > range + 6 || d * 0.55 >= bd || Math.abs(m.pos.y - pos.y) > 2.5) continue;
+        if (!game.world.lineOfSight(pos.x, pos.y + 1.5, pos.z, m.pos.x, m.pos.y + 1.2, m.pos.z)) continue;
+        bd = d * 0.55;
+        best = m;
+      }
       this.target = best;
     }
     if (this.target && !this.target.alive) this.target = null;

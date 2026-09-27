@@ -85,11 +85,11 @@ function loft(sections, { seg = 28, arc = null, capA = false, capB = false } = {
 }
 
 /** grimy olive paint: canvas noise, streaks and panel lines (512²) */
-function paintTexture() {
+function paintTexture(base = '#3a4428') {
   const c = document.createElement('canvas');
   c.width = c.height = 512;
   const g = c.getContext('2d');
-  g.fillStyle = '#3a4428';
+  g.fillStyle = base;
   g.fillRect(0, 0, 512, 512);
   let seed = 7;
   const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
@@ -134,14 +134,14 @@ function paintTexture() {
 }
 
 /** tail boom decal: call sign and serial in faded stencil (transparent canvas) */
-function markingTexture(text, sub) {
+function markingTexture(text, sub, ink = 'rgba(20,22,16,0.85)') {
   const c = document.createElement('canvas');
   c.width = 512;
   c.height = 128;
   const g = c.getContext('2d');
   g.fillStyle = 'rgba(0,0,0,0)';
   g.fillRect(0, 0, 512, 128);
-  g.fillStyle = 'rgba(20,22,16,0.85)';
+  g.fillStyle = ink;
   g.font = 'bold 64px "Black Ops One", Impact, sans-serif';
   g.textBaseline = 'middle';
   g.fillText(text, 12, 50);
@@ -276,16 +276,18 @@ export function buildReagentCase(closed = false) {
 }
 
 /**
- * Build the helicopter. opts.name: call sign on the boom. Returns the runtime object (see the header).
+ * Build the helicopter. opts.name: call sign on the boom; opts.livery: { base (paint colour), tint, ink (the
+ * markings) }, e.g. the NOX squad's black one (actors/merc.js). Returns the runtime object (see the header).
  */
 export function buildHelicopter(opts = {}) {
   const root = new THREE.Group();
   root.name = 'helicopter';
   const body = new THREE.Group(); // tilts / banks inside root
   root.add(body);
-  const paintMap = paintTexture();
+  const liv = opts.livery ?? {};
+  const paintMap = paintTexture(liv.base);
   const M = {
-    paint: new THREE.MeshStandardMaterial({ map: paintMap, color: 0xc8d0b0, roughness: 0.7, metalness: 0.12, envMapIntensity: 0.6 }),
+    paint: new THREE.MeshStandardMaterial({ map: paintMap, color: liv.tint ?? 0xc8d0b0, roughness: 0.7, metalness: 0.12, envMapIntensity: 0.6 }),
     dark: new THREE.MeshStandardMaterial({ color: 0x23272a, roughness: 0.55, metalness: 0.5 }),
     metal: new THREE.MeshStandardMaterial({ color: 0x7c8286, roughness: 0.4, metalness: 0.85 }),
     floor: new THREE.MeshStandardMaterial({ color: 0x2b2e2c, roughness: 0.85, metalness: 0.3 }),
@@ -526,7 +528,7 @@ export function buildHelicopter(opts = {}) {
 
   // boom markings
   {
-    const t = markingTexture(opts.name ?? 'REAPER 1-1', opts.serial ?? '71-20477');
+    const t = markingTexture(opts.name ?? 'REAPER 1-1', opts.serial ?? '71-20477', liv.ink);
     const m = new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
     for (const s of [-1, 1]) {
       const p = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 0.6), m);
@@ -690,8 +692,8 @@ export class HeliFlight {
  * the rotor sound, which follows it. Hidden while nobody needs it.
  */
 export class Chopper {
-  constructor(scene, audio) {
-    this.heli = buildHelicopter();
+  constructor(scene, audio, opts = {}) {
+    this.heli = buildHelicopter(opts);
     this.flight = new HeliFlight(this.heli);
     this.root = this.heli.root;
     this.root.visible = false;

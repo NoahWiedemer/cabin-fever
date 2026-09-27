@@ -2012,6 +2012,55 @@ def('victory', { d: 3.4, v: 1, ch: 2, gain: 0.6, rev: 0.25, max: 1, jit: 0 }, (b
   b.modal(1.72, [[3150, 0.1, 1.2], [4420, 0.08, 1.0], [6100, 0.05, 0.8]], 1);
 });
 
+// the career (game/progress.js): a promotion's bugle call, and a weapon's mastery level (a bright clink)
+def('rank_up', { d: 2.8, v: 1, ch: 2, gain: 0.55, rev: 0.25, max: 1, jit: 0 }, (b) => {
+  const N = NOTE;
+  const note = (t, f, d, g = 0.5, p = 0) => b.brass(t, f, d, { g, pan: p, bright: 1.25 });
+  note(0.02, N.C4, 0.11, 0.75, -0.2);
+  note(0.15, N.E4, 0.11, 0.75, 0.15);
+  note(0.28, N.G4, 0.11, 0.75, -0.05);
+  note(0.41, N.C5, 0.2, 0.7, 0.1);
+  note(0.64, N.G4, 0.1, 0.6, -0.1);
+  for (const [f, p] of [[N.C4, -0.4], [N.G4, 0.35], [N.C5, -0.1], [659.25, 0.3], [N.C3, 0]]) note(0.78, f, 1.25, 0.42, p);
+  b.timp(0.78, N.C3, 1);
+  b.nb(0.78, { type: 'highpass', f: 5200, a: 0.002, d: 1.3, g: 0.2 });
+  b.modal(0.78, [[2093, 0.12, 1.5], [3136, 0.09, 1.2], [4186, 0.06, 0.9]], 1);
+});
+
+def('mastery_up', { d: 1.3, v: 1, ch: 2, gain: 0.45, rev: 0.2, max: 2, jit: 0 }, (b) => {
+  const t = 0.004;
+  clack(b, t, { g: 0.7, f: 1.1, dec: 0.05 });
+  b.modal(t + 0.02, [[1568, 0.3, 0.9], [2349, 0.2, 0.7], [3520, 0.12, 0.5]], 1);
+  b.brass(0.12, NOTE.G4, 0.12, { g: 0.45, bright: 1.1 });
+  b.brass(0.26, NOTE.D5, 0.55, { g: 0.42, bright: 1.1 });
+});
+
+// the Gauntlet's cards (ui/draft.js): dealt (three quick flicks), taken (a snap and a low chime), a curse taken
+def('card_deal', { d: 0.5, v: 2, gain: 0.4, rev: 0.12, max: 2, jit: 0.02 }, (b) => {
+  for (let i = 0; i < 3; i++) {
+    const t = 0.02 + i * 0.09;
+    b.nb(t, { type: 'bandpass', f: 1800, f2: 5200, ft: 0.06, q: 1.1, a: 0.004, d: 0.07, g: 0.55 });
+    b.click(t + 0.05, 0.25, 0.001);
+  }
+});
+
+def('card_pick', { d: 1.1, v: 1, ch: 2, gain: 0.45, rev: 0.22, max: 2, jit: 0 }, (b) => {
+  b.nb(0.004, { type: 'bandpass', f: 2600, f2: 900, ft: 0.08, q: 1.3, a: 0.002, d: 0.09, g: 0.6 });
+  b.click(0.01, 0.6, 0.001);
+  b.thump(0.01, { f0: 180, f1: 90, sweep: 0.06, d: 0.12, g: 0.5 });
+  b.modal(0.03, [[1318, 0.3, 0.8], [1976, 0.22, 0.6], [2637, 0.12, 0.45]], 1);
+  b.brass(0.1, NOTE.G4, 0.5, { g: 0.32, bright: 1.1 });
+  b.brass(0.1, NOTE.D5, 0.5, { g: 0.26, bright: 1.1 });
+});
+
+def('card_curse', { d: 2.2, v: 1, ch: 2, gain: 0.5, rev: 0.45, max: 1, jit: 0 }, (b) => {
+  b.nb(0.004, { type: 'bandpass', f: 2200, f2: 700, ft: 0.1, q: 1.2, a: 0.002, d: 0.1, g: 0.55 });
+  b.thump(0.01, { f0: 90, f1: 38, sweep: 0.3, a: 0.003, d: 1.1, g: 1.1, drive: 2 });
+  b.modal(0.02, [[98, 0.5, 1.8], [207, 0.35, 1.4], [331, 0.2, 1.1], [466, 0.12, 0.8]], 1);
+  b.brass(0.05, NOTE.C3, 1.3, { g: 0.35, bright: 0.6, att: 0.05, rel: 0.6 });
+  b.brass(0.05, 138.59, 1.3, { g: 0.3, bright: 0.6, att: 0.05, rel: 0.6 });
+});
+
 def('defeat', { d: 3.4, v: 1, ch: 2, gain: 0.5, rev: 0.25, max: 1, jit: 0 }, (b) => {
   const N = NOTE;
   const note = (t, f, d, g = 0.5, p = 0) => b.brass(t, f, d, { g, pan: p, bright: 0.6, att: 0.06, rel: 0.5 });

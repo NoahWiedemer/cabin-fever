@@ -7,7 +7,10 @@
 //   crash       another helicopter is struck by lightning and comes down in the fields: a fireball, a burning
 //               wreck, and its cargo (a special weapon, supplies) for whoever dares to fetch it
 //   blackout    lightning hits the power line: the lights stutter out for most of a minute
-// Debug: game.events.force('airstrike' | 'bloodmoon' | 'crash' | 'blackout').
+// Not so rare, and on top of whatever else the round brings (its own roll, up to EVENTS.squad.max a run):
+//   squad       a black helicopter drops a NOX cleanup squad in the yard (actors/merc.js): four armed men the
+//               infected ignore, one of them behind a riot shield
+// Debug: game.events.force('airstrike' | 'bloodmoon' | 'crash' | 'blackout' | 'squad').
 import * as THREE from 'three';
 import { Chopper } from '../world/helicopter.js';
 import { WEAPONS } from '../player/weaponDefs.js';
@@ -19,6 +22,9 @@ export const EVENTS = {
   airstrike: { shells: 16, span: 13, delay: 7, radius: 5.2, damage: 260 },
   bloodmoon: { speed: 1.18, extra: 0.3, pay: 2 },
   blackout: [42, 58],
+  // the NOX squad: its own roll each round from `from` (not in the story's final wave), `gap` rounds apart at
+  // least, `max` a run; it comes `delay` s into the round
+  squad: { from: 4, chance: 0.2, gap: 3, max: 3, delay: [18, 45] },
 };
 
 const TAU = Math.PI * 2;
@@ -44,6 +50,9 @@ export class RandomEvents {
     this.payMul = 1;
     if (this.wreck) this.wreck.show(false);
     this.wreckFireT = 0;
+    this.squads = 0; // NOX squads this run
+    this.squadRound = -99;
+    this.squadT = 0; // > 0: one is on its way this round (s left)
     const g = this.game;
     if (g.lighting) g.lighting.moonTint = null;
     if (g.weather) g.weather.blood = 0;
@@ -53,6 +62,12 @@ export class RandomEvents {
   onRoundStart(round) {
     const g = this.game;
     if (round >= g.maxRounds && !g.endless) return; // the story's final wave stays as it is
+    const Q = EVENTS.squad;
+    if (round >= Q.from && this.squads < Q.max && round - this.squadRound >= Q.gap && !g.mercs?.active && Math.random() < Q.chance) {
+      this.squads++;
+      this.squadRound = round;
+      this.squadT = rand(Q.delay[0], Q.delay[1]);
+    }
     const names = Object.keys(EVENTS.from).filter((n) => !this.done.has(n) && round >= EVENTS.from[n]);
     for (let i = names.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
@@ -68,6 +83,7 @@ export class RandomEvents {
   }
 
   onRoundEnd() {
+    this.squadT = 0; // the wave fell before they came: they stay away
     if (this.bloodOn) {
       this.bloodOn = false;
       this.speedMul = 1;
@@ -76,6 +92,7 @@ export class RandomEvents {
   }
 
   force(name) {
+    if (name === 'squad') return this.game.mercs?.deploy();
     this.done.delete(name);
     this.start(name);
   }
@@ -233,6 +250,7 @@ export class RandomEvents {
   // ---------------------------------------------------------------- update
   update(dt) {
     const g = this.game;
+    if (this.squadT > 0 && (this.squadT -= dt) <= 0 && g.state === 'combat') g.mercs?.deploy();
     // the artillery walk: a whistle, then the shell lands somewhere outside (near the infected out there)
     for (let i = this.shells.length - 1; i >= 0; i--) {
       const s = this.shells[i];

@@ -1,6 +1,8 @@
 // First-person viewmodel: weapon + IK arms rendered on the viewmodel layer with procedural
 // animation (sway, bob, recoil, draw, reloads, bolt cycling, melee, grenades, muzzle flash).
 import * as THREE from 'three';
+import { applyWeaponSkin } from './skins.js';
+import { skinOf } from '../game/progress.js';
 import { buildWeaponModel, buildArms } from './gunSafe.js';
 import { buildGasCanViewmodel, buildRepairTool } from './gasCan.js';
 import { buildReviveHands } from './reviveHands.js';
@@ -216,6 +218,7 @@ export class Viewmodel {
     this.cur = m;
     this.def = def;
     m.root.visible = true;
+    applyWeaponSkin(m.root, skinOf(def.id)); // the camo picked for it (game/progress.js, player/skins.js)
     this.drawT = state === 'quick' ? 0.6 : 0;
     this.anim = null;
     this._resetParts(m);

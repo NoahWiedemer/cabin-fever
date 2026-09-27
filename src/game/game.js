@@ -42,6 +42,9 @@ import { createLabTech } from '../actors/labTech.js';
 import { Barricades } from '../world/barricades.js';
 import { Breach } from '../world/breach.js';
 import { Shaft } from '../world/shaft.js';
+import { MercSquad } from '../actors/merc.js';
+import * as Progress from './progress.js';
+import { Rogue } from './rogue.js';
 import { Ladders } from '../actors/ladders.js';
 import { BarnFire } from '../world/barnFire.js';
 import { Power } from '../world/power.js';
@@ -69,6 +72,10 @@ const LOOT_GUNS = ['p90', 'r201', 'spas12', 'devotion', 'sigma']; // the Surviva
 const LAUNCHER_LOOT = { round: 7, chance: 0.22 };
 const F_TAP = 0.25; // F released faster than this is a tap (flashlight / open the gun shop)
 const READY_HOLD = 1.2; // hold F this long in the buy phase to ready up
+// weapon mastery (game/progress.js) counts the real weapons only (not a Boomer's blast, not a barrel)
+const masteryWeapon = (id) => (id && WEAPONS[id] && WEAPONS[id].slot >= 0 ? id : null);
+// the fireteam's ranks (fireteam.js, 0-5) on the career ladder, for the scoreboard's insignia
+const BOT_GRADE = [1, 2, 3, 5, 8, 10];
 
 // Main-menu camera shots: a / b = [camX, camY, camZ, lookX, lookY, lookZ], eased over `period` s.
 const MENU_SHOTS = {
@@ -95,7 +102,7 @@ export class Game {
     this.corpseTime = 7;
     // money: one wallet per fireteam member, every payout goes to all of them
     this.economy = new Economy();
-    this.economy.onPay = (amount) => this.hud?.popCash?.(amount);
+    this.economy.onPay = (amount) => !this.rogue?.on && this.hud?.popCash?.(amount); // (the Gauntlet has no cash)
     this.shopOpen = false;
     this.onShopOpen = null; // set by main.js: show the store, release the pointer
     this.gear = new Gear(this); // store gear worn on body slots (game/gear.js), incl. the gas mask
@@ -179,6 +186,9 @@ export class Game {
     this.playerBody = new Teammate(this, FIRETEAM.length, PLAYER_CHARACTER);
     this.playerBody.spawn(new THREE.Vector3(0, -50, 0), 0); // (fills in its animation state: the scenes only pose it)
     this.playerBody.hide();
+    this.mercs = new MercSquad(this); // the NOX cleanup squad (actors/merc.js; the event: game/events.js)
+    this.progress = Progress; // the career: xp, rank, weapon mastery, skins (game/progress.js)
+    this.rogue = new Rogue(this); // the Gauntlet's cards, perks and curses (game/rogue.js)
     scene.add(this.playerBody.root);
 
     this.cinema = new Cinema(this); // cutscenes (game/cutscenes.js)
@@ -313,14 +323,17 @@ export class Game {
     this.cinema?.stop(true);
     this.story?.setFade(0);
     this.config = config;
-    this.diff = DIFF[config.difficulty] || DIFF.hard;
     this.mode = MODES[config.mode] || MODES.cabinfever;
+    this.diff = DIFF[this.mode.difficulty ?? config.difficulty] || DIFF.hard; // (the Gauntlet: always Extreme)
     this.endless = !!this.mode.endless; // no round cap, no timer, no victory
     this.difficultyDamage = this.diff.dmg;
     this.state = 'intermission';
     this.round = 0;
     this.maxRounds = this.endless ? Infinity : STORY.rounds;
-    this.timeLeft = this.endless ? Infinity : STORY.minutes * 60;
+    this.timed = !this.endless && this.mode.timer !== false; // the Gauntlet has no clock
+    this.timeLeft = this.timed ? STORY.minutes * 60 : Infinity;
+    this.rogue.reset(); // on in the Gauntlet only
+    this.player.maxHp = this.rogue.maxHp;
     setPriceScale(this.diff.price);
     this.elapsed = 0;
     this.score = 0;
@@ -348,6 +361,7 @@ export class Game {
 
     this.zombies.clear();
     this.stalker?.reset();
+    this.mercs?.reset();
     this.projectiles.clear();
     this.pickups.clear();
     this.fires = [];
@@ -365,10 +379,19 @@ export class Game {
 
     this.player.spawn(this.level.playerSpawn, Math.PI);
     this.player.stats = { kills: 0, deaths: 0, headshots: 0, score: 0, shots: 0, hits: 0 };
+    if (Progress.inRun()) Progress.runEnd(); // (a run restarted before its end)
+    Progress.runStart({ mode: this.mode.id, difficulty: Object.keys(DIFF).find((k) => DIFF[k] === this.diff) ?? 'hard' });
     this.weapons.reset(config.primary || 'm4a1');
     this.team = [this.player];
-    // exactly the picked characters; old saves / debug configs may still give a count
-    const picked = normalizeFireteam(config.fireteam) ?? LEGACY_LINEUPS[clamp(Math.round(config.teammates ?? 3), 0, 3)];
+    // exactly the picked characters; old saves / debug configs may still give a count. The one whose body you
+    // wear yourself (game/progress.js character skins: Scorpion, Viper) sits this run out.
+    const me = Progress.character();
+    const picked = (normalizeFireteam(config.fireteam) ?? LEGACY_LINEUPS[clamp(Math.round(config.teammates ?? 3), 0, 3)]).filter((id) => id !== me.bot);
+    if (this.playerBody.char !== this.playerBody.chars.get(me.body)) {
+      this.playerBody._wear(me.body);
+      this.playerBody.spawn(new THREE.Vector3(0, -50, 0), 0); // (its animation state, for the new body)
+      this.playerBody.hide();
+    }
     let k = 0;
     for (const b of this.bots) {
       if (picked.includes(b.id)) {
@@ -400,6 +423,7 @@ export class Game {
     this.events.reset();
     this.mission.reset();
     if (this.endless) this.hud.banner('ENDLESS · CABIN FEVER', 'No extraction is coming. Hold out as long as you can', 3.2, 'normal');
+    if (this.rogue.on) this.intermissionT = 8; // the Gauntlet: the opening pick, then the countdown
     this.mission.begin();
   }
 
@@ -446,11 +470,13 @@ export class Game {
       maxRounds: this.endless ? null : this.maxRounds,
       timeSeconds: Math.round(this.elapsed),
       fireteam: this.team.filter((m) => !m.isPlayer).map((m) => m.id),
+      rogue: this.rogue.on ? this.rogue.summary() : null, // the Gauntlet: the perks and curses of the run
       team: this.team.filter((m) => !m.isPlayer).map((m) => ({ id: m.id, name: m.name, kills: m.stats.kills, deaths: m.stats.deaths, revives: m.stats.revives ?? 0 })),
     };
   }
 
   quit() {
+    if (Progress.inRun()) Progress.runEnd(); // what the run earned is kept
     this.running = false;
     this.cinema?.stop(true);
     this._chopper?.show(false);
@@ -462,6 +488,7 @@ export class Game {
     this.state = 'menu';
     this.zombies.clear();
     this.stalker?.reset();
+    this.mercs?.reset();
     this.projectiles.clear();
     this.pickups.clear();
     for (const b of this.bots) b.hide();
@@ -477,7 +504,7 @@ export class Game {
     const teamBonus = (this.team.length - 1) * 2;
     // past round 20 (endless) the head count grows slower and the mix stays capped; hp keeps climbing
     const rc = r <= 20 ? r : 20 + (r - 20) * 0.5;
-    let total = Math.round((8 + rc * 3.2 + teamBonus) * d.count);
+    let total = Math.round((8 + rc * 3.2 + teamBonus) * d.count * this.rogue.zCount); // (zCount: the Gauntlet's SWARM curse)
     const list = [];
     const crushers = r >= 11 ? Math.min(8, 1 + Math.floor((r - 11) / 2)) : 0;
     for (let i = 0; i < crushers; i++) list.push('crusher');
@@ -537,6 +564,7 @@ export class Game {
     this.stalker?.onRoundStart(this.round); // every round from round 3 (4 on easy): the Stalker haunts it
     this.roundTotal = this.toSpawn.length;
     this.events?.onRoundStart(this.round); // very rarely: an airstrike, a blood moon, a crash, a blackout
+    this.rogue.onRoundStart(this.round); // the Gauntlet: the curses for this round come due
     this.mission?.onRoundStart(this.round);
     this.spawnT = 1.5;
     this.hud.setCountdown(null);
@@ -562,11 +590,13 @@ export class Game {
   _endRound() {
     // the story's last wave: over only once the hack is through too (until then the infected keep coming)
     if (this.round >= this.maxRounds && !this.mission.finalWaveCleared()) return;
+    this._career(Progress.round(this.round));
     this.state = this.round >= this.maxRounds ? 'victory' : 'shop';
     this.breach?.onRoundEnd();
     this.stalker?.onRoundEnd(); // not part of the wave: an attack breaks off, the scares go on into the buy phase
     this.revives?.onRoundEnd(); // the fallen get up anyway (below)
     this.events?.onRoundEnd();
+    this.rogue.onRoundEnd(this.round, this.state === 'victory'); // the Gauntlet: the next draft
     if (this.state === 'victory') {
       if (this.mission.story) {
         // the finale: the vault door opens (game/cutscenes.js), then the end screen
@@ -581,12 +611,15 @@ export class Game {
     this.shopOpen = false;
     this.shopNews = [];
     this.fHold = null;
-    this.gunshop?.setOpen(true);
-    setTimeout(() => {
-      if (this.state === 'shop') this.hud.banner('BUY PHASE', this.gunshop ? 'The gun shop in the cellar is open · hold F when ready' : 'Tap F for the gun shop · hold F when ready', 3, 'normal');
-    }, 3200);
+    const rogue = this.rogue.on; // the Gauntlet: no shop, the cards instead
+    this.gunshop?.setOpen(!rogue);
+    if (!rogue) {
+      setTimeout(() => {
+        if (this.state === 'shop') this.hud.banner('BUY PHASE', this.gunshop ? 'The gun shop in the cellar is open · hold F when ready' : 'Tap F for the gun shop · hold F when ready', 3, 'normal');
+      }, 3200);
+    }
     this.audio.play('round_end', { volume: 0.9 });
-    this.hud.banner('ROUND CLEAR', '+ Ammo restocked · HP restored · Fallen teammates return', 3, 'success');
+    this.hud.banner('ROUND CLEAR', rogue ? 'Fallen teammates return · draw your cards' : '+ Ammo restocked · HP restored · Fallen teammates return', 3, 'success');
     // heal & restock, respawn the dead
     for (const m of this.team) {
       if (m.isPlayer) {
@@ -594,7 +627,7 @@ export class Game {
           m.spawn(this._safeSpawn(), m.yaw);
           this.weapons.switchTo(0, true);
         }
-        m.hp = 100;
+        m.hp = Math.max(m.hp, Math.round(m.maxHp * this.rogue.healTo)); // (the Gauntlet's OPEN WOUNDS: 70% only)
         m.ap = Math.max(m.ap, 100); // store kevlar above 100 stays until shot off
       } else if (!m.alive) {
         m.spawn(this._safeSpawn(), 0);
@@ -640,7 +673,7 @@ export class Game {
 
   /** Ready up (hold F in the buy phase): short countdown, then the next round. Bots are always ready. */
   ready() {
-    if (this.state !== 'shop') return;
+    if (this.state !== 'shop' || this.rogue.drafting || this.rogue.draftT > 0) return; // (the Gauntlet: cards first)
     this.shopOpen = false;
     this.fHold = null;
     this.state = 'intermission';
@@ -650,7 +683,7 @@ export class Game {
 
   /** In the cellar at the counter during the buy phase (anywhere, if there's no physical shop). */
   canShop() {
-    if (this.state !== 'shop' || this.shopOpen || !this.player.alive) return false;
+    if (this.state !== 'shop' || this.shopOpen || !this.player.alive || this.rogue.on) return false;
     return this.gunshop ? !!this.gunshop.canInteract(this.player) : true;
   }
 
@@ -709,15 +742,18 @@ export class Game {
     this.state = victory ? 'victory' : 'defeat';
     this.gameOverT = 0;
     this.audio.play(victory ? 'victory' : 'defeat', { volume: 1 });
-    const sub = victory ? 'The reagent reached Nadja' : this.endless ? `Your fireteam fell in round ${this.round}` : 'Your fireteam was overrun';
-    this.hud.banner(victory ? 'MISSION COMPLETE' : 'MISSION FAILED', sub, 4, victory ? 'success' : 'danger');
-    this.onGameOver?.(this.runStats(victory ? 'victory' : !this.endless && this.timeLeft <= 0 ? 'timeout' : 'overrun'));
+    const rogue = this.rogue.on;
+    const sub = victory ? (rogue ? 'Fifteen waves, and you are still standing' : 'The reagent reached Nadja') : this.endless || rogue ? `Your fireteam fell in round ${this.round}` : 'Your fireteam was overrun';
+    this.hud.banner(victory ? (rogue ? 'GAUNTLET CLEARED' : 'MISSION COMPLETE') : 'MISSION FAILED', sub, 4, victory ? 'success' : 'danger');
+    if (victory) this._career(Progress.win());
+    const career = Progress.runEnd(); // the after-action report: xp, rank, mastery, unlocks
+    this.onGameOver?.({ ...this.runStats(victory ? 'victory' : !this.endless && this.timeLeft <= 0 ? 'timeout' : 'overrun'), career });
   }
 
   _spawnOne(type) {
     const r = this.round;
-    const hpMult = this.diff.hp * (1 + 0.065 * (r - 1));
-    const spd = this.diff.speed * (1 + 0.01 * Math.min(r - 1, 30)) * (this.events?.speedMul ?? 1);
+    const hpMult = this.diff.hp * (1 + 0.065 * (r - 1)) * this.rogue.zHp; // (zHp / zSpeed: the Gauntlet's curses)
+    const spd = this.diff.speed * (1 + 0.01 * Math.min(r - 1, 30)) * (this.events?.speedMul ?? 1) * this.rogue.zSpeed;
     // once the basement is open, some come up the coal tunnel by the lab (world/shaft.js)
     const up = this.shaft?.spawnPoint(type);
     if (up) {
@@ -760,16 +796,19 @@ export class Game {
     if (kHit) wallT = kHit.t;
     const wallBox = wall ? wall.box : null;
     const wn = wall ? _n.set(wall.nx, wall.ny, wall.nz).clone() : null;
-    const hits = this.zombies.raycastAll(origin, dir, wallT);
+    // the NOX squad (actors/merc.js): the nearest of them on the ray; infected behind them are out of reach
+    const mh = this.mercs?.raycast(origin, dir, wallT) ?? null;
+    const hits = this.zombies.raycastAll(origin, dir, mh ? mh.t : wallT);
     let pen = def.penetration ?? 0;
     let mul = shooter?.dmgMul ?? 1; // bots' store-bought damage upgrades
+    const headMul = shooter?.isPlayer ? this.rogue.headMul : 1; // the Gauntlet's HEADHUNTER
     let endT = wallT;
     let stoppedByZombie = false;
     const isPlayer = shooter && shooter.isPlayer;
     for (const h of hits) {
       const [f0, f1, fmin] = def.falloff || [30, 80, 0.6];
       const fall = h.t <= f0 ? 1 : h.t >= f1 ? fmin : 1 - (1 - fmin) * ((h.t - f0) / (f1 - f0));
-      const dmg = def.damage * fall * (h.zombie.type.partMult?.[h.part] ?? PART_MULT[h.part] ?? 1) * mul; // (the Crusher's skull is armoured)
+      const dmg = def.damage * fall * (h.zombie.type.partMult?.[h.part] ?? PART_MULT[h.part] ?? 1) * mul * (h.part === 'head' ? headMul : 1); // (the Crusher's skull is armoured)
       const pt = new THREE.Vector3().copy(origin).addScaledVector(dir, h.t);
       // a hard hat (the Worker): some headshots glance off it with a spark and a ping, and the round is spent
       if (h.part === 'head' && h.zombie.type.helmet && Math.random() < h.zombie.type.helmet) {
@@ -801,6 +840,11 @@ export class Game {
       pen--;
       mul *= 0.65;
     }
+    if (!stoppedByZombie && mh) {
+      stoppedByZombie = true;
+      endT = mh.t;
+      this._hitMerc(mh, origin, dir, def, shooter, mul, opts);
+    }
     const end = new THREE.Vector3().copy(origin).addScaledVector(dir, endT);
     if (!stoppedByZombie && kHit) {
       keeper.hit(kHit.part, dir);
@@ -815,6 +859,30 @@ export class Game {
       this.fx.tracer(opts.tracerFrom, end, { speed: def.id === 'l96a1' ? 600 : 360, length: def.id === 'l96a1' ? 8 : 3.5, width: def.id === 'l96a1' ? 0.03 : 0.016 });
     }
     return { endT, stoppedByZombie };
+  }
+
+  /** a round on one of the NOX squad (hitscan): the shield rings and stops it, flesh takes the damage */
+  _hitMerc(mh, origin, dir, def, shooter, mul, opts) {
+    const pt = new THREE.Vector3().copy(origin).addScaledVector(dir, mh.t);
+    if (mh.part === 'shield') {
+      this.fx.impact(pt, _n.copy(dir).negate(), SURF.metal, { noDecal: true, silent: opts.pellet > 1 });
+      if (!opts.pellet) this.audio.play('impact_metal', { position: pt, volume: 0.7 });
+      mh.merc.flinchV = (mh.merc.flinchV ?? 0) + 1.5;
+      return;
+    }
+    const [f0, f1, fmin] = def.falloff || [30, 80, 0.6];
+    const fall = mh.t <= f0 ? 1 : mh.t >= f1 ? fmin : 1 - (1 - fmin) * ((mh.t - f0) / (f1 - f0));
+    const head = mh.part === 'head' && shooter?.isPlayer ? this.rogue.headMul : 1;
+    const res = mh.merc.hurt(def.damage * fall * mul * head, mh.part, dir, shooter, { weapon: def.id });
+    this.fx.bloodHit(pt, dir, { amount: def.pellets > 1 ? 0.45 : 1, headshot: mh.part === 'head' });
+    if (mh.part === 'head' && !opts.bot) this.audio.play('headshot', { position: pt, volume: 0.7 });
+    else this.audio.play('impact_flesh', { position: pt, volume: 0.5 });
+    if (shooter?.isPlayer) {
+      this.hitAccum += res.dealt ?? 0;
+      this.hitAccumHead = this.hitAccumHead || mh.part === 'head';
+      this.hud.hitMarker(res.killed, mh.part === 'head');
+      if (!res.killed) this._hitTick(mh.part === 'head');
+    } else if (shooter?.stats) shooter.stats.score += Math.round((res.dealt ?? 0) * 0.5);
   }
 
   /** One crisp hit tick per shot: pellets / penetrations / blast victims in the same frame don't stack. */
@@ -842,12 +910,31 @@ export class Game {
         best = z;
       }
     }
+    // one of the NOX squad nearer than any infected: the blade is for it (a shield from the front turns it)
+    const mt = this.mercs?.meleeTarget(eye, fwd, range);
+    if (mt && mt.dist < bd) {
+      const pt = mt.merc.pos.clone().add(new THREE.Vector3(0, 1.15, 0)).addScaledVector(fwd, -0.25);
+      if (mt.blocked) {
+        this.fx.impact(pt, fwd.clone().negate(), SURF.metal, { noDecal: true });
+        this.audio.play('impact_metal', { position: pt, volume: 0.9 });
+        this.shake.add(0.1);
+        return;
+      }
+      const back = new THREE.Vector3(Math.sin(mt.merc.yaw), 0, Math.cos(mt.merc.yaw));
+      const res = mt.merc.hurt(damage * (back.dot(fwd) > 0.5 ? 2 : 1), 'torso', fwd, player, { weapon: 'knife', tool: def?.id ?? 'knife' });
+      this.hitAccum += res.dealt ?? 0;
+      this.fx.bloodHit(pt, fwd, { amount: heavy ? 1.3 : 0.8 });
+      this.audio.play(def?.hitSound ?? 'knife_hit', { position: pt, volume: 0.9 });
+      this.hud.hitMarker(res.killed, false);
+      this.shake.add(0.12);
+      return;
+    }
     if (best) {
       const back = new THREE.Vector3(Math.sin(best.yaw), 0, Math.cos(best.yaw));
       const fromBehind = back.dot(fwd) > 0.5;
       let dmg = damage * (fromBehind ? 2 : 1);
       if (def?.oneHit?.includes(best.typeName)) dmg = Math.max(dmg, best.hp + 1); // the machete vs a Biter
-      const res = best.damage(dmg, 'torso', fwd, player, { weapon: 'knife' });
+      const res = best.damage(dmg, 'torso', fwd, player, { weapon: 'knife', tool: def?.id ?? 'knife' }); // (tool: whose mastery)
       this.hitAccum += res.dealt ?? dmg;
       const pt = best.hipsWorld.clone().addScaledVector(fwd, -0.2);
       this.fx.bloodHit(pt, fwd, { amount: heavy ? 1.3 : 0.8 });
@@ -933,10 +1020,15 @@ export class Game {
 
   /** opts.burst: a Boomer bursting (flesh and bile, no fire and no flash; the blast itself is the same) */
   explode(pos, radius, damage, source, opts = {}) {
+    if (source?.isPlayer && this.rogue.on) {
+      radius *= this.rogue.blastRadius; // the Gauntlet's DEMOLITION
+      damage *= this.rogue.blastMul;
+    }
     if (opts.burst) this.fx.fleshBurst(pos, opts.scale ?? 1);
     else this.fx.explosion(pos, opts.scale ?? 1);
     this.barricades?.explosion(pos, radius, damage, source, opts);
     this.breach?.explosion(pos, radius, damage, source, opts);
+    this.mercs?.explosion(pos, radius, damage, source, opts);
     // camera shake by distance
     const dp = this.player.pos.distanceTo(pos);
     this.shake.add(clamp(1.2 - dp / 22, 0, 1) * (opts.scale ?? 1));
@@ -1021,7 +1113,7 @@ export class Game {
     if (!info.selfDestruct && !z.ragdoll) setTimeout(() => this.audio.play('bodyfall', { position: z.pos, volume: 0.7 }), 650);
 
     // drops
-    const r = Math.random();
+    const r = Math.random() / this.rogue.dropMul; // (the Gauntlet: SCAVENGER, SCARCITY, a DRY SPELL)
     if (z.type.loot) this._dropLoot(z);
     else if (!info.selfDestruct) {
       if (r < 0.045) this.pickups.spawnSupply('green', z.pos);
@@ -1049,6 +1141,8 @@ export class Game {
       this.audio.play('killconfirm', { volume: 0.6, pitch: headshot ? 1.06 : 1 });
       this._tickAt = this.time; // the confirm replaces this frame's hit tick
       this.hud.addKill({ killer: 'You', victim, weapon: WEAPONS[weapon]?.name ?? weapon.toUpperCase(), headshot });
+      this._career(Progress.kill({ type: z.typeName, weapon: masteryWeapon(info.tool ?? weapon), headshot }));
+      this._rogueKill(!!info.tool);
     } else if (src && src.stats) {
       src.stats.kills++;
       if (headshot) src.stats.headshots++;
@@ -1059,6 +1153,37 @@ export class Game {
     }
     // money: any fireteam kill pays every wallet the same amount
     if (src && (src.isPlayer || src.stats)) this.economy.payAll(killReward(z.typeName, headshot) * (this.events?.payMul ?? 1), 'kill');
+  }
+
+  /** actors/merc.js: the player took one of the NOX squad down */
+  onMercKilledByPlayer(m, headshot, opts = {}) {
+    this._career(Progress.kill({ type: 'merc', weapon: masteryWeapon(opts.tool ?? opts.weapon), headshot }));
+    this._rogueKill(!!opts.tool);
+  }
+
+  /** the Gauntlet's BLOODTHIRST (and EXECUTIONER for a melee kill): a kill by the player heals */
+  _rogueKill(melee) {
+    const R = this.rogue;
+    if (!R.on || !this.player.alive) return;
+    const h = R.killHeal + (melee && R.stacks('executioner') ? 12 : 0);
+    if (h > 0) this.player.heal(h);
+  }
+
+  /** game/progress.js reports what just went up (a kill, a round, the win): a promotion, a weapon's mastery level */
+  _career(up) {
+    if (!up) return;
+    if (up.mastery) {
+      const { weapon, level } = up.mastery;
+      const camo = Progress.WEAPON_SKINS.find((k) => k.level === level && k.level > 0);
+      this.hud.masteryUp?.(WEAPONS[weapon]?.name ?? weapon.toUpperCase(), level, camo ? camo.name + ' CAMO' : null);
+      if (!up.rank) this.audio.play('mastery_up', { volume: 0.75 });
+    }
+    if (up.rank) {
+      const index = Progress.RANKS.indexOf(up.rank);
+      const ch = Progress.characterForRank(index);
+      this.hud.promotion?.(up.rank, index, ch ? ch.name + ' CHARACTER' : null);
+      this.audio.play('rank_up', { volume: 0.85 });
+    }
   }
 
   /** The Survivalist's stash: sometimes a good primary you don't carry yet, else a survival pack. */
@@ -1157,7 +1282,7 @@ export class Game {
 
     // round flow
     if (this.state === 'intermission') {
-      this.intermissionT -= dt;
+      if (!this.rogue.drafting && !(this.rogue.draftT > 0)) this.intermissionT -= dt; // (the Gauntlet's opening pick first)
       this.hud.setCountdown(Math.ceil(this.intermissionT));
       if (Math.ceil(this.intermissionT) !== Math.ceil(this.intermissionT + dt) && this.intermissionT < 5 && this.intermissionT > 0) this.audio.play('countdown_tick', { volume: 0.5 });
       if (this.intermissionT <= 0) this._startRound();
@@ -1170,7 +1295,7 @@ export class Game {
         this._spawnOne(this.toSpawn.shift());
         this.spawnT = rand(0.45, 1.1) * (this.round < 3 ? 1.6 : 1);
       }
-      if (!this.toSpawn.length && this.zombies.aliveCount === 0 && !this.pendingExplosions.length) this._endRound();
+      if (!this.toSpawn.length && this.zombies.aliveCount === 0 && !this.pendingExplosions.length && !this.mercs?.active) this._endRound();
     }
 
     // player & weapons
@@ -1208,6 +1333,8 @@ export class Game {
 
     // teammates
     for (const b of this.bots) if (b.root.visible) b.update(dt);
+    this.mercs?.update(dt); // the NOX squad: its drop and its fight
+    this.rogue.update(dt); // the Gauntlet: drafts, the Stalker's MARKED curse
 
     // nav field
     this.navT -= dt;
@@ -1391,14 +1518,14 @@ export class Game {
     hud.update(
       {
         difficulty: this.diff.label,
-        modeLabel: this.endless ? 'ENDLESS' : 'FIRETEAM',
+        modeLabel: this.endless ? 'ENDLESS' : this.rogue.on ? 'GAUNTLET' : 'FIRETEAM',
         score: this.score,
-        timeLeft: this.endless ? null : Math.max(0, this.timeLeft),
+        timeLeft: this.timed ? Math.max(0, this.timeLeft) : null,
         round: Math.max(this.round, 1),
         maxRounds: this.endless ? null : this.maxRounds,
-        enemiesLeft: this.toSpawn.length + this.zombies.aliveCount,
+        enemiesLeft: this.toSpawn.length + this.zombies.aliveCount + (this.mercs?.aliveCount ?? 0),
         hp: Math.ceil(player.hp),
-        maxHp: 100,
+        maxHp: player.maxHp ?? 100,
         ap: Math.ceil(player.ap),
         crouching: player.crouching,
         inGas: player.inGas * (1 - 0.7 * (this.maskFx ?? 0)),
@@ -1415,11 +1542,11 @@ export class Game {
         barricades: w.barricades,
         gascans: w.gascans,
         generator: this.power?.hudInfo() ?? null,
-        cash: this.economy.cash(player),
+        cash: this.rogue.on ? null : this.economy.cash(player),
         showAmmo: info.showAmmo && w.def.mode !== 'grenade',
         reloading: info.reloading,
         crosshair: w.crosshair(this.camera),
-        radar: { x: player.pos.x, z: player.pos.z, yaw: player.yaw, enemies, allies, pickups: this.pickups.radarList().concat(this.power?.radarList() ?? [], this.revives?.radarList() ?? [], this.mission?.radarList() ?? []), level: player.level },
+        radar: { x: player.pos.x, z: player.pos.z, yaw: player.yaw, enemies, allies, pickups: this.pickups.radarList().concat(this.power?.radarList() ?? [], this.revives?.radarList() ?? [], this.mission?.radarList() ?? []), threats: this.mercs?.radarList() ?? [], level: player.level },
       },
       dt
     );
@@ -1438,7 +1565,7 @@ export class Game {
 
     // buy phase: panel, hold-to-ready ring, shop prompt and a waypoint to the cellar stairs
     const buy = this.state === 'shop';
-    hud.setBuyPhase?.(buy && !this.shopOpen ? { next: this.round + 1, gunshop: !!this.gunshop } : null);
+    hud.setBuyPhase?.(buy && !this.shopOpen ? { next: this.round + 1, gunshop: !!this.gunshop, rogue: this.rogue.on } : null);
     const readyHold = buy && this.fHold != null && this.fHold > 0.15;
     const pw = this.power, rv = this.revives, ms = this.mission;
     const hold = rv?.hold != null ? rv : pw?.hold != null ? pw : ms?.hold != null ? ms : this.barricades;
@@ -1454,7 +1581,7 @@ export class Game {
     if (rw || mw) {
       ent = (rw ?? mw).pos;
       wpLabel = (rw ?? mw).label;
-    } else if (buy && !this.shopOpen && this.gunshop?.entrance && !canShop && this.gunshop.entrance.distanceTo(player.pos) > 2.5) {
+    } else if (buy && !this.shopOpen && !this.rogue.on && this.gunshop?.entrance && !canShop && this.gunshop.entrance.distanceTo(player.pos) > 2.5) {
       ent = this.gunshop.entrance;
       wpLabel = 'GUN SHOP';
     } else {
@@ -1491,10 +1618,11 @@ export class Game {
     const tab = this.input.down('Tab');
     if (tab || this._tabShown) {
       this._tabShown = tab;
-      const rows = [{ name: 'You', score: this.score, kills: player.stats.kills, deaths: player.stats.deaths, headshots: player.stats.headshots, isPlayer: true, rank: 3 }];
-      for (const b of this.bots) if (this.team.includes(b)) rows.push({ name: b.name, score: b.stats.score, kills: b.stats.kills, deaths: b.stats.deaths, headshots: b.stats.headshots, isPlayer: false, rank: b.rank });
+      const rows = [{ name: 'You', score: this.score, kills: player.stats.kills, deaths: player.stats.deaths, headshots: player.stats.headshots, isPlayer: true, rank: 3, insignia: Progress.rankOf().index }];
+      for (const b of this.bots) if (this.team.includes(b)) rows.push({ name: b.name, score: b.stats.score, kills: b.stats.kills, deaths: b.stats.deaths, headshots: b.stats.headshots, isPlayer: false, rank: b.rank, insignia: BOT_GRADE[b.rank] ?? 3 });
       rows.sort((a, b) => b.score - a.score);
       hud.setScoreboard(tab, rows);
+      hud.setBoardRun?.(tab && this.rogue.on ? this.rogue.summary() : null);
     }
   }
 }

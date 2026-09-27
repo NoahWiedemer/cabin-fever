@@ -16,6 +16,7 @@ import { renderPortraits } from '../actors/portraits.js';
 import { createCharacter } from '../actors/rig.js';
 import { slotIcon } from './storeGear.js';
 import { esc } from './hud.js';
+import { character } from '../game/progress.js';
 
 // box columns, top to bottom (the layout keeps this order)
 const COLUMNS = [
@@ -37,9 +38,9 @@ const ANCHOR_PTS = {
   feet: ['footL', 0.03, -0.04, 0.13],
 };
 
-// the body: your own character, the EmoSquad operator (actors/fireteam.js PLAYER_CHARACTER, gltfCharacter.js
-// 'emosquad'; the procedural soldier if its GLB is missing)
-const FIG_BODY = 'emosquad';
+// the body: your own character (game/progress.js character(): the EmoSquad operator, or the Scorpion / Viper
+// skin once unlocked and picked; gltfCharacter.js kinds, the procedural soldier if a GLB is missing)
+const figBody = () => character().body || 'emosquad';
 // the render: a tall, slightly turned full-body shot, top of the head to below the boots
 const FIG_W = 320;
 const FIG_H = 704;
@@ -61,7 +62,7 @@ function atEase(b) {
   b.head.rotation.set(0.03, 0, 0);
 }
 
-let FIG = null; // { url, aspect, anchors: { slot: [x, y] 0..1 of the image } } | false (failed)
+const FIGS = new Map(); // body kind -> { url, aspect, anchors: { slot: [x, y] 0..1 of the image } } | false (failed)
 
 /** Render a body at ease (portraits.js takes it like a bot) and project the slot anchors. */
 function shoot(kind, opts) {
@@ -94,15 +95,15 @@ function shoot(kind, opts) {
 }
 
 /** The figure image + anchors, rendered on the first call and cached. */
-export function renderFigure() {
-  if (FIG !== null) return FIG;
-  FIG = false;
+export function renderFigure(kind = figBody()) {
+  if (FIGS.has(kind)) return FIGS.get(kind);
+  FIGS.set(kind, false);
   try {
-    FIG = shoot(FIG_BODY, FIG_OPTS) || false;
+    FIGS.set(kind, shoot(kind, FIG_OPTS) || false);
   } catch (e) {
     console.warn('[store] paperdoll figure failed', e);
   }
-  return FIG;
+  return FIGS.get(kind);
 }
 
 // no WebGL: a plain silhouette (120 x 264) with hand-placed anchors
@@ -192,8 +193,10 @@ export class Paperdoll {
 
   /** The figure (rendered once per session on first use); the silhouette without WebGL. */
   ensureFigure() {
-    if (this.fig) return;
-    this.fig = renderFigure() || FALLBACK;
+    const kind = figBody();
+    if (this.fig && this.figKind === kind) return;
+    this.figKind = kind;
+    this.fig = renderFigure(kind) || FALLBACK;
     this.img.src = this.fig.url;
     this.layout();
   }

@@ -18,9 +18,23 @@ export const MODES = {
     desc: 'The waves never stop: every round brings more, tougher and faster Infected. No time limit, no victory, only the round you reach.',
     endless: true,
   },
+  // the roguelike run (game/rogue.js): unlocked by a Cabin Fever win on Extreme (game/progress.js)
+  gauntlet: {
+    id: 'gauntlet',
+    name: 'THE GAUNTLET',
+    kicker: 'ROGUE RUN',
+    tagline: 'No shop. Every round: draw a card, then take a curse.',
+    desc: 'Fifteen waves at Extreme strength, no story and no gun shop. After every round pick a weapon, a perk or supplies, then choose the curse that makes the rest of the run harder.',
+    endless: false,
+    rogue: true, // cards instead of the store
+    story: false, // no cutscenes, no hack: survive round 15 and it's won
+    timer: false, // no time limit
+    difficulty: 'extreme', // always
+    locked: 'Win Cabin Fever on Extreme',
+  },
 };
 
-export const MODE_LIST = [MODES.cabinfever, MODES.endless];
+export const MODE_LIST = [MODES.cabinfever, MODES.endless, MODES.gauntlet];
 
 // Unlock rounds: the upstairs (bedrooms, the Golden Punisher, the balcony over the yard) with round 4, the
 // basement (and in the story Nadja's lab behind it) with round 10, on every difficulty and in endless.
@@ -37,10 +51,11 @@ export const DIFFICULTIES = [
 /** Floors that open during a run: [{ round, name }]. */
 export function unlocksFor(modeId, diffId) {
   const endless = MODES[modeId]?.endless;
+  const story = !endless && MODES[modeId]?.story !== false;
   const rounds = DIFFICULTIES.find((d) => d.id === diffId)?.rounds ?? 15;
   const out = [];
   if (endless || rounds >= UPSTAIRS_ROUND) out.push({ round: UPSTAIRS_ROUND, name: 'UPSTAIRS' });
-  if (endless || rounds >= BASEMENT_ROUND) out.push({ round: BASEMENT_ROUND, name: endless ? 'BASEMENT' : 'BASEMENT · LAB' });
+  if (endless || rounds >= BASEMENT_ROUND) out.push({ round: BASEMENT_ROUND, name: story ? 'BASEMENT · LAB' : 'BASEMENT' });
   return out;
 }
 

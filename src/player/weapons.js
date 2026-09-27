@@ -5,6 +5,7 @@ import { WEAPONS } from './weaponDefs.js';
 import { effectiveDef } from '../game/shop.js';
 import { akimboDef, akimboTriggers, akimboTryReload, akimboReloadTick, akimboRounds } from './akimbo.js';
 import { gearDef, PACK_SLOT } from '../game/gear.js';
+import { rogueDef } from '../game/rogue.js';
 import { clamp, coneDirection, damp, rand } from '../core/utils.js';
 
 const _dir = new THREE.Vector3();
@@ -96,8 +97,8 @@ export class WeaponSystem {
   get def() {
     const id = this.slots[this.cur];
     // the secondary as a pair once its akimbo upgrade is bought (player/akimbo.js); worn gear (faster
-    // reloads, ADS, draws) on top (game/gear.js)
-    return gearDef(this.game, this.cur === 1 && this.akimbo?.has(id) ? akimboDef(this.defOf(id)) : this.defOf(id));
+    // reloads, ADS, draws) on top (game/gear.js), then the Gauntlet's perks (game/rogue.js)
+    return rogueDef(this.game, gearDef(this.game, this.cur === 1 && this.akimbo?.has(id) ? akimboDef(this.defOf(id)) : this.defOf(id)));
   }
   get curAmmo() {
     return this.ammo[this.slots[this.cur]];
@@ -242,6 +243,7 @@ export class WeaponSystem {
   }
 
   restock() {
+    const k = this.game.rogue?.restockMul ?? 1; // the Gauntlet's HALF RATIONS
     for (const id of this._carried()) {
       const d = this.defOf(id);
       if (!d || !d.mag || !this.ammo[id] || d.fixedAmmo) continue; // (a grenade launcher is never refilled)
@@ -250,7 +252,7 @@ export class WeaponSystem {
         a.mag = Math.max(a.mag, Math.round(d.mag * 0.5));
         continue;
       }
-      a.reserve = Math.max(a.reserve, d.reserve);
+      a.reserve = Math.max(a.reserve, Math.round(d.reserve * k));
     }
     this.grenades = Math.max(this.grenades, 2);
   }
@@ -717,7 +719,10 @@ export class WeaponSystem {
     // carry the overshoot while the trigger is held (this round was due inside the frame), so the
     // average rate is exactly rpm; after a pause the clock simply restarts from now
     this.cooldown = (this.cooldown > -dt ? this.cooldown : 0) + 60 / (d.rampRpm ? d.rpm + (d.rampRpm - d.rpm) * wind : d.rpm);
-    if (side) a.mag2--;
+    const free = this.game.rogue?.luck > 0 && Math.random() < this.game.rogue.luck; // the Gauntlet's LUCKY ROUNDS
+    if (free) {
+      /* this one's on the house */
+    } else if (side) a.mag2--;
     else a.mag--;
     this.shotCount++;
     const spreadDeg = this.currentSpread();

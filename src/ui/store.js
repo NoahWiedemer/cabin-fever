@@ -330,6 +330,11 @@ export class Store {
     this.stage.stop(); // also frees the preview models' GPU memory
   }
 
+  /** A baked item picture ('w:m4a1', 'e:frag', 'g:boots' ...) as an image URL, or null (the Gauntlet's cards). */
+  thumbOf(k) {
+    return this.stage?.ok ? this.stage.thumb(k) : null;
+  }
+
   /** Bake the item thumbnails in idle time (called once after boot) so the first visit is instant. */
   warmup() {
     if (this._warm) return;

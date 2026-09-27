@@ -248,7 +248,7 @@ function buildBody(spec) {
   }
 
   // ---- neck & head
-  if (spec.head === 'soldier') {
+  if (spec.head === 'soldier' || spec.head === 'merc') {
     P.add(cyl(0.055, 0.062, 0.12, 12), B.neck, C(0x16171a), 0, { matrix: T(0, 0.04, 0), blend: { parent: B.chest, len: 0.05 }, dirt: 0 });
   } else {
     P.add(cyl(0.052 * (brute ? 1.5 : 1), 0.06 * (brute ? 1.5 : 1), 0.12, 12), B.neck, skin, 1, { matrix: T(0, 0.04, 0), blend: { parent: B.chest, len: 0.05 }, dirt: 0 });
@@ -263,6 +263,11 @@ function buildBody(spec) {
     // deltoid
     P.add(sph(armR * 1.35, 12, 8), ua, top, topMat, { matrix: TRS(0, -0.02, 0, 0, 0, 0, 1.05, 1.1, 1), blend: { parent: B.chest, len: 0.06, fromTop: true }, blood: blood * 0.5 });
     P.add(caps(armR, 0.22), ua, top, topMat, { matrix: T(0, -0.145, 0), blood: blood * 0.6, dirt: 0.15 });
+    if (spec.armband && side === 'L') {
+      // a corporate armband (the NOX squad): red, a pale stripe through it
+      P.add(cyl(armR * 1.1, armR * 1.1, 0.07, 14), ua, C(spec.armband), 0, { matrix: T(0, -0.1, 0), dirt: 0.03 });
+      P.add(cyl(armR * 1.12, armR * 1.12, 0.014, 14), ua, C(0xd8d4cc), 0, { matrix: T(0, -0.1, 0), dirt: 0.03 });
+    }
     if (brute) P.add(sph(armR * 1.2, 10, 8), ua, top, topMat, { matrix: TRS(0, -0.12, 0.02, 0, 0, 0, 1, 1.4, 1), blood });
     // elbow
     P.add(sph(armR * 0.95, 10, 8), fa, top, topMat, { matrix: T(0, 0, 0), blend: { parent: ua, len: 0.05, fromTop: true } });
@@ -318,6 +323,27 @@ function buildHead(P, spec, skin, C) {
   const h = spec.head;
   const blood = spec.blood ?? 0.35;
   const white = C(0xd8d2b8);
+  if (h === 'merc') {
+    // the NOX cleanup operative (actors/merc.js): a full-face respirator under a low helmet, no skin showing.
+    // Rubber hood, a moulded mask with two big round lenses (emissive: they glow red), a filter canister on
+    // each cheek, the voice diaphragm in front, the helmet with a strip light at the back
+    const rubber = C(0x121315), mask = C(0x1d1f22), helm = C(spec.helmet ?? 0x1b1d20);
+    P.add(sph(0.107, 16, 12), B.head, rubber, 0, { matrix: TRS(0, 0.1, 0.005, 0, 0, 0, 1, 1.16, 1.06), dirt: 0.05 });
+    P.add(sph(0.095, 16, 12), B.head, mask, 0, { matrix: TRS(0, 0.095, 0.045, 0, 0, 0, 1.05, 1.05, 0.9), dirt: 0.04 });
+    for (const sx of [-1, 1]) {
+      P.add(cyl(0.034, 0.034, 0.03, 16), B.head, C(0x0b0b0c), 0, { matrix: TRS(sx * 0.038, 0.125, 0.112, Math.PI / 2, 0, 0) });
+      P.add(cyl(0.027, 0.027, 0.012, 16), B.head, C(0x2a0200), 2, { matrix: TRS(sx * 0.038, 0.125, 0.126, Math.PI / 2, 0, 0) });
+      // filter canisters, angled back along the jaw
+      P.add(cyl(0.036, 0.036, 0.05, 14), B.head, C(0x2b2e32), 0, { matrix: TRS(sx * 0.075, 0.045, 0.09, Math.PI / 2 - 0.35, sx * 0.55, 0) });
+      P.add(cyl(0.03, 0.03, 0.012, 14), B.head, C(0x6e1410), 0, { matrix: TRS(sx * 0.092, 0.037, 0.111, Math.PI / 2 - 0.35, sx * 0.55, 0) });
+    }
+    P.add(cyl(0.028, 0.034, 0.045, 14), B.head, C(0x17181a), 0, { matrix: TRS(0, 0.045, 0.118, Math.PI / 2, 0, 0) });
+    P.add(new THREE.SphereGeometry(0.138, 18, 10, 0, Math.PI * 2, 0, Math.PI * 0.52), B.head, helm, 0, { matrix: T(0, 0.145, -0.005), dirt: 0.08 });
+    P.add(cyl(0.14, 0.143, 0.022, 18), B.head, helm, 0, { matrix: T(0, 0.13, -0.005) });
+    P.add(rbox(0.07, 0.018, 0.012, 0.004), B.head, C(0x3a0500), 2, { matrix: T(0, 0.19, -0.135) }); // strip light at the back
+    for (const sx of [-1, 1]) P.add(rbox(0.02, 0.05, 0.07, 0.008), B.head, C(0x0e0f10), 0, { matrix: T(sx * 0.135, 0.17, 0) }); // rails
+    return;
+  }
   if (h === 'soldier') {
     // balaclava face + helmet + goggles
     const bal = C(0x16171a);
@@ -431,6 +457,8 @@ export const BODY_SPECS = {
   striker: { build: 'female', head: 'striker', shirt: 0xb9b3a5, pants: 0xaea897, vest: null, boots: 0x1a1a1a, skin: 0xe0b0a0, blood: 0.85, gloves: 0x202020, dirtAmt: 0.35 },
   crusher: { build: 'brute', head: 'crusher', shirt: 0x2a4a6e, pants: 0x2c3646, vest: null, boots: 0x101418, skin: 0x5a86b8, blood: 0.25, rolledSleeves: true, shirtless: true },
   soldier: { build: 'male', head: 'soldier', shirt: 0x2a2d28, pants: 0x3b3d33, vest: 0x44463a, boots: 0x1a1612, skin: 0xb08068, blood: 0, gloves: 0x111111, helmet: 0x3e4236 },
+  // the NOX cleanup squad (actors/merc.js): black fatigues, charcoal plate carriers, respirators with red lenses
+  merc: { build: 'male', head: 'merc', shirt: 0x141619, pants: 0x17191c, vest: 0x25282c, boots: 0x0b0b0c, skin: 0x8a6a5a, blood: 0, gloves: 0x0a0a0b, helmet: 0x1a1c1f, dirtAmt: 0.05, armband: 0x8e1410 },
   soldier2: { build: 'male', head: 'soldier', shirt: 0x1d2024, pants: 0x25282c, vest: 0x2b2e33, boots: 0x121212, skin: 0x8a5a40, blood: 0, gloves: 0x0e0e0e, helmet: 0x23262a },
 };
 

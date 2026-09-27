@@ -56,7 +56,7 @@ export class Mission {
   /** a new match: the story runs in Cabin Fever mode only */
   reset() {
     const g = this.game;
-    this.story = !!g.mode && !g.endless;
+    this.story = !!g.mode && !g.endless && g.mode.story !== false; // (not in the Gauntlet either)
     this.phase = this.story ? 'intro' : 'off';
     this.progress = 0;
     this.hackTotal = g.diff?.hack ?? 180;
