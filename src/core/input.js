@@ -66,7 +66,7 @@ export class Input {
     if (this.locked) return;
     const p = this.canvas.requestPointerLock?.({ unadjustedMovement: true });
     if (p && p.catch) {
-      p.catch(() => this.canvas.requestPointerLock?.());
+      p.catch(() => this.canvas.requestPointerLock?.()?.catch?.(() => {})); // refused twice: the click-to-play overlay takes over
     }
   }
 

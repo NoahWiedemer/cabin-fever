@@ -1106,7 +1106,7 @@ export class HUD {
         const d2 = (x - c) * (x - c) + (y - c) * (y - c);
         if (d2 > R * R) continue;
         const kind = String(p.kind || '');
-        ctx.fillStyle = /health|med/i.test(kind) ? '#6dff8a' : /ammo/i.test(kind) ? '#ffd24a' : kind === 'generator' ? '#ff4a32' : kind === 'gascan' ? '#ff9a3c' : kind === 'revive' ? '#7dffa0' : '#ffe38a';
+        ctx.fillStyle = /health|med/i.test(kind) ? '#6dff8a' : /ammo/i.test(kind) ? '#ffd24a' : kind === 'generator' ? '#ff4a32' : kind === 'gascan' ? '#ff9a3c' : kind === 'revive' ? '#7dffa0' : kind === 'objective' ? '#58d2ff' : kind === 'objectiveAlert' ? '#ff5a3a' : '#ffe38a';
         const k = 3.2 * dpr;
         ctx.beginPath();
         ctx.moveTo(x, y - k);

@@ -1467,6 +1467,7 @@ export function buildLab(B, world, lamps) {
 
   // ------------------------------------------------ basement side: vault door, armored window, keypad
   const S = B.staticGroup;
+  let dest = null; // while set, the helpers below build into it (the door leaf) instead of the static batch
   const add = (geo, mat, x, y, z, r = null, opts = {}) => {
     const m = new THREE.Mesh(geo, mat);
     m.position.set(x, y, z);
@@ -1475,7 +1476,7 @@ export function buildLab(B, world, lamps) {
     m.receiveShadow = true;
     if (opts.noBatch) m.userData.noBatch = true;
     if (opts.order != null) m.renderOrder = opts.order;
-    S.add(m);
+    (dest ?? S).add(m);
     return m;
   };
   const boxAt = (mat, x0, y0, z0, x1, y1, z1, opts) => add(new THREE.BoxGeometry(x1 - x0, y1 - y0, z1 - z0), mat, (x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2, null, opts);
@@ -1484,7 +1485,7 @@ export function buildLab(B, world, lamps) {
     const m = new THREE.Mesh(boxGeometry(x0, y0, z0, x1, y1, z1, { mpr }), mat);
     m.castShadow = true;
     m.receiveShadow = true;
-    S.add(m);
+    (dest ?? S).add(m);
     return m;
   };
   const paint = new THREE.MeshStandardMaterial({ map: doorPaintTex(), color: 0xffffff, metalness: 0.35, roughness: 0.55 });
@@ -1502,7 +1503,10 @@ export function buildLab(B, world, lamps) {
   wbox(frameMat, d.x0, d.y1, fz0, d.x1, d.y1 + 0.32, BZ, 0.5);
   for (const [a, b] of [[d.x0, d.x0 + 0.02], [d.x1 - 0.02, d.x1]]) boxAt(darkB, a, FB, fz0, b, d.y1, WZ);
   boxAt(darkB, d.x0, d.y1 - 0.02, fz0, d.x1, d.y1, WZ);
-  // leaf, recessed 10 cm behind the frame face
+  // leaf, recessed 10 cm behind the frame face (its parts build into leafParts: the door swings open
+  // into the basement on the hinges at the end of the story, see door.open())
+  const leafParts = new THREE.Group();
+  dest = leafParts;
   const lz = 3.76;
   wbox(paint, d.x0 + 0.02, FB + 0.01, lz, d.x1 - 0.02, d.y1 - 0.02, 4.1, 1.5);
   const lx0 = d.x0 + 0.02, lx1 = d.x1 - 0.02, ly0 = FB + 0.01, ly1 = d.y1 - 0.02;
@@ -1518,12 +1522,15 @@ export function buildLab(B, world, lamps) {
   const rivets = [];
   for (let y = ly0 + 0.1; y < ly1 - 0.05; y += 0.16) for (const x of [lx0 + 0.04, lx1 - 0.04]) rivets.push([x, y, lz - 0.035]);
   for (let x = lx0 + 0.16; x < lx1 - 0.1; x += 0.16) for (const y of [ly1 - 0.04, ly0 + 0.05, FB + 0.5, FB + 1.52]) rivets.push([x, y, lz - 0.04]);
-  for (let y = FB + 0.12; y < d.y1 + 0.25; y += 0.2) for (const x of [d.x0 - 0.27, d.x1 + 0.27]) rivets.push([x, y, fz0]);
   for (const [x, y, z] of rivets) add(rivet, steelB, x, y, z, [-Math.PI / 2, 0, 0], { cast: false });
-  // hinges on the left, bolts on the right
+  dest = null;
+  for (let y = FB + 0.12; y < d.y1 + 0.25; y += 0.2) for (const x of [d.x0 - 0.27, d.x1 + 0.27]) add(rivet, steelB, x, y, fz0, [-Math.PI / 2, 0, 0], { cast: false });
+  // hinges on the left (barrels on the frame, arms on the leaf), bolts on the right
   for (const y of [FB + 0.35, FB + 1.1, FB + 1.85]) {
+    dest = null;
     add(new THREE.CylinderGeometry(0.065, 0.065, 0.32, 16), steelB, d.x0 - 0.08, y, fz0 - 0.07);
     add(new THREE.CylinderGeometry(0.075, 0.075, 0.03, 16), darkB, d.x0 - 0.08, y + 0.175, fz0 - 0.07);
+    dest = leafParts;
     boxAt(steelB, d.x0 - 0.08, y - 0.1, lz - 0.075, d.x0 + 0.3, y + 0.1, lz - 0.035);
     for (const x of [d.x0 + 0.08, d.x0 + 0.22]) add(new THREE.CylinderGeometry(0.014, 0.014, 0.012, 6), darkB, x, y, lz - 0.08, [Math.PI / 2, 0, 0], { cast: false });
   }
@@ -1544,6 +1551,26 @@ export function buildLab(B, world, lamps) {
   }
   // signs: restricted-area plate on the leaf, a biohazard triangle beside the door
   add(atlasPlane(0.64, 0.45, SIGN.door), signB, lcx, FB + 1.9, lz - 0.042, [0, Math.PI, 0], { cast: false });
+  dest = null;
+  // the leaf on its hinge axis, a separate (unbatched) object for level.js' dynamic group
+  const hinge = V(d.x0 - 0.08, 0, fz0 - 0.07);
+  const doorPivot = new THREE.Group();
+  doorPivot.name = 'labDoorLeaf';
+  doorPivot.position.copy(hinge);
+  for (const m of [...leafParts.children]) {
+    m.position.sub(hinge);
+    doorPivot.add(m);
+  }
+  // the locking wheel spins while the bolts draw back (its parts: at the wheel's centre)
+  const wheelParts = doorPivot.children.filter((m) => Math.abs(m.position.x + hinge.x - lcx) < 0.3 && Math.abs(m.position.y - (FB + 1.05)) < 0.3 && m.position.z < lz - 0.05 - hinge.z);
+  const wheelSpin = new THREE.Group();
+  wheelSpin.position.set(lcx - hinge.x, FB + 1.05, 0);
+  doorPivot.add(wheelSpin);
+  for (const m of wheelParts) {
+    m.position.x -= lcx - hinge.x;
+    m.position.y -= FB + 1.05;
+    wheelSpin.add(m);
+  }
   add(atlasPlane(0.34, 0.34, SIGN.bio), signB, d.x1 + 0.72, FB + 1.75, BZ - 0.004, [0, Math.PI, 0], { cast: false });
   // floor stripes in front of the door
   const floorPaint = new THREE.MeshStandardMaterial({ map: texOf(hazardCanvas(1, 33, true), true), transparent: true, roughness: 0.8, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
@@ -1641,9 +1668,26 @@ export function buildLab(B, world, lamps) {
   const _cam = new THREE.Vector3();
   /** the camera is down in the basement (or low in the cellar stairwell) */
   const camInBasement = (c) => c.y < -0.2 && c.x > -17.5 && c.x < 2.6 && c.z > -8.3 && c.z < 3.9;
+  let lock = 'locked'; // keypad LED: 'locked' (slow red blink) | 'hacking' (amber) | 'jammed' (fast red) | 'open' (green)
+  let doorT = 0, doorGoal = 0, wheelT = 0;
   const lab = {
     group,
     work,
+    /** the vault door leaf (level.js puts it in the dynamic group) and the hacking module's spot */
+    door: { pivot: doorPivot, center: V(lcx, FB + 1.1, fz0), front: V(lcx, FB, 3.2) },
+    hackMount: { pos: V(kx, ky - 0.36, BZ - 0.075), keypad: V(kx, ky, BZ - 0.05) },
+    /** the camera is in the lab itself (a cutscene): draw it anyway */
+    forceVisible: false,
+    setLock(s) {
+      lock = s;
+    },
+    /** swing the vault door open (k 0..1, eased in update) */
+    openDoor(k = 1) {
+      doorGoal = k;
+    },
+    get doorOpen() {
+      return doorT;
+    },
     get tech() {
       return tech;
     },
@@ -1659,16 +1703,28 @@ export function buildLab(B, world, lamps) {
     },
     update(dt, game) {
       const cam = game?.camera?.position;
-      const on = !!cam && camInBasement(cam);
+      const on = !!cam && (camInBasement(cam) || lab.forceVisible);
       if (on !== active) {
         active = on;
         group.visible = on;
         spot.hidden = !on; // gives up its lamp slot (lighting.js) while nobody can see the lab
       }
-      // the keypad LED: slow blink, a double flash now and then
+      // the keypad LED: slow blink, a double flash now and then (hacking: amber pulse, jammed: fast red,
+      // open: steady green)
       blinkT += dt;
       const ph = blinkT % 3.2;
-      ledMat.color.setRGB(ph < 0.12 || (ph > 0.3 && ph < 0.42) ? 7 : 1.1, 0.12, 0.08);
+      if (lock === 'open') ledMat.color.setRGB(0.3, 6, 0.8);
+      else if (lock === 'hacking') ledMat.color.setRGB(6 * (0.55 + 0.45 * Math.sin(blinkT * 6)), 3 * (0.55 + 0.45 * Math.sin(blinkT * 6)), 0.1);
+      else if (lock === 'jammed') ledMat.color.setRGB(blinkT % 0.4 < 0.2 ? 8 : 0.4, 0.1, 0.06);
+      else ledMat.color.setRGB(ph < 0.12 || (ph > 0.3 && ph < 0.42) ? 7 : 1.1, 0.12, 0.08);
+      // the door: the wheel spins the bolts back, then the leaf swings out into the basement
+      if (doorGoal > 0 || doorT > 0) {
+        wheelT = Math.min(1, wheelT + dt / 1.4);
+        wheelSpin.rotation.z = -wheelT * wheelT * Math.PI * 3;
+        if (wheelT >= 1) doorT += (doorGoal - doorT) * Math.min(1, dt * 0.9);
+        const e = doorT * doorT * (3 - 2 * doorT);
+        doorPivot.rotation.y = e * 1.72;
+      }
       if (!on) return;
       t += dt;
       // bubbles rise through the murk

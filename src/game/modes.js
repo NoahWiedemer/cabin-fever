@@ -6,8 +6,8 @@ export const MODES = {
     id: 'cabinfever',
     name: 'CABIN FEVER',
     kicker: 'FIRETEAM',
-    tagline: 'Hold the farmhouse until extraction arrives at dawn.',
-    desc: 'The original Fireteam mode. Survive a fixed number of waves (10 / 15 / 20 by difficulty), then the chopper comes at first light.',
+    tagline: 'Bring the reagent to Dr. Nadja, sealed in a lab somewhere under the farm.',
+    desc: 'The story: dropped at the farm by helicopter, hold the house while Command traces Nadja, find her lab, hack its vault door open and deliver the reagent. 15 waves on every difficulty.',
     endless: false,
   },
   endless: {
@@ -22,15 +22,16 @@ export const MODES = {
 
 export const MODE_LIST = [MODES.cabinfever, MODES.endless];
 
-// Unlock rounds: the upstairs (bedrooms, the Golden Punisher, the balcony over the yard) after round 3 on
-// every difficulty, the basement from round 10 on hard+. Endless opens both on the same rounds.
+// Unlock rounds: the upstairs (bedrooms, the Golden Punisher, the balcony over the yard) with round 4, the
+// basement (and in the story Nadja's lab behind it) with round 10, on every difficulty and in endless.
 export const UPSTAIRS_ROUND = 4;
 export const BASEMENT_ROUND = 10;
-// rounds / minutes mirror game.js DIFF (Cabin Fever only; endless has neither).
+// rounds / minutes mirror game/mission.js STORY (Cabin Fever only; endless has neither); the numbers that
+// make a difficulty easier or harder are game.js DIFF.
 export const DIFFICULTIES = [
-  { id: 'easy', name: 'EASY', rounds: 10, minutes: 30, skulls: 1, desc: 'Fewer, weaker Infected. Upstairs opens at round 4.', edesc: 'Fewer, weaker Infected.' },
-  { id: 'hard', name: 'HARD', rounds: 15, minutes: 45, skulls: 2, desc: 'The real thing. Upstairs at 4, basement at 10.', edesc: 'The horde at full strength.' },
-  { id: 'extreme', name: 'EXTREME', rounds: 20, minutes: 60, skulls: 3, desc: 'Tougher, faster horde. Upstairs at 4, basement at 10.', edesc: 'Tougher, faster, hungrier Infected.' },
+  { id: 'easy', name: 'EASY', rounds: 15, minutes: 60, skulls: 1, desc: 'Weaker Infected, you take less damage, cheaper store, more starting cash.', edesc: 'Fewer, weaker Infected. Cheaper store.' },
+  { id: 'hard', name: 'HARD', rounds: 15, minutes: 60, skulls: 2, desc: 'The real thing: the horde at full strength.', edesc: 'The horde at full strength.' },
+  { id: 'extreme', name: 'EXTREME', rounds: 15, minutes: 60, skulls: 3, desc: 'Tougher, faster horde that hits harder. Dearer store, a longer hack.', edesc: 'Tougher, faster, hungrier Infected.' },
 ];
 
 /** Floors that open during a run: [{ round, name }]. */
@@ -39,14 +40,14 @@ export function unlocksFor(modeId, diffId) {
   const rounds = DIFFICULTIES.find((d) => d.id === diffId)?.rounds ?? 15;
   const out = [];
   if (endless || rounds >= UPSTAIRS_ROUND) out.push({ round: UPSTAIRS_ROUND, name: 'UPSTAIRS' });
-  if (endless || rounds >= 15) out.push({ round: BASEMENT_ROUND, name: 'BASEMENT' });
+  if (endless || rounds >= BASEMENT_ROUND) out.push({ round: BASEMENT_ROUND, name: endless ? 'BASEMENT' : 'BASEMENT · LAB' });
   return out;
 }
 
 // Wave timeline for the briefing ("round: what happens").
 export const THREATS = [
   { round: 1, name: 'MAULERS', text: 'The standard Infected' },
-  { round: 2, name: 'BOOMERS', text: 'Strapped with dynamite: shoot the charge' },
+  { round: 2, name: 'BOOMERS', text: 'Bloated, they burst: shoot them early' },
   { round: 3, name: 'MUTANT DOGS', text: 'Fast, low and in packs' },
   { round: 4, name: 'BITERS', text: 'Packs that pounce onto your back: mash V' },
   { round: 5, name: 'STRIKERS', text: 'Leaping, and they drop live shells' },

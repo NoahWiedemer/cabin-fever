@@ -139,6 +139,8 @@ export class Power {
     this.prompt = null;
     this.hold = null;
     this.holdLabel = null;
+    this.outageT = 0; // game/events.js: the power line is down (the mains dead, the engine runs on)
+    this.outageMax = 0;
     this._stopPour();
     this.cans.reset();
     setMains(1, true);
@@ -159,6 +161,12 @@ export class Power {
     this._stopPour();
     setMains(1, true);
     if (this.game.lighting) this.game.lighting.mains = 1;
+  }
+
+  /** game/events.js: lightning in the power line: the lights stutter out for secs s, then flicker back */
+  blackout(secs) {
+    this.outageT = secs;
+    this.outageMax = secs;
   }
 
   activate() {
@@ -329,6 +337,21 @@ export class Power {
     if (this.surgeT > 0) {
       this.surgeT -= dt;
       target *= st === 'sputter' ? 0.12 : 0.55;
+    }
+    if (this.outageT > 0) {
+      // the line is down: a stutter as it goes, black, a stutter as it comes back
+      this.outageT -= dt;
+      const since = this.outageMax - this.outageT;
+      let k = 0;
+      if (since < 0.9) k = Math.random() < 0.45 ? 0.7 : 0.04;
+      else if (this.outageT < 1.1) k = Math.random() < 0.6 ? 0.85 : 0.08;
+      if (this.outageT <= 0) {
+        k = 1;
+        this.restoreT = 0;
+        this.game.audio.play('power_on', { volume: 0.7 });
+        this.game.hud?.banner('POWER RESTORED', 'The line is back', 2.2, 'success');
+      }
+      target *= k;
     }
     // incandescent filaments: quick but not instant
     this.level += (target - this.level) * (1 - Math.exp(-dt * 26));

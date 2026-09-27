@@ -1,5 +1,6 @@
-// Cabin Fever game mode: waves of infected, rounds per difficulty, unlocks, special weapons,
-// scoring/combos, damage routing (hitscan, melee, explosions, acid, gas), team & spectating.
+// Cabin Fever game mode: waves of infected, the story (game/mission.js: cutscenes, the hacking mission),
+// rare random events (game/events.js), unlocks, special weapons, scoring/combos, damage routing (hitscan,
+// melee, explosions, acid, gas), team & spectating.
 import * as THREE from 'three';
 import { buildLevel, levelOf } from '../world/level.js';
 import { Lighting } from '../world/lighting.js';
@@ -22,8 +23,13 @@ import { WEAPONS, SPECIAL_SPAWNS } from '../player/weaponDefs.js';
 import { Projectiles } from './projectiles.js';
 import { Pickups } from './pickups.js';
 import { Economy, killReward, roundBonus } from './economy.js';
-import { MODES, UPSTAIRS_ROUND } from './modes.js';
-import { GAS_MASK, maskCapacity } from './shop.js';
+import { MODES, UPSTAIRS_ROUND, BASEMENT_ROUND } from './modes.js';
+import { GAS_MASK, maskCapacity, setPriceScale } from './shop.js';
+import { Cinema } from './cinema.js';
+import { Mission, STORY } from './mission.js';
+import { RandomEvents } from './events.js';
+import { Chopper } from '../world/helicopter.js';
+import { StoryUI } from '../ui/story.js';
 import { Gear } from './gear.js';
 import { FLAG_NOBULLET, SURF } from '../world/collision.js';
 import { Shake, clamp, rand, pick, damp } from '../core/utils.js';
@@ -40,11 +46,13 @@ import { BarnFire } from '../world/barnFire.js';
 import { Power } from '../world/power.js';
 import { Revives } from './revive.js';
 
+// Every difficulty plays the story's STORY.rounds rounds in STORY.minutes; they differ in the numbers:
+// hp: infected health, dmg: damage the fireteam takes, count: wave size, speed: infected speed, biters: share
+// of Biter packs, pack: largest Biter pack, price: store prices, cash: starting money, hack: seconds of hacking.
 const DIFF = {
-  // biters: share of Biter packs in a wave, pack: largest Biter pack
-  easy: { label: 'EASY', rounds: 10, hp: 0.8, dmg: 0.65, count: 0.75, time: 30 * 60, speed: 0.95, biters: 0.6, pack: 4 },
-  hard: { label: 'HARD', rounds: 15, hp: 1.0, dmg: 1.0, count: 1.0, time: 45 * 60, speed: 1.0, biters: 1, pack: 5 },
-  extreme: { label: 'EXTREME', rounds: 20, hp: 1.2, dmg: 1.25, count: 1.25, time: 60 * 60, speed: 1.06, biters: 1.25, pack: 5 },
+  easy: { label: 'EASY', hp: 0.72, dmg: 0.6, count: 0.8, speed: 0.95, biters: 0.6, pack: 4, price: 0.75, cash: 800, hack: 150 },
+  hard: { label: 'HARD', hp: 1.0, dmg: 1.0, count: 1.0, speed: 1.0, biters: 1, pack: 5, price: 1, cash: 500, hack: 180 },
+  extreme: { label: 'EXTREME', hp: 1.2, dmg: 1.22, count: 1.15, speed: 1.05, biters: 1.2, pack: 5, price: 1.15, cash: 400, hack: 210 },
 };
 
 const _hit = {};
@@ -88,6 +96,7 @@ export class Game {
     this.onShopOpen = null; // set by main.js: show the store, release the pointer
     this.gear = new Gear(this); // store gear worn on body slots (game/gear.js), incl. the gas mask
     this.fHold = null; // seconds F has been held in the buy phase
+    this.story = new StoryUI(hud); // cinema overlay, objective panel, radio messages (ui/story.js)
   }
 
   // ------------------------------------------------------------------ loading
@@ -162,6 +171,10 @@ export class Game {
       this.bots.push(b);
     }
 
+    this.cinema = new Cinema(this); // cutscenes (game/cutscenes.js)
+    this.mission = new Mission(this); // the story: intro, Nadja, the hacking mission, the finale
+    this.events = new RandomEvents(this); // rare: airstrike, blood moon, a helicopter crash, a blackout
+
     await step(0.92, 'Spilling blood');
     this._decorate();
     this.hud?.setMapOutline(this.level.radarSegments);
@@ -190,6 +203,21 @@ export class Game {
     }
     for (const o of hidden) o.visible = false;
     await step(1, 'Ready');
+  }
+
+  /** the story's helicopter (world/helicopter.js), built on first use */
+  chopper() {
+    return (this._chopper ??= new Chopper(this.scene, this.audio));
+  }
+
+  chopperIfBuilt() {
+    return this._chopper ?? null;
+  }
+
+  /** game/cinema.js: a cutscene ended */
+  onCinemaEnd(id, skipped) {
+    if (!this.running) return;
+    this.mission?.onCinemaEnd(id, skipped);
   }
 
   navFieldFor(post) {
@@ -270,6 +298,9 @@ export class Game {
 
   // ------------------------------------------------------------------ session
   start(config) {
+    this.running = false;
+    this.cinema?.stop(true);
+    this.story?.setFade(0);
     this.config = config;
     this.diff = DIFF[config.difficulty] || DIFF.hard;
     this.mode = MODES[config.mode] || MODES.cabinfever;
@@ -277,8 +308,9 @@ export class Game {
     this.difficultyDamage = this.diff.dmg;
     this.state = 'intermission';
     this.round = 0;
-    this.maxRounds = this.endless ? Infinity : this.diff.rounds;
-    this.timeLeft = this.endless ? Infinity : this.diff.time;
+    this.maxRounds = this.endless ? Infinity : STORY.rounds;
+    this.timeLeft = this.endless ? Infinity : STORY.minutes * 60;
+    setPriceScale(this.diff.price);
     this.elapsed = 0;
     this.score = 0;
     this.combo = 0;
@@ -334,7 +366,7 @@ export class Game {
         this.team.push(b);
       } else b.hide();
     }
-    this.economy.reset(this.team);
+    this.economy.reset(this.team, this.diff.cash);
     this.shopOpen = false;
     this.botBuys = [];
     this.gear.reset();
@@ -347,10 +379,16 @@ export class Game {
     this.barricades?.reset();
     this.power?.start();
     this.revives?.reset();
-    if (this.endless) this.hud.banner('ENDLESS · CABIN FEVER', 'No extraction is coming. Hold out as long as you can', 3.2, 'normal');
-    else this.hud.banner('FIRETEAM · CABIN FEVER', 'Hold the farmhouse until extraction arrives', 3.2, 'normal');
     this.audio.startAmbience();
     this._updateNav();
+    // the story (Cabin Fever mode): the intro cutscene first; endless: straight in
+    this._chopper?.show(false);
+    this.lighting.spotOverride = null;
+    if (this.lab) this.lab.forceVisible = false;
+    this.events.reset();
+    this.mission.reset();
+    if (this.endless) this.hud.banner('ENDLESS · CABIN FEVER', 'No extraction is coming. Hold out as long as you can', 3.2, 'normal');
+    this.mission.begin();
   }
 
   /** k-th bot's start spot: the defense posts after the player's; past those, a clear spot next to one */
@@ -402,6 +440,13 @@ export class Game {
 
   quit() {
     this.running = false;
+    this.cinema?.stop(true);
+    this._chopper?.show(false);
+    this.lighting.spotOverride = null;
+    this.events?.reset();
+    this.mission?.reset();
+    this.story?.setObjective(null);
+    this.story?.setFade(0);
     this.state = 'menu';
     this.zombies.clear();
     this.stalker?.reset();
@@ -478,9 +523,11 @@ export class Game {
     this.barnFire?.onRoundStart(); // rarely: lightning sets the barn on fire this round
     this.stalker?.onRoundStart(this.round); // every round from round 3 (4 on easy): the Stalker haunts it
     this.roundTotal = this.toSpawn.length;
+    this.events?.onRoundStart(this.round); // very rarely: an airstrike, a blood moon, a crash, a blackout
+    this.mission?.onRoundStart(this.round);
     this.spawnT = 1.5;
     this.hud.setCountdown(null);
-    let sub = this.round === 2 ? 'Boomers and hard-hatted Workers join the horde' : this.round === 3 ? 'Mutant dogs are hunting in packs' : this.round === 4 ? 'Biters hunt in packs · mash V to shake one off your back' : this.round === 5 ? 'Strikers have joined the horde' : this.round === 11 ? 'Crushers incoming — watch for the acid' : this.round === this.maxRounds ? 'Final wave — survive until dawn' : 'The infected are coming';
+    let sub = this.round === 2 ? 'Boomers and hard-hatted Workers join the horde' : this.round === 3 ? 'Mutant dogs are hunting in packs' : this.round === 4 ? 'Biters hunt in packs · mash V to shake one off your back' : this.round === 5 ? 'Strikers have joined the horde' : this.round === 11 ? 'Crushers incoming — watch for the acid' : this.round === this.maxRounds ? 'Final wave — beat them back' : 'The infected are coming';
     const milestone = this.endless && this.round > 20 && this.round % 5 === 0;
     if (milestone) sub = 'The horde grows stronger';
     this.hud.banner(`ROUND ${this.round}`, sub, 3, this.round === this.maxRounds || milestone ? 'danger' : 'normal');
@@ -500,11 +547,20 @@ export class Game {
   }
 
   _endRound() {
+    // the story's last wave: over only once the hack is through too (until then the infected keep coming)
+    if (this.round >= this.maxRounds && !this.mission.finalWaveCleared()) return;
     this.state = this.round >= this.maxRounds ? 'victory' : 'shop';
     this.breach?.onRoundEnd();
     this.stalker?.onRoundEnd(); // not part of the wave: an attack breaks off, the scares go on into the buy phase
     this.revives?.onRoundEnd(); // the fallen get up anyway (below)
+    this.events?.onRoundEnd();
     if (this.state === 'victory') {
+      if (this.mission.story) {
+        // the finale: the vault door opens (game/cutscenes.js), then the end screen
+        this.state = 'outro';
+        this.mission.playOutro();
+        return;
+      }
       this._finish(true);
       return;
     }
@@ -540,9 +596,10 @@ export class Game {
     if (mask.owned) mask.filter = maskCapacity(mask.level); // fresh filter every round
     this.economy.payAll(roundBonus(this.round), 'round');
     this.botBuys = this.economy.botsShop();
-    // unlocks at the start of round 10 (hard/extreme) and 16 (extreme)
+    // unlocks: the upstairs with round 4, the basement with round 10 (the story: Command has found Nadja's lab)
     const next = this.round + 1;
-    if (next >= 10 && this.maxRounds >= 15 && !this.unlocked.basement) {
+    this.mission?.onRoundEnd(this.round);
+    if (next >= BASEMENT_ROUND && !this.unlocked.basement) {
       this.unlocked.basement = true;
       this.level.unlock('basementDoor');
       this.level.unlock('cellarBarricade');
@@ -634,7 +691,7 @@ export class Game {
     this.state = victory ? 'victory' : 'defeat';
     this.gameOverT = 0;
     this.audio.play(victory ? 'victory' : 'defeat', { volume: 1 });
-    const sub = victory ? 'Extraction arrived at dawn' : this.endless ? `Your fireteam fell in round ${this.round}` : 'Your fireteam was overrun';
+    const sub = victory ? 'The reagent reached Nadja' : this.endless ? `Your fireteam fell in round ${this.round}` : 'Your fireteam was overrun';
     this.hud.banner(victory ? 'MISSION COMPLETE' : 'MISSION FAILED', sub, 4, victory ? 'success' : 'danger');
     this.onGameOver?.(this.runStats(victory ? 'victory' : !this.endless && this.timeLeft <= 0 ? 'timeout' : 'overrun'));
   }
@@ -657,7 +714,7 @@ export class Game {
     const pos = best.clone().add(new THREE.Vector3(rand(-2.5, 2.5), 0.05, rand(-2.5, 2.5)));
     const r = this.round;
     const hpMult = this.diff.hp * (1 + 0.065 * (r - 1));
-    const spd = this.diff.speed * (1 + 0.01 * Math.min(r - 1, 30));
+    const spd = this.diff.speed * (1 + 0.01 * Math.min(r - 1, 30)) * (this.events?.speedMul ?? 1);
     this.breach?.onSpawn(this.zombies.spawn(type, pos, r, hpMult, spd)); // (the round's wall-breaching Boomer)
     // the rest of a dog / Biter pack queued right behind comes in with its leader
     while ((type === 'dog' || type === 'biter') && this.toSpawn[0] === type && this.zombies.aliveCount < this.maxAlive) {
@@ -971,7 +1028,7 @@ export class Game {
       this.hud.addKill({ killer: victim, victim: 'Self', weapon: 'EXPLOSION', headshot: false });
     }
     // money: any fireteam kill pays every wallet the same amount
-    if (src && (src.isPlayer || src.stats)) this.economy.payAll(killReward(z.typeName, headshot), 'kill');
+    if (src && (src.isPlayer || src.stats)) this.economy.payAll(killReward(z.typeName, headshot) * (this.events?.payMul ?? 1), 'kill');
   }
 
   /** The Survivalist's stash: sometimes a good primary you don't carry yet, else a survival pack. */
@@ -988,6 +1045,7 @@ export class Game {
   }
 
   onPlayerDied(player, source) {
+    this.mission?.onPlayerDied(player);
     const revivable = this.revives?.onDeath(player);
     this.weapons._stopLoops?.();
     const others = this.team.some((m) => m !== player && m.alive);
@@ -1029,6 +1087,11 @@ export class Game {
     const input = this.input;
     const player = this.player;
     const settings = this.settings;
+
+    if (this.running && this.cinema.active) {
+      this._updateCinema(dt);
+      return;
+    }
 
     if (!this.running) {
       // menu attract camera
@@ -1137,6 +1200,9 @@ export class Game {
     this.revives?.update(dt, input.locked ? input : null);
     this.gunshop?.update(dt, this);
     this.lab?.update(dt, this);
+    this.mission?.update(dt, player.alive && input.locked ? input : null);
+    this.events?.update(dt);
+    if (this.cinema.active) return; // the mission just started a cutscene
 
     // defeat check: entire team down
     if (!gameOver && this.state !== 'menu' && !this.team.some((m) => m.alive)) {
@@ -1192,7 +1258,24 @@ export class Game {
       this.hitAccumHead = false;
     }
 
-    // world systems
+    this._updateWorld(dt);
+    this._updateHud(dt);
+  }
+
+  /** A cutscene runs (game/cinema.js): the script moves the camera and its cast; the world goes on around it. */
+  _updateCinema(dt) {
+    this.cinema.update(dt, this.input);
+    this.viewmodel.setVisible(false);
+    this.hud.setScope(false);
+    this.level.update(dt);
+    this.lab?.update(dt, this);
+    this.power?.update(dt, null);
+    this._updateWorld(dt, true);
+  }
+
+  /** lighting, fog, weather, particles, indoor audio, the post stack, the listener (cine: in a cutscene) */
+  _updateWorld(dt, cine = false) {
+    const player = this.player;
     this.shake.update(dt);
     const playerLevel = levelOf(this.camera.position.y - 1.0);
     this.lighting.update(dt, this.camera.position, this.camera.quaternion, playerLevel);
@@ -1206,11 +1289,12 @@ export class Game {
       this.lighting.moonBase = 0.55 + dw * 2.2;
       this.lighting.moon.color.lerp(_dawnSun, dw);
     }
+    this.events?.tintFog(fogCol);
     this.fog.near = this.time;
-    this.fog.far = (0.05 + player.inGas * 0.12) * (1 - dw * 0.5);
+    this.fog.far = (0.05 + (cine ? 0 : player.inGas) * 0.12) * (1 - dw * 0.5) * (cine ? 0.6 : 1);
     this.weather.update(dt, this.camera.position, this.lighting.lightning, fogCol, dw);
-    if (this.fires) this._updateFires(dt);
-    this.fx.update(dt, (cloud, cdt) => {
+    if (this.fires && !cine) this._updateFires(dt);
+    this.fx.update(dt, cine ? null : (cloud, cdt) => {
       for (const m of this.team) {
         if (!m.alive) continue;
         if (m.pos.distanceTo(cloud.p) < cloud.radius) m.takeDamage(13 * cdt, null, null, { ignoreArmor: true });
@@ -1225,18 +1309,16 @@ export class Game {
     // post fx
     const g = this.gr.grade;
     g.set('uTime', this.time);
-    g.set('uDamage', player.damageFlash * 0.85);
-    g.set('uGas', player.inGas * (0.85 - 0.55 * (this.maskFx ?? 0))); // the mask keeps your eyes clear
-    g.set('uLowHp', player.alive ? clamp(1 - player.hp / 30, 0, 1) : 0);
-    g.set('uDead', player.alive ? 0 : clamp(player.deadT / 1.5, 0, 0.85));
+    g.set('uDamage', cine ? 0 : player.damageFlash * 0.85);
+    g.set('uGas', cine ? 0 : player.inGas * (0.85 - 0.55 * (this.maskFx ?? 0))); // the mask keeps your eyes clear
+    g.set('uLowHp', !cine && player.alive ? clamp(1 - player.hp / 30, 0, 1) : 0);
+    g.set('uDead', cine || player.alive ? 0 : clamp(player.deadT / 1.5, 0, 0.85));
     const fl = this.gr.grade.uniforms.get('uFlash').value;
     g.set('uFlash', Math.max(this.lighting.lightning * (this.indoor > 0.5 ? 0.02 : 0.06), fl * Math.exp(-dt * 10)));
 
     // audio listener
     const fwd = this.camera.getWorldDirection(_p);
     this.audio.setListener(this.camera.position, fwd, this.camera.up);
-
-    this._updateHud(dt);
   }
 
   _updateHud(dt) {
@@ -1278,7 +1360,7 @@ export class Game {
         showAmmo: info.showAmmo && w.def.mode !== 'grenade',
         reloading: info.reloading,
         crosshair: w.crosshair(this.camera),
-        radar: { x: player.pos.x, z: player.pos.z, yaw: player.yaw, enemies, allies, pickups: this.pickups.radarList().concat(this.power?.radarList() ?? [], this.revives?.radarList() ?? []), level: player.level },
+        radar: { x: player.pos.x, z: player.pos.z, yaw: player.yaw, enemies, allies, pickups: this.pickups.radarList().concat(this.power?.radarList() ?? [], this.revives?.radarList() ?? [], this.mission?.radarList() ?? []), level: player.level },
       },
       dt
     );
@@ -1299,17 +1381,25 @@ export class Game {
     const buy = this.state === 'shop';
     hud.setBuyPhase?.(buy && !this.shopOpen ? { next: this.round + 1, gunshop: !!this.gunshop } : null);
     const readyHold = buy && this.fHold != null && this.fHold > 0.15;
-    const pw = this.power, rv = this.revives;
-    const hold = rv?.hold != null ? rv : pw?.hold != null ? pw : this.barricades;
+    const pw = this.power, rv = this.revives, ms = this.mission;
+    const hold = rv?.hold != null ? rv : pw?.hold != null ? pw : ms?.hold != null ? ms : this.barricades;
     hud.setHold?.(readyHold ? this.fHold / READY_HOLD : hold?.hold ?? null, readyHold ? null : hold?.holdLabel);
     const canShop = this.canShop();
-    hud.setInteract?.(canShop && this.gunshop ? 'Press [F] to open the GUN SHOP' : rv?.prompt ?? pw?.prompt ?? this.barricades?.prompt ?? null);
+    hud.setInteract?.(canShop && this.gunshop ? 'Press [F] to open the GUN SHOP' : rv?.prompt ?? pw?.prompt ?? ms?.prompt ?? this.barricades?.prompt ?? null);
     hud.setRevive?.(rv?.hudInfo() ?? null);
     let wp = null;
-    // the gun shop in the buy phase, else a downed teammate, else the generator / a gas can while the power is out
-    let ent = this.gunshop?.entrance, wpLabel = 'GUN SHOP';
-    if (!(buy && !this.shopOpen && ent && !canShop && ent.distanceTo(player.pos) > 2.5)) {
-      const g = rv?.waypoint(player) ?? pw?.waypoint(player);
+    // a downed teammate first, then the story's objective, then the gun shop in the buy phase, else the
+    // generator / a gas can while the power is out
+    let ent = null, wpLabel = null;
+    const rw = rv?.waypoint(player), mw = ms?.waypoint(player);
+    if (rw || mw) {
+      ent = (rw ?? mw).pos;
+      wpLabel = (rw ?? mw).label;
+    } else if (buy && !this.shopOpen && this.gunshop?.entrance && !canShop && this.gunshop.entrance.distanceTo(player.pos) > 2.5) {
+      ent = this.gunshop.entrance;
+      wpLabel = 'GUN SHOP';
+    } else {
+      const g = pw?.waypoint(player);
       ent = g?.pos ?? null;
       wpLabel = g?.label;
     }

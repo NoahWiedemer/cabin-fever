@@ -1,6 +1,7 @@
 // Team economy: every fireteam member (player + bots) has an own wallet, but every payout goes
 // to all of them in equal amounts (a teammate's kill pays you the same as your own).
 // Bots spend their cash on damage upgrades for their signature gun between rounds.
+import { price } from './shop.js';
 
 export const ECON = {
   start: 500,
@@ -28,11 +29,11 @@ export class Economy {
     this.onPay = null; // (amount, reason) → HUD feedback
   }
 
-  /** New match: fresh wallets for the given team members. */
-  reset(members) {
+  /** New match: fresh wallets for the given team members (start: the difficulty's starting cash). */
+  reset(members, start = ECON.start) {
     this.wallets.clear();
     for (const m of members) {
-      this.wallets.set(m, { cash: ECON.start, earned: 0, spent: 0, round: { kills: 0, bonus: 0, count: 0 }, dmgLv: 0 });
+      this.wallets.set(m, { cash: start, earned: 0, spent: 0, round: { kills: 0, bonus: 0, count: 0 }, dmgLv: 0 });
       if (!m.isPlayer) m.dmgMul = 1;
     }
   }
@@ -82,7 +83,7 @@ export class Economy {
     const bought = [];
     for (const [m, w] of this.wallets) {
       if (m.isPlayer) continue;
-      if (w.dmgLv < BOT_DMG.costs.length && this.spend(m, BOT_DMG.costs[w.dmgLv])) {
+      if (w.dmgLv < BOT_DMG.costs.length && this.spend(m, price(BOT_DMG.costs[w.dmgLv]))) {
         w.dmgLv++;
         bought.push({ bot: m, level: w.dmgLv });
       }

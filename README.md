@@ -18,21 +18,39 @@ The title sits over the live farmhouse scene. A slow camera moves between shots,
 
 ## Game modes
 
-A group of double agents escaped with a virus sample and are pinned down in an abandoned farmhouse.
+**Cabin Fever** is the story mode, part one: a fireteam brings the only batch of a reagent to Dr. Nadja, a scientist sealed in a lab somewhere under an overrun farm. Every difficulty plays the same 15 waves in 60 minutes; the difficulty only changes the numbers.
 
-**Cabin Fever** (classic Fireteam) is the original mode. Hold out against a fixed number of waves until extraction arrives at dawn.
+| Difficulty | Infected health | Damage you take | Wave size | Store prices | Starting cash | Hack |
+|---|---|---|---|---|---|---|
+| Easy | ×0.72 | ×0.6 | ×0.8 | ×0.75 | $800 | 150 s |
+| Hard | ×1.0 | ×1.0 | ×1.0 | ×1.0 | $500 | 180 s |
+| Extreme | ×1.2 | ×1.22 | ×1.15 (a little faster too) | ×1.15 | $400 | 210 s |
 
-| Difficulty | Rounds | Time limit | Unlocks |
-|---|---|---|---|
-| Easy | 10 | 30:00 | Upstairs opens at round 4 (Golden Punisher, balcony over the yard) |
-| Hard | 15 | 45:00 | Upstairs at 4, basement at 10 (interior stairs + outside cellar) |
-| Extreme | 20 | 60:00 | Upstairs at 4, basement at 10 |
+The upstairs opens with round 4 (Golden Punisher, balcony over the yard), the basement with round 10 (interior stairs + outside cellar), on every difficulty.
 
-**Endless** has no extraction, no time limit and no victory, so the run ends when the fireteam is wiped. The end screen shows the round you reached.
-- Difficulty still sets the horde's health, damage, count and speed.
-- The upstairs opens at round 4 and the basement at round 10 on every difficulty. The special weapons appear on their usual rounds.
+**The story** (`src/game/mission.js`, cutscenes in `src/game/cutscenes.js`):
+- **Intro**: a cutscene. The picked fireteam sits in the helicopter (Reaper 1-1) with the glowing reagent case between them, while Command briefs them over the radio. The helicopter comes in low over the trees with its searchlight on, hovers over the front yard, and everyone fast-ropes down, the picked bots first. Last comes the player: a stand-in character nobody picked (Scorpion first), or the player's own descent in first person when the whole roster is picked. The camera ends in the player's eyes, facing the house.
+- **Rounds 1-9**: hold the farmhouse while Command traces Nadja's signal (radio messages now and then).
+- **After round 9**: "Got her!" over the radio. The basement opens, and the objective is Nadja's lab behind the basement's armored glass (waypoint).
+- **At the glass**: a cutscene. Nadja wants the reagent, a teammate tries the vault door's keypad (dead, two low buzzes), Nadja explains the lockdown fried the lock and points at the door, and Command promises a hacking module.
+- **The next buy phase** (or right away, if you met her in one): Reaper 1-1 flies over and drops the module in a crate under a parachute, somewhere outside that you can reach on foot (radar and waypoint, a red flare burns next to it, mind the gas). Hold **E** at it to take the module.
+- **At the keypad by the vault door**: hold **E** to clamp the module on. It cracks the lock while the infected attack (it pauses in the buy phase). Like Payday's drill, it **stalls** now and then (every 24-42 s of hacking): an alarm, a HACK STALLED banner, the objective and waypoint turn red. Hold **E** at the module to restart it. Its screen shows the progress, and the keypad LED goes amber, flashing red or green.
+- **The finale** needs both: the final wave cleared and the hack done. If the last wave falls first, the infected keep coming (overtime) until the hack is through. When both are done, a cutscene plays: ACCESS GRANTED, the bolts draw back, the vault door swings open, the team walks in and hands Nadja the case. Then comes MISSION COMPLETE.
+- If you die carrying the module, it drops where you fell.
+- Every cutscene can be skipped: **hold Space**. The world freezes while one plays. Radio messages show on the left above the vitals, and the current objective under the radar.
+
+**Endless** has no story, no extraction, no time limit and no victory, so the run ends when the fireteam is wiped. The end screen shows the round you reached.
+- Difficulty still sets the horde's health, damage, count, speed and the store prices.
+- The upstairs opens at round 4 and the basement at round 10. The special weapons appear on their usual rounds.
 - Past round 20, zombie health keeps climbing, but wave size grows more slowly. Striker share, crusher count and speed are capped.
 - Every fifth round after 20 gets a "The horde grows stronger" banner. The HUD shows the round as `07/∞`.
+
+**Random events** (`src/game/events.js`): very rare, at most one a round and each at most once a run (2.2 % a round each from its first round; never in the story's final wave). `__game.events.force('airstrike' | 'bloodmoon' | 'crash' | 'blackout')` starts one for testing.
+- **Artillery barrage** (from round 5): Command shells the fields round the farm. Whistles, then 16 shells over 13 s, most of them on the infected outside. Stay inside.
+- **Blood moon** (from round 4): the storm tears open on a red moon. The round gets 30 % more infected, 18 % faster, and every kill pays double.
+- **Helicopter crash** (from round 6): Reaper 2-2 flies over, gets struck by lightning, spins down trailing smoke and crashes in the fields. The wreck burns, and its cargo lies next to it: a special weapon (chain gun, M32 or L96A1) and an ammo box. The noise draws the horde.
+- **Blackout** (from round 3): lightning hits the power line by the yard, and the lights stutter out for 42-58 s (flashlight: F).
+- Plus the older two: the lightning strike that sets the barn on fire and the Boomer that blows in a wall (see below).
 
 - **Infected**
   - **Mauler**: the standard infected. The bodies rotate between the zombie woman, the Smoker, the gas-mask zombie and a plain zombie in a torn shirt.
@@ -95,10 +113,10 @@ A group of double agents escaped with a virus sample and are pinned down in an a
 - **Spent magazines**: when you reload a magazine gun, the empty drops out and clatters to the floor. It lies there for 8 s, then sinks away, with at most 16 on the floor at once.
   - Throwables: M67 frags and Molotovs. A Molotov shatters into a burning pool that sets the Infected on fire.
 - **Special weapons**
+  - Round 4: Golden Punisher (upstairs by the bathroom, as the upstairs opens)
   - Round 11: L96A1 Black-Magnum (in the basement crate)
   - Round 13: M32 MGL (kitchen table)
-  - Round 16: Golden Punisher (upstairs by the bathroom)
-  - Round 19: Chain Gun (living room)
+  - Round 14: Chain Gun (living room)
 - **Barricade kits** ($300 each, carry up to 3, from the gun shop) sit in their own slot (**5**). With the kit out, the free doorways around you show faint plank outlines. Aim at one within 2.5 m and hold **Mouse1**: about 1.2 s of hammering nails six planks across it and uses one kit. Holding it on a damaged barricade repairs it to full.
   - Barricade spots: the front door, the back door, the kitchen wall hole, and the ground-floor interior doors (living room, storage room, storage passage, kitchen, back room and pantry). Once the basement opens, the basement door and the outside cellar door are added. You can't nail up a doorway while someone stands in it.
   - A barricade stops the Infected and the fireteam, but bullets and grenades pass through the gaps. The Infected still path to it (some take another way in), claw at it with their normal attacks and hit anyone standing right behind it. Bots route around barricades.
@@ -182,6 +200,7 @@ W / Space at a ladder climb (S down, C slide, Space jump off) · 1–6 / wheel s
   - `power.js`: the generator circuit and its state. It covers fuel, faults, repair and refuelling, the mains level with its brown-out and restore flicker, and `registerPowered()` for anything else on the circuit. `generator.js` has its moving parts (gauges, status lamps, pull-start, fuse panel with breaker, cables and conduit, engine shake and exhaust), and `gasCans.js` the jerry can spots upstairs. Any `level.lamps` entry is on the circuit unless it has `mains: false`.
   - `lab.js`: the lab behind the basement's south wall. It builds the vault door, the armored window (glass colliders tagged `labGlass`) and the lab itself. The static interior is merged per material, with light from virtual ceiling panels baked into a vertex attribute that the materials add as emission; one pooled spot (`fx: false`, aimed away from the glass) lights the counter. It's drawn and animated only while the camera is in the basement. It lies inside the yard's mud slab, which gets a hole and a matching cap, and the fog shader exempts it (`labRect`).
   - `barricades.js`: the store barricades. It handles the ghost preview and nailing, the planks, colliders and loose debris, the Infected clawing at them, blast and knife damage, and the nav costs (the Infected pay extra to go through, the bots' fields are closed off). The spots are `barricadeSpots` in `level.js`, plus a wall breach once one opens (`addSpot`).
+  - `helicopter.js`: the procedural Huey (lofted fuselage, glass cockpit, an open cabin with two troop benches and red night lights, skids, rotors with blur discs, nav lights, a searchlight whose real light borrows the flashlight's spot via `lighting.spotOverride`, fast-ropes), `HeliFlight` (paths with banking) and `Chopper` (the shared one with its rotor sound). `hackDevice.js`: the drop crate with its parachute and flare, and the hacking module with its live screen. The lab's vault door leaf is its own object on the hinge (`lab.door`, `lab.openDoor()`, `lab.setLock()` for the keypad LED).
   - `breach.js`: the rare wall breach. It covers the hideable wall patches and the caved-in look (broken masonry, rubble, collidable rubble steps outside), the sapper Boomer, the nav refresh, the new entrance and the spawn bias. The spots are `breachSpots` in `level.js`, and `BREACH.chance` sets the odds.
   - Also procedural textures, props and the collision world.
 - `src/nav`
@@ -212,8 +231,12 @@ W / Space at a ladder climb (S down, C slide, Space jump off) · 1–6 / wheel s
 - `src/fx`: particles, decals, impacts, blood, explosions, casings and tracers. `effects.js fleshBurst()` is the Boomer's wet burst: instanced flesh chunks (`gib()`: dented, squashed icospheres tinted meat, offal, fat or bile) that bleed in flight, splat onto walls, ceilings and floors and lie about for 10 to 14 s, plus gobbets, spray, a thin sinking haze and splatter decals. The sprite particles are unlit, so wet colours are kept dark or the night turns them into glowing embers. `magDrops.js` handles the player's dropped magazines: pooled world clones of the viewmodel mag that take over at the same spot on screen, then fall, bounce, settle flat and sink away. `latchView.js` is the first-person view with a Biter on your back: its GLB clawing in at the screen corners (arm IK on the viewmodel layer), a bite vignette and the shake-off prompt.
 - `src/game/gear.js`: the wearable gear. It covers body slots, owned vs worn, and the effect hooks: `sprintMul`, `reloadMul`, `handlingMul`, `carryBonus`, `defibFor`, and `gearDef()`, which puts the worn gear onto the held weapon's def. It also switches the backpack slot and the melee weapon. The store entries are in `shop.js`, the product models in `src/world/gearModels.js`, the store pieces (slot icons, details) in `src/ui/storeGear.js` and the paperdoll in `src/ui/storeDoll.js`. The paperdoll's figure is the Scorpion body, rendered once through `src/actors/portraits.js`. `src/player/machete.js` is the machete's procedural viewmodel and its swing poses, built with `gunModels.js`' kit.
 - `src/game/revive.js`: revives. It covers the downed window and markers, the player's revive channel, the bots' revive runs (a `Teammate.update` hook), and the `reviveTime` / `reviveHp` tuning hooks the defibrillator plugs into.
-- `src/game`: round and wave logic, scoring, projectiles and pickups. `modes.js` holds the game modes and difficulties that the menu briefing and the game share. `economy.js` holds the wallets and rewards, and `shop.js` the data-driven store catalog, upgrade math and purchases.
-- `src/ui`: the Combat Arms-style HUD, the menus (`menu.js`, and `menu.css` for the cinematic main menu), the menu music (`music.js`) and the between-round store (`store.js`, `store.css`).
+- `src/game`: round and wave logic, scoring, projectiles and pickups. `modes.js` holds the game modes and difficulties that the menu briefing and the game share (game.js `DIFF` has the numbers). `economy.js` holds the wallets and rewards, and `shop.js` the data-driven store catalog, upgrade math and purchases (`price()` applies the difficulty's price scale to everything the store shows or charges).
+  - `mission.js`: the story (`STORY` tuning): phases, radio beats, the Nadja trigger, the drop (a reachable open spot, the helicopter's pass, the crate's fall), the module's pickup, planting and the hack with its stalls, overtime, the objective panel, waypoint and radar entries.
+  - `cinema.js`: the cutscene runner. While a scene plays, `game.update` only ticks the world (`_updateCinema`); the scene poses its cast and flies the camera. Subtitles, fades, the title card and hold-Space-to-skip go through `ui/story.js`.
+  - `cutscenes.js`: the intro, Nadja and outro scenes. The bots are posed through `Teammate.cine()` (sit, rope, walk, stand, crouch, a slung rifle, a hand on a point, a look target), Nadja through `labTech.perform()` (talk, point, greet).
+  - `events.js`: the rare random events (see Game modes).
+- `src/ui`: the Combat Arms-style HUD, the menus (`menu.js`, and `menu.css` for the cinematic main menu), the menu music (`music.js`) and the between-round store (`store.js`, `store.css`). `story.js` adds the cinema overlay (letterbox, subtitles, fades, the skip hint; outside the HUD so it stays up while the HUD is hidden), the objective panel and the radio messages.
 
 ## Assets
 

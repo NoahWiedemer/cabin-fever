@@ -16,8 +16,8 @@ export const WEAPONS = {
     hip: [0.19, -0.2, -0.18], hipRot: [0.02, 0.08, 0.04], ammoKind: 'rifle', drawTime: 0.36,
   },
   m16a2: {
-    id: 'm16a2', name: 'M16A2', slot: 0, model: 'm16a2', mode: 'burst', burst: 3, burstDelay: 0.22, rpm: 900,
-    damage: 44, pellets: 1, penetration: 1, falloff: [45, 110, 0.7],
+    id: 'm16a2', name: 'M16A2', slot: 0, model: 'm16a2', mode: 'burst', burst: 3, burstDelay: 0.19, rpm: 900,
+    damage: 47, pellets: 1, penetration: 1, falloff: [45, 110, 0.7],
     spreadHip: 1.4, spreadAds: 0.07, spreadMove: 1.3, spreadAir: 3, spreadPerShot: 0.28, spreadMax: 2.2,
     recoilV: 0.34, recoilH: 0.1, recoilRecover: 7.5, kick: 0.95,
     mag: 30, reserve: 180, maxReserve: 300, reload: 2.2, reloadEmpty: 2.65, reloadType: 'mag',
@@ -34,8 +34,8 @@ export const WEAPONS = {
     hip: [0.2, -0.21, -0.16], hipRot: [0.02, 0.08, 0.04], ammoKind: 'rifle', drawTime: 0.36,
   },
   spas12: {
-    id: 'spas12', name: 'SPAS-12', slot: 0, model: 'spas12', mode: 'pump', rpm: 95, boltTime: 0.55, cycleAt: 0.14, cycleSound: 'shotgun_pump',
-    damage: 30, pellets: 9, penetration: 0, falloff: [9, 32, 0.35],
+    id: 'spas12', name: 'SPAS-12', slot: 0, model: 'spas12', mode: 'pump', rpm: 110, boltTime: 0.5, cycleAt: 0.14, cycleSound: 'shotgun_pump',
+    damage: 34, pellets: 9, penetration: 0, falloff: [11, 36, 0.4],
     spreadHip: 4.0, spreadAds: 2.4, spreadMove: 1.0, spreadAir: 2, spreadPerShot: 0.6, spreadMax: 1.2,
     recoilV: 2.6, recoilH: 0.6, recoilRecover: 6, kick: 2.5, shake: 0.2,
     mag: 8, reserve: 40, maxReserve: 64, reloadType: 'shell', reloadStart: 0.3, shellTime: 0.42, reloadEnd: 0.45,
@@ -45,7 +45,7 @@ export const WEAPONS = {
   devotion: {
     // fire rate winds up from rpm to rampRpm over rampShots of continuous fire
     id: 'devotion', name: 'X-55 DEVOTION', slot: 0, model: 'devotion', mode: 'auto', rpm: 480, rampRpm: 960, rampShots: 14,
-    damage: 34, pellets: 1, penetration: 2, falloff: [45, 110, 0.7],
+    damage: 36, pellets: 1, penetration: 2, falloff: [45, 110, 0.7],
     spreadHip: 1.9, spreadAds: 0.2, spreadMove: 1.5, spreadAir: 3.5, spreadPerShot: 0.14, spreadMax: 2.4,
     recoilV: 0.26, recoilH: 0.16, recoilRecover: 7, kick: 0.8, shake: 0.05,
     mag: 80, reserve: 240, maxReserve: 400, reload: 3.4, reloadEmpty: 3.9, reloadType: 'mag',
@@ -65,10 +65,10 @@ export const WEAPONS = {
   p90: {
     // bullpup PDW: fast, flat and mobile with a 50-round top magazine; lighter hits that fall off early
     id: 'p90', name: 'P90', slot: 0, model: 'p90', mode: 'auto', rpm: 900,
-    damage: 30, pellets: 1, penetration: 1, falloff: [22, 60, 0.6],
-    spreadHip: 1.1, spreadAds: 0.14, spreadMove: 1.0, spreadAir: 2.6, spreadPerShot: 0.2, spreadMax: 2.0,
-    recoilV: 0.2, recoilH: 0.12, recoilRecover: 9, kick: 0.7,
-    mag: 50, reserve: 250, maxReserve: 400, reload: 2.5, reloadEmpty: 3.0, reloadType: 'mag',
+    damage: 28, pellets: 1, penetration: 1, falloff: [16, 45, 0.55],
+    spreadHip: 1.3, spreadAds: 0.16, spreadMove: 1.1, spreadAir: 2.6, spreadPerShot: 0.22, spreadMax: 2.2,
+    recoilV: 0.27, recoilH: 0.16, recoilRecover: 8, kick: 0.75,
+    mag: 50, reserve: 200, maxReserve: 300, reload: 2.5, reloadEmpty: 3.0, reloadType: 'mag',
     adsZoom: 1.25, adsTime: 0.13, sound: 'smg_fire', shell: 'pistol', tracerEvery: 3, moveMul: 1.06,
     hip: [0.12, -0.17, -0.3], hipRot: [0.04, 0.12, 0.05], ammoKind: 'rifle', drawTime: 0.3,
   },
@@ -91,7 +91,7 @@ export const WEAPONS = {
     hip: [0.13, -0.15, -0.32], hipRot: [0, 0.06, 0], ammoKind: 'shotgun', drawTime: 0.3,
   },
   m4super90: {
-    id: 'm4super90', name: 'M4 SUPER 90', slot: 0, model: 'm4super90', mode: 'semi', rpm: 300,
+    id: 'm4super90', name: 'M4 SUPER 90', slot: 0, model: 'm4super90', mode: 'semi', rpm: 260,
     damage: 21, pellets: 9, penetration: 0, falloff: [8, 30, 0.35],
     spreadHip: 4.2, spreadAds: 2.8, spreadMove: 1.0, spreadAir: 2, spreadPerShot: 0.5, spreadMax: 1.5,
     recoilV: 2.2, recoilH: 0.6, recoilRecover: 6, kick: 2.2, shake: 0.16,
@@ -170,8 +170,8 @@ export const WEAPONS = {
     hip: [0.19, -0.22, -0.15], hipRot: [0.02, 0.07, 0.04], ammoKind: 'explosive', drawTime: 0.5, special: true, noEject: true,
   },
   goldenPunisher: {
-    id: 'goldenPunisher', name: 'GOLDEN PUNISHER', slot: 0, model: 'goldenPunisher', mode: 'auto', rpm: 400,
-    damage: 26, pellets: 10, penetration: 0, falloff: [10, 34, 0.4],
+    id: 'goldenPunisher', name: 'GOLDEN PUNISHER', slot: 0, model: 'goldenPunisher', mode: 'auto', rpm: 340,
+    damage: 23, pellets: 10, penetration: 0, falloff: [10, 34, 0.4],
     spreadHip: 3.6, spreadAds: 2.6, spreadMove: 0.8, spreadAir: 2, spreadPerShot: 0.35, spreadMax: 1.6,
     recoilV: 1.7, recoilH: 0.55, recoilRecover: 6, kick: 1.9, shake: 0.12,
     mag: 12, reserve: 48, maxReserve: 72, reloadType: 'shell', reloadStart: 0.35, shellTime: 0.36, reloadEnd: 0.4,
@@ -193,5 +193,5 @@ export const SPECIAL_SPAWNS = [
   { round: 11, weapon: 'l96a1', spot: 'l96a1', banner: 'L96A1 BLACK-MAGNUM', where: 'in the basement' },
   { round: 13, weapon: 'm32', spot: 'm32', banner: 'M32 MGL', where: 'on the kitchen table' },
   { round: UPSTAIRS_ROUND, weapon: 'goldenPunisher', spot: 'goldenPunisher', banner: 'GOLDEN PUNISHER', where: 'upstairs by the bathroom' }, // appears as the upstairs opens
-  { round: 19, weapon: 'chaingun', spot: 'chaingun', banner: 'CHAIN GUN', where: 'in the living room' },
+  { round: 14, weapon: 'chaingun', spot: 'chaingun', banner: 'CHAIN GUN', where: 'in the living room' },
 ];

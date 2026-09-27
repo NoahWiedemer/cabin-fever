@@ -25,6 +25,7 @@ uniform float uFlash;
 uniform vec3 uFogColor;
 uniform vec3 uMoonDir;
 uniform float uDawn;
+uniform float uBlood;
 float h(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float n2(vec2 p) {
   vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
@@ -56,6 +57,8 @@ void main() {
   vec3 dawnHor = vec3(0.85, 0.45, 0.3);
   vec3 dawnCol = mix(dawnHor, dawnTop, smoothstep(0.0, 0.5, y)) * (0.75 + 0.25 * (1.0 - clouds));
   col = mix(col, dawnCol, uDawn);
+  // blood moon (game/events.js): a red moon, the clouds lit dull red
+  col = mix(col, col * vec3(2.9, 0.45, 0.32) + vec3(0.045, 0.0, 0.0) * (0.4 + clouds) + vec3(0.9, 0.08, 0.05) * pow(m, 180.0) * (1.0 - clouds * 0.7) * 2.5, uBlood);
   // fade to fog near the horizon
   float hz = smoothstep(0.0, 0.32, y);
   col = mix(uFogColor * (1.0 + uFlash * 2.0), col, hz);
@@ -300,6 +303,7 @@ export class Weather {
         uFogColor: { value: new THREE.Color(0x0e1413) },
         uMoonDir: { value: new THREE.Vector3(-0.55, 0.75, 0.35) },
         uDawn: { value: 0 },
+        uBlood: { value: 0 },
       },
       side: THREE.BackSide,
       depthWrite: false,
@@ -540,6 +544,7 @@ export class Weather {
   update(dt, camPos, lightning, fogColor, dawn = 0) {
     this.time += dt;
     this.skyMat.uniforms.uDawn.value = dawn;
+    this.skyMat.uniforms.uBlood.value = this.blood ?? 0; // game/events.js
     // additive streaks go through bloom + AgX: a little goes a long way
     this.rainMat.uniforms.uBright.value = 0.065 * (1 - dawn * 0.7);
     const t = this.time;

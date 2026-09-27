@@ -174,6 +174,15 @@ function deriveDef(base, lv) {
   return d;
 }
 
+// ------------------------------------------------------------------ prices
+// The difficulty scales every store price (game.js DIFF.price: easy cheaper, extreme dearer). All prices the
+// store shows or charges go through price(), rounded to $10.
+let PRICE_SCALE = 1;
+export function setPriceScale(k) {
+  PRICE_SCALE = k > 0 ? k : 1;
+}
+export const price = (n) => (n == null ? n : n === 0 ? 0 : Math.max(10, Math.round((n * PRICE_SCALE) / 10) * 10));
+
 // ------------------------------------------------------------------ catalog views
 
 export const weaponEntry = (id) => SHOP_WEAPONS.find((e) => e.id === id);
@@ -197,7 +206,7 @@ export function upgradesFor(base) {
 export function upgradeCost(entry, key, level) {
   const c = UPG[key]?.costs[level];
   if (c == null) return null;
-  return Math.round((c * (entry?.upg ?? 1)) / 50) * 50;
+  return price(Math.round((c * (entry?.upg ?? 1)) / 50) * 50);
 }
 
 /** Store weapons the player owns (upgrade targets), equipped ones first. */
@@ -218,7 +227,7 @@ export function weaponState(game, e) {
   const w = game.weapons;
   const owned = !!w.owned?.has(e.id);
   const where = weaponSlotOf(w, e);
-  return { owned, equipped: where >= 0, where, afford: owned || game.economy.canAfford(game.player, e.price) };
+  return { owned, equipped: where >= 0, where, afford: owned || game.economy.canAfford(game.player, price(e.price)) };
 }
 
 /** True when the weapon backpack is worn: primaries then pick a slot (0 or PACK_SLOT). */
@@ -261,14 +270,14 @@ export function equipmentState(game, item) {
     const lv = item.upgrade ? item.upgrade.level(game) : 0;
     const gs = item.slot ? gearSlotState(game, item) : null;
     const equip = owned && !!gs && !gs.worn;
-    const cost = !owned ? item.price : equip ? 0 : item.upgrade?.costs[lv];
+    const cost = price(!owned ? item.price : equip ? 0 : item.upgrade?.costs[lv]);
     const maxed = owned && !equip && cost == null;
     return { ...gs, owned, level: lv, cost, maxed, equip, afford: maxed || equip || game.economy.canAfford(game.player, cost) };
   }
   const n = item.count ? item.count(game) : 0;
   const max = itemMax(game, item);
   const maxed = item.full ? item.full(game) : n >= max;
-  return { count: n, max, maxed, cost: item.price, afford: game.economy.canAfford(game.player, item.price) };
+  return { count: n, max, maxed, cost: price(item.price), afford: game.economy.canAfford(game.player, price(item.price)) };
 }
 
 // ------------------------------------------------------------------ purchases
@@ -296,10 +305,10 @@ export function buyWeapon(game, id, target = null) {
     return { ok: true, msg: `${def.name} MOVED${where || ' · SLOT 1'}` };
   }
   if (!w.owned.has(id)) {
-    if (!game.economy.spend(game.player, e.price)) return NO_CASH;
+    if (!game.economy.spend(game.player, price(e.price))) return NO_CASH;
     w.owned.add(id);
     w.equipFromStore(id, slot);
-    return { ok: true, msg: `${def.name} PURCHASED${where}`, sound: 'pickup_weapon', cost: e.price };
+    return { ok: true, msg: `${def.name} PURCHASED${where}`, sound: 'pickup_weapon', cost: price(e.price) };
   }
   w.equipFromStore(id, slot);
   return { ok: true, msg: `${def.name} EQUIPPED${where}` };
@@ -321,7 +330,7 @@ export function buyUpgrade(game, id, key) {
 export function akimboState(game, e) {
   const w = game.weapons;
   const owned = !!w.akimbo?.has(e.id);
-  const cost = e.akimbo ?? null;
+  const cost = price(e.akimbo ?? null);
   return { avail: cost != null && !!w.owned?.has(e.id), owned, cost, afford: owned || (cost != null && game.economy.canAfford(game.player, cost)) };
 }
 
@@ -330,9 +339,9 @@ export function buyAkimbo(game, id) {
   const w = game.weapons;
   if (!e?.akimbo || !w.owned?.has(id)) return { ok: false, msg: 'UNAVAILABLE' };
   if (w.akimbo?.has(id)) return { ok: false, msg: 'ALREADY AKIMBO' };
-  if (!game.economy.spend(game.player, e.akimbo)) return NO_CASH;
+  if (!game.economy.spend(game.player, price(e.akimbo))) return NO_CASH;
   giveAkimbo(w, id);
-  return { ok: true, msg: `AKIMBO ${WEAPONS[id].name}`, sound: 'pickup_weapon', cost: e.akimbo };
+  return { ok: true, msg: `AKIMBO ${WEAPONS[id].name}`, sound: 'pickup_weapon', cost: price(e.akimbo) };
 }
 
 export function buyEquipment(game, key) {
@@ -355,7 +364,7 @@ export function buyEquipment(game, key) {
   }
   const st = equipmentState(game, item);
   if (st.maxed) return { ok: false, msg: item.full ? 'ALREADY FULL' : `CARRYING MAX (${st.max})`, sound: 'dryfire' };
-  if (!game.economy.spend(game.player, item.price)) return NO_CASH;
+  if (!game.economy.spend(game.player, price(item.price))) return NO_CASH;
   item.give(game);
-  return { ok: true, msg: `${item.name} PURCHASED`, sound: key === 'ammo' || key === 'armor' ? 'pickup_ammo' : key === 'barricade' ? 'plank_drop' : 'grenade_pin', cost: item.price };
+  return { ok: true, msg: `${item.name} PURCHASED`, sound: key === 'ammo' || key === 'armor' ? 'pickup_ammo' : key === 'barricade' ? 'plank_drop' : 'grenade_pin', cost: price(item.price) };
 }

@@ -648,7 +648,7 @@ export class Teammate {
    */
   _holdRifle(dt) {
     const b = this.bones;
-    this.ready = damp(this.ready, this.target && this.reloadT <= 0 ? 1 : 0, 5, dt);
+    this.ready = damp(this.ready, this.cineReady ?? (this.target && this.reloadT <= 0 ? 1 : 0), 5, dt);
     // reloading: the gun cants over toward the support hand (mag reloads: magwell up; shells: port up)
     const rl = this.reloadT > 0 && this.reloadDur > 0 ? 1 - this.reloadT / this.reloadDur : -1;
     const shell = this.weapon.reloadType === 'shell';
@@ -658,18 +658,26 @@ export class Teammate {
     const carry = clamp((this.moveSpeed - 2.2) / 2, 0, 1) * (1 - this.ready);
     this.carry = damp(this.carry ?? 0, carry, 6, dt);
     const pitch = this.aimPitch + this.recoil * 0.05 - (1 - this.ready) * 0.5 + this.cant * 0.2;
-    _gq.copy(this.root.quaternion).multiply(_qa.setFromEuler(_eu.set(-pitch, Math.PI + this.carry * 0.35, this.carry * 0.3 + this.cant * 0.5)));
     const hold = this.hold;
-    // low ready: stock pocket just inside the right shoulder joint
-    b.upperArmR.getWorldPosition(_low);
-    _low.add(_T.set(-0.06, 0.04, -hold.gripFwd).applyQuaternion(_gq));
-    // aimed: gun origin = eye - (the gun's sight eye point)
-    b.head.getWorldPosition(_eye);
-    _eye.add(_T.copy(EYE_FROM_HEAD).applyQuaternion(_gq)).sub(_T.copy(hold.eye).applyQuaternion(_gq));
-    const k = this.ready * this.ready * (3 - 2 * this.ready);
-    _G.lerpVectors(_low, _eye, k).add(_T.set(0, 0, this.recoil * 0.035).applyQuaternion(_gq));
+    const cg = this.cineGun;
+    if (cg) {
+      // a cutscene pose places the gun itself (character space: pos, yaw / pitch / roll off its facing)
+      _gq.copy(this.root.quaternion).multiply(_qa.setFromEuler(_eu.set(-cg.pitch, Math.PI + cg.yaw, cg.roll ?? 0)));
+      _G.copy(cg.pos).applyQuaternion(this.root.quaternion).add(this.root.position);
+    } else {
+      _gq.copy(this.root.quaternion).multiply(_qa.setFromEuler(_eu.set(-pitch, Math.PI + this.carry * 0.35, this.carry * 0.3 + this.cant * 0.5)));
+      // low ready: stock pocket just inside the right shoulder joint
+      b.upperArmR.getWorldPosition(_low);
+      _low.add(_T.set(-0.06, 0.04, -hold.gripFwd).applyQuaternion(_gq));
+      // aimed: gun origin = eye - (the gun's sight eye point)
+      b.head.getWorldPosition(_eye);
+      _eye.add(_T.copy(EYE_FROM_HEAD).applyQuaternion(_gq)).sub(_T.copy(hold.eye).applyQuaternion(_gq));
+      const k = this.ready * this.ready * (3 - 2 * this.ready);
+      _G.lerpVectors(_low, _eye, k).add(_T.set(0, 0, this.recoil * 0.035).applyQuaternion(_gq));
+    }
     this.gunHolder.position.copy(this.mesh.worldToLocal(_T.copy(_G)));
     this.gunHolder.quaternion.copy(this.mesh.getWorldQuaternion(_qb).invert().multiply(_gq));
+    if (cg?.free) return; // slung: the hands are busy elsewhere (the cutscene IKs them)
     const h = this.hands;
     // right hand on the pistol grip, elbow out and down
     _T.copy(hold.wristR).applyQuaternion(_gq).add(_G);
@@ -733,6 +741,134 @@ export class Teammate {
   hide() {
     this.alive = false;
     this.root.visible = false;
+  }
+
+  /**
+   * Cutscene control (game/cutscenes.js): out of the fight, posed by the script instead of update(). The
+   * script sets pos (root) and yaw; c = {
+   *   mode: 'stand' | 'walk' | 'crouch' | 'sit' | 'rope',
+   *   speed:  walk speed (m/s, along yaw), ready: 0 low ready .. 1 aimed,
+   *   look:   world point to turn the head to (optional),
+   *   seatH:  sit: hips above the root (the root on the floor under the seat),
+   *   rope:   rope: { x, z } the rope line (world), slide 0..1 how fast it slides (hands looser, legs tighter)
+   * }
+   */
+  cine(dt, c) {
+    const b = this.bones;
+    this.alive = true;
+    this.target = null;
+    this.reloadT = 0;
+    this.recoil = 0;
+    this.cant = 0;
+    this.carry = 0;
+    this.root.rotation.set(c.tilt ? c.tilt[0] : 0, this.yaw, c.tilt ? c.tilt[1] : 0); // tilt: riding in a banking helicopter
+    this.mesh.position.set(0, 0, 0);
+    if (this.gunHolder.parent !== this.mesh) this.mesh.add(this.gunHolder);
+    this.cineGun = null;
+    this.cineReady = c.ready ?? 0;
+    const mode = c.mode;
+    if (mode === 'stand' || mode === 'walk' || mode === 'crouch') {
+      const sp = mode === 'walk' ? c.speed ?? 1.4 : 0;
+      this.moveSpeed = dt > 0 ? damp(this.moveSpeed, sp, 8, dt) : sp;
+      this.body.vel.set(Math.sin(this.yaw) * sp, 0, Math.cos(this.yaw) * sp);
+      this.crouch = dt > 0 ? damp(this.crouch, mode === 'crouch' ? 1 : 0, 6, dt) : mode === 'crouch' ? 1 : 0;
+      this.aimPitch = c.pitch ?? 0;
+      // sling: the rifle on the back, the hands free (at the sides, or the right one on c.touch)
+      if (c.sling) this.cineGun = { pos: (this._cgPos ??= new THREE.Vector3()).set(0.05, 1.28, -0.24), yaw: Math.PI - 0.1, pitch: 1.1, roll: 0.5, free: true };
+      this._animate(dt);
+      if (c.sling) {
+        const h = this.hands, rq = this.root.quaternion, sw = Math.sin(this.phase) * 0.12 * clamp(this.moveSpeed / 1.5, 0, 1);
+        if (c.touch) _T.copy(c.touch);
+        else this.root.localToWorld(_T.set(-0.24, 0.86, 0.06 - sw));
+        _pole.set(-0.6, -0.4, -1).applyQuaternion(rq);
+        _aw.copy(_T).sub(b.upperArmR.getWorldPosition(_E)).normalize();
+        if (!c.touch) _aw.set(0, -1, 0.1).applyQuaternion(rq);
+        reach(b.upperArmR, b.foreArmR, b.handR, _T, _pole, _aw, _pw.set(-1, 0, 0).applyQuaternion(rq), h.R);
+        this.root.localToWorld(_T.set(0.24, 0.86, 0.06 + sw));
+        _pole.set(0.6, -0.4, -1).applyQuaternion(rq);
+        reach(b.upperArmL, b.foreArmL, b.handL, _T, _pole, _aw.set(0, -1, 0.1).applyQuaternion(rq), _pw.set(1, 0, 0).applyQuaternion(rq), h.L);
+      }
+    } else {
+      this.moveSpeed = 0;
+      this.body.vel.set(0, 0, 0);
+      this.crouch = 0;
+      const t = this.game.time;
+      const breath = Math.sin(t * 1.45 + this.index * 2.1);
+      if (mode === 'sit') {
+        // on the bench: thighs forward, shins down, a little slumped, the rifle across the lap
+        const hy = c.seatH ?? 0.52;
+        b.hips.position.y = hy;
+        b.hips.rotation.set(-0.05, 0, 0);
+        b.thighL.rotation.set(-1.42, 0.05, 0.14);
+        b.thighR.rotation.set(-1.42, -0.05, -0.14);
+        b.shinL.rotation.set(1.5, 0, 0);
+        b.shinR.rotation.set(1.38, 0, 0);
+        b.footL.rotation.set(-0.05, 0, -0.1);
+        b.footR.rotation.set(0.05, 0, 0.1);
+        b.spine.rotation.set(0.16 + breath * 0.012, 0, 0);
+        b.chest.rotation.set(0.06 + breath * 0.015, 0, 0);
+        b.neck.rotation.set(0.12, 0, 0);
+        b.head.rotation.set(0.08, 0, 0);
+        this.cineGun = { pos: (this._cgPos ??= new THREE.Vector3()).set(0.08, hy + 0.2, 0.34), yaw: 1.05, pitch: -0.18, roll: 0.25 };
+      } else if (mode === 'rope') {
+        // fast-roping: both hands high on the rope, knees up a little, feet crossed, looking down
+        const sl = c.slide ?? 1;
+        b.hips.position.y = 0.95;
+        b.hips.rotation.set(0.08, 0, 0);
+        b.thighL.rotation.set(-0.35 - 0.15 * sl, 0, 0.02);
+        b.thighR.rotation.set(-0.25 - 0.1 * sl, 0, -0.08);
+        b.shinL.rotation.set(0.55 + 0.2 * sl, 0, 0);
+        b.shinR.rotation.set(0.4 + 0.2 * sl, 0, 0);
+        b.footL.rotation.set(0.35, 0, 0);
+        b.footR.rotation.set(0.35, 0, 0);
+        b.spine.rotation.set(-0.06, 0, 0);
+        b.chest.rotation.set(0.02, 0, 0);
+        b.neck.rotation.set(0.25, 0, 0);
+        b.head.rotation.set(0.25, 0, 0);
+        // the rifle slung across the back, muzzle down to the left
+        this.cineGun = { pos: (this._cgPos ??= new THREE.Vector3()).set(0.05, 1.28, -0.24), yaw: Math.PI - 0.1, pitch: 1.1, roll: 0.5, free: true };
+      }
+      this._holdRifle(dt);
+      if (mode === 'rope' && c.rope) {
+        const h = this.hands, rq = this.root.quaternion, p = this.root.position;
+        const up = 0.02 * (1 - (c.slide ?? 1));
+        _T.set(c.rope.x, p.y + 1.82 + up, c.rope.z);
+        _pole.set(-1, -0.6, -0.2).applyQuaternion(rq);
+        reach(b.upperArmR, b.foreArmR, b.handR, _T, _pole, _aw.set(1, 0.15, 0).applyQuaternion(rq).normalize(), _pw.set(0, 0, 1).applyQuaternion(rq), h.R);
+        _T.set(c.rope.x, p.y + 1.5 - up, c.rope.z);
+        _pole.set(1, -0.6, -0.2).applyQuaternion(rq);
+        reach(b.upperArmL, b.foreArmL, b.handL, _T, _pole, _aw.set(-1, 0.15, 0).applyQuaternion(rq).normalize(), _pw.set(0, 0, 1).applyQuaternion(rq), h.L);
+      }
+    }
+    // turn the head (and a little of the chest) toward a look point
+    if (c.look) {
+      this.root.updateMatrixWorld(true);
+      b.head.getWorldPosition(_E);
+      const a = wrapAngle(Math.atan2(c.look.x - _E.x, c.look.z - _E.z) - this.yaw);
+      const yaw = clamp(a, -1.2, 1.2);
+      const pitch = clamp(Math.atan2(c.look.y - _E.y, Math.hypot(c.look.x - _E.x, c.look.z - _E.z)), -0.7, 0.6);
+      b.chest.rotation.y += yaw * 0.2;
+      b.neck.rotation.y += yaw * 0.35;
+      b.head.rotation.y += yaw * 0.45;
+      b.neck.rotation.x -= pitch * 0.4;
+      b.head.rotation.x -= pitch * 0.5;
+    }
+    if (this.rig) this.rig.sync();
+    if (this.jiggle && dt > 0) this.jiggle.update(dt);
+    this.root.updateMatrixWorld(true);
+  }
+
+  /** back to the fight after a cutscene */
+  endCine() {
+    this.cineGun = null;
+    this.cineReady = undefined;
+    this.moveSpeed = 0;
+    this.body.vel.set(0, 0, 0);
+    this.post = null;
+    this.postT = 0;
+    this.field = null;
+    this.portalTo = null;
+    this.lastPos.copy(this.pos);
   }
 
   /**

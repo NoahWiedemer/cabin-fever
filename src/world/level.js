@@ -215,6 +215,7 @@ export function buildLevel() {
   B.wall('x', 4, -12, 2.55, FLOOR.basement, 0, TE, LAB_OPENINGS, bWallOpts);
   // behind it: the vault door, the armored window and the lab (world/lab.js)
   const lab = buildLab(B, world, lamps);
+  dynamic.add(lab.door.pivot); // the vault door leaf swings open at the end of the story (game/cutscenes.js)
   // basement pillars
   for (const [px, pz] of [[-7, -2.8], [-3, -2.8], [-7, 1.4], [-3, 1.4]]) {
     B.box(px - 0.2, FLOOR.basement, pz - 0.2, px + 0.2, BCEIL, pz + 0.2, { mat: 'concrete', surface: SURF.concrete, floorY: FLOOR.basement, ceilY: BCEIL });

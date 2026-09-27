@@ -37,6 +37,7 @@ import {
   equipmentState,
   upgradesFor,
   upgradeCost,
+  price,
   previewDef,
   buyWeapon,
   buyUpgrade,
@@ -453,7 +454,7 @@ export class Store {
       const w = g.weapons;
       let act = null;
       let done = s.where === PACK_SLOT ? 'IN BACKPACK' : s.equipped ? 'EQUIPPED' : '';
-      if (!s.owned) act = { label: 'BUY', cost: e.price };
+      if (!s.owned) act = { label: 'BUY', cost: price(e.price) };
       else if (target != null && s.where !== target) {
         // moving it from slot 1 into an empty backpack would leave slot 1 empty
         if (s.where === 0 && !w.slots[target]) done = 'EQUIPPED';
@@ -475,7 +476,7 @@ export class Store {
       else done = u ? 'MAXED' : 'WORN';
       if (s.owned && u) chip = `${u.value(s.level)}`;
     } else {
-      if (!s.maxed) act = { label: 'BUY', cost: it.price };
+      if (!s.maxed) act = { label: 'BUY', cost: price(it.price) };
       else done = it.unit || it.max ? 'MAX' : 'FULL';
       if (it.unit) chip = `${s.count} ${it.unit}`;
       else if (s.max) chip = `${s.count}/${s.max}`;

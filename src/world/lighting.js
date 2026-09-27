@@ -323,6 +323,7 @@ export class Lighting {
     this.lightning = Math.max(flash, this.lightning - dt * 6);
     this.moon.intensity = this.moonBase + this.lightning * 9;
     this.moon.color.setRGB(0.62 + this.lightning * 0.3, 0.7 + this.lightning * 0.25, 0.87 + this.lightning * 0.1);
+    if (this.moonTint) this.moon.color.lerp(this.moonTint, this.moonTintK ?? 1); // game/events.js: the blood moon
     const ind = this.indoor;
     const pw = this.mains;
     this.hemi.color.copy(this.hemiOutSky).lerp(this._c.copy(this.hemiDarkSky).lerp(this.hemiInSky, pw), ind);
@@ -454,6 +455,27 @@ export class Lighting {
       }
       this.flashNear += (near - this.flashNear) * Math.min(1, dt * 10);
       this.flashlight.intensity = this.flashlightOn ? 55 * this.flashNear : 0;
+    }
+    // a helicopter's searchlight borrows the flashlight's spot (world/helicopter.js via the cutscenes and the
+    // drop): the same light, so the scene's light count and with it every shader stay as they are
+    const o = this.spotOverride;
+    const fl = this.flashlight;
+    if (o) {
+      fl.position.copy(o.pos);
+      fl.target.position.copy(o.target);
+      fl.target.updateMatrixWorld();
+      fl.intensity = o.intensity;
+      fl.angle = o.angle ?? 0.3;
+      fl.distance = o.distance ?? 60;
+      fl.decay = o.decay ?? 1.2;
+      fl.color.set(o.color ?? 0xdfe9ff);
+      this._spotBorrowed = true;
+    } else if (this._spotBorrowed) {
+      this._spotBorrowed = false;
+      fl.angle = 0.42;
+      fl.distance = 30;
+      fl.decay = 1.6;
+      fl.color.set(0xe8f0ff);
     }
   }
 }

@@ -2320,6 +2320,128 @@ def('revive_done', { d: 1.2, v: 2, gain: 0.5, rev: 0.15, max: 2, jit: 0.02 }, (b
   });
 });
 
+// ===== Story: helicopter, radio, hacking, vault, events ======================
+
+// Huey rotor, seamless: 11 blade slaps a second (a whop through the wash), the turbine's whine, the
+// tail rotor's buzz, all at whole cycles per loop
+def('heli_rotor', { d: 1.0, xf: 0.15, loop: true, v: 1, gain: 0.95, rev: 0.3, max: 3, jit: 0, ref: 14 }, (b) => {
+  const T = b.dur, L = b.L;
+  const per = L / 11;
+  const slap = b.fbus('bandpass', 420, 0.8, 1.1);
+  for (let k = 0; ; k++) {
+    const t = 0.004 + k * per;
+    if (t >= T - 0.02) break;
+    b.thump(t, { f0: 95, f1: 42, sweep: 0.05, d: 0.075, g: 0.9, drive: 1.6 });
+    b.nb(t, { kind: 'pink', type: 'bandpass', f: 380, q: 0.7, a: 0.004, d: 0.06, g: 0.7, drive: 2, dest: slap });
+  }
+  const wash = b.g(0.5);
+  b.noise('brown', 0, T).connect(b.f('lowpass', 320)).connect(wash);
+  wash.connect(b.g(0.9, b.out));
+  b.osc('sine', Math.round(11 * L) / L, 0, T).connect(b.g(0.3)).connect(wash.gain);
+  const whine = b.fbus('bandpass', 2400, 3, 0.35);
+  b.noise('white', 0, T).connect(whine);
+  b.osc('sine', Math.round(2180 * L) / L, 0, T, b.g(0.035, b.out));
+  b.osc('sine', Math.round(4360 * L) / L, 0, T, b.g(0.012, b.out));
+  b.osc('sawtooth', Math.round(58 * L) / L, 0, T).connect(b.f('lowpass', 420)).connect(b.g(0.06, b.out));
+});
+
+// radio key-up: a squelch burst and a chirp; key-down: a click, a static tail, the roger beep
+def('radio_on', { d: 0.3, v: 2, gain: 0.35, rev: 0.02, max: 2, jit: 0.02 }, (b) => {
+  const t = 0.002;
+  b.click(t, 0.5, 0.002);
+  b.nb(t, { type: 'bandpass', f: 1900, q: 0.9, a: 0.002, d: 0.14, g: 0.8 });
+  b.tone(t + 0.03, 1250, { type: 'square', d: 0.05, g: 0.12, dest: b.fbus('bandpass', 1400, 1.2, 1) });
+});
+def('radio_off', { d: 0.4, v: 2, gain: 0.35, rev: 0.02, max: 2, jit: 0.02 }, (b) => {
+  const t = 0.002;
+  b.click(t, 0.4, 0.002);
+  b.nb(t, { type: 'bandpass', f: 2100, q: 0.8, a: 0.002, d: 0.2, g: 0.6 });
+  b.tone(t + 0.06, 1400, { type: 'square', d: 0.04, g: 0.1, dest: b.fbus('bandpass', 1500, 1.2, 1) });
+  b.tone(t + 0.12, 1050, { type: 'square', d: 0.05, g: 0.1, dest: b.fbus('bandpass', 1200, 1.2, 1) });
+});
+
+// hacking module: a confirm blip, the stall alarm, the win
+def('hack_beep', { d: 0.3, v: 2, gain: 0.4, rev: 0.12, max: 3, jit: 0.01, ref: 2 }, (b) => {
+  const t = 0.002;
+  b.tone(t, 880, { type: 'square', d: 0.07, g: 0.25, dest: b.fbus('lowpass', 3000, 0, 1) });
+  b.tone(t + 0.09, 1320, { type: 'square', d: 0.1, g: 0.25, dest: b.fbus('lowpass', 3500, 0, 1) });
+});
+def('hack_jam', { d: 1.0, v: 1, gain: 0.55, rev: 0.2, max: 2, jit: 0, ref: 3.5 }, (b) => {
+  for (let i = 0; i < 4; i++) {
+    const t = 0.002 + i * 0.22;
+    b.tone(t, i % 2 ? 520 : 740, { type: 'square', a: 0.003, h: 0.12, d: 0.05, g: 0.3, dest: b.fbus('lowpass', 2600, 0, 1) });
+  }
+  b.nb(0.002, { type: 'bandpass', f: 3000, q: 0.8, a: 0.002, d: 0.08, g: 0.3 });
+});
+def('hack_done', { d: 1.2, v: 1, gain: 0.5, rev: 0.25, max: 1, jit: 0, ref: 3 }, (b) => {
+  [660, 880, 1320].forEach((f, i) => b.tone(0.002 + i * 0.12, f, { type: 'square', a: 0.003, h: 0.06, d: 0.08, g: 0.22, dest: b.fbus('lowpass', 3200, 0, 1) }));
+  b.modal(0.4, [[1760, 0.4, 0.7], [2640, 0.2, 0.5], [3520, 0.1, 0.4]], 0.6);
+});
+// the dead keypad: two low buzzes
+def('keypad_deny', { d: 0.5, v: 1, gain: 0.45, rev: 0.12, max: 2, jit: 0, ref: 2 }, (b) => {
+  for (const t of [0.002, 0.2]) b.tone(t, 220, { type: 'square', a: 0.003, h: 0.1, d: 0.04, g: 0.3, dest: b.fbus('lowpass', 1800, 0, 1) });
+});
+
+// the vault: bolts drawing back one by one, a hydraulic sigh; then the leaf swinging (a deep groan,
+// air rushing, the stop)
+def('vault_unlock', { d: 2.4, v: 1, gain: 0.8, rev: 0.35, max: 1, jit: 0, ref: 4 }, (b) => {
+  for (let i = 0; i < 3; i++) {
+    const t = 0.05 + i * 0.42;
+    clack(b, t, { g: 0.9, f: 0.55, dec: 0.08 });
+    b.thump(t, { f0: 140, f1: 55, sweep: 0.05, d: 0.16, g: 0.8, drive: 1.5 });
+    b.modal(t, [[rnd(1400, 1700), 0.25, 0.4], [rnd(2800, 3300), 0.12, 0.3], [rnd(520, 640), 0.3, 0.5]], 0.5);
+  }
+  b.nb(1.35, { kind: 'pink', type: 'highpass', f: 1800, f2: 600, ft: 0.8, a: 0.05, h: 0.3, d: 0.6, g: 0.5 });
+});
+def('vault_open', { d: 3.4, v: 1, gain: 0.8, rev: 0.4, max: 1, jit: 0, ref: 4 }, (b) => {
+  b.creak(0.05, 2.4, { f: 180, g: 0.9, r0: 18, r1: 30, q: 9 });
+  b.tone(0.05, 55, { type: 'sawtooth', a: 0.3, h: 1.6, d: 0.6, g: 0.18, dest: b.fbus('lowpass', 300, 0, 1) });
+  b.nb(0.1, { kind: 'pink', type: 'bandpass', f: 900, q: 0.5, a: 0.4, h: 1.2, d: 0.9, g: 0.35 });
+  b.thump(2.6, { f0: 110, f1: 40, sweep: 0.08, d: 0.35, g: 1, drive: 2 });
+  clack(b, 2.6, { g: 0.7, f: 0.45, dec: 0.1 });
+});
+
+// a heavy case hitting the mud; the flare's hiss (loop)
+def('crate_land', { d: 0.7, v: 2, gain: 0.75, rev: 0.25, max: 2, jit: 0.04, ref: 4 }, (b) => {
+  const t = 0.003;
+  b.thump(t, { f0: 120, f1: 45, sweep: 0.06, d: 0.25, g: 1, drive: 2 });
+  b.nb(t, { kind: 'brown', type: 'lowpass', f: 700, a: 0.002, d: 0.2, g: 0.9 });
+  b.rattle(t + 0.02, 0.25, 5, { f: 1800, g: 0.3 });
+});
+def('flare_burn', { d: 1.0, xf: 0.12, loop: true, v: 1, gain: 0.35, rev: 0.15, max: 2, jit: 0, ref: 2 }, (b) => {
+  const T = b.dur;
+  b.noise('white', 0, T).connect(b.f('bandpass', 3200, 0.6)).connect(b.g(0.5, b.out));
+  b.noise('pink', 0, T).connect(b.f('bandpass', 900, 0.8)).connect(b.g(0.25, b.out));
+  b.crackle(0, T, 60, 0.4, b.fbus('highpass', 2000, 0, 0.6), { flat: true, skew: 2 });
+});
+
+// events: incoming shell, the blood moon's swell, a power line arcing, a helicopter coming apart
+def('shell_whistle', { d: 1.3, v: 3, gain: 0.55, rev: 0.3, max: 6, jit: 0.05, ref: 10 }, (b) => {
+  b.tone(0.01, rnd(1900, 2200), { type: 'sine', a: 0.05, h: 0.8, d: 0.25, g: 0.4, f2: rnd(520, 640), ft: 1.1 });
+  b.nb(0.01, { type: 'bandpass', f: 2400, f2: 700, ft: 1.1, q: 3, a: 0.1, h: 0.8, d: 0.2, g: 0.35 });
+});
+def('blood_moon', { d: 5.0, v: 1, gain: 0.7, rev: 0.6, max: 1, jit: 0 }, (b) => {
+  b.tone(0.05, 44, { type: 'sawtooth', a: 1.6, h: 1.8, d: 1.4, g: 0.35, dest: b.fbus('lowpass', 260, 0, 1) });
+  b.tone(0.05, 66, { type: 'sine', a: 1.6, h: 1.8, d: 1.4, g: 0.4 });
+  b.tone(0.6, 311, { type: 'triangle', a: 1.2, h: 1.2, d: 1.6, g: 0.05, f2: 290, ft: 3 });
+  b.tone(1.0, 150, { type: 'sawtooth', a: 0.8, h: 1.0, d: 1.0, g: 0.08, f2: 95, ft: 2.5, dest: b.fbus('bandpass', 600, 2, 1) });
+});
+def('power_zap', { d: 1.4, v: 2, gain: 0.7, rev: 0.3, max: 2, jit: 0.04, ref: 6 }, (b) => {
+  b.crackle(0.002, 0.9, 420, 1, b.fbus('highpass', 1500, 0, 1), { skew: 3 });
+  b.tone(0.002, 120, { type: 'sawtooth', a: 0.002, h: 0.7, d: 0.3, g: 0.25, dest: b.fbus('bandpass', 1200, 0.8, 1) });
+  b.thump(0.002, { f0: 200, f1: 60, sweep: 0.05, d: 0.2, g: 0.8, drive: 3 });
+  b.nb(0.7, { type: 'highpass', f: 3000, a: 0.002, d: 0.4, g: 0.4 });
+});
+def('metal_crash', { d: 2.2, v: 2, gain: 0.9, rev: 0.4, max: 2, jit: 0.04, ref: 8 }, (b) => {
+  for (let i = 0; i < 9; i++) {
+    const t = 0.01 + i * rnd(0.04, 0.2);
+    b.modal(t, [[rnd(300, 700), 0.4, 0.5], [rnd(900, 1600), 0.25, 0.4], [rnd(2200, 3800), 0.12, 0.25]], rnd(0.5, 1));
+    b.nb(t, { kind: 'pink', type: 'bandpass', f: rnd(800, 2400), q: 0.8, a: 0.002, d: 0.12, g: 0.5 });
+  }
+  b.scrape(0.4, 1.4, { f0: 1600, f1: 700, q: 2, g: 0.6 });
+  b.thump(0.01, { f0: 90, f1: 35, sweep: 0.1, d: 0.5, g: 1, drive: 2.5 });
+});
+
 // ===== Ambience loops =======================================================
 
 def('rain_loop', { d: 8, xf: 0.6, loop: true, v: 1, ch: 2, gain: 0.5, rev: 0, max: 2, jit: 0 }, (b) => {

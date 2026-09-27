@@ -454,6 +454,64 @@ const POSES = {
       o.lookAt = K.world(K.local(g, _c), o.lookAtV);
     },
   },
+
+  // ---- story cutscenes (game/cutscenes.js): held until release(); K.focus = who she talks to
+  // talking to the fireteam through the glass: leaning in, the left hand on the counter, the right one
+  // explaining (palm up, on the beat of her words)
+  talk: {
+    dur: [99, 99],
+    blend: 0.6,
+    fn(o, t, K) {
+      counterLean(o, 1.15);
+      o.ex = -0.06;
+      o.look = 1;
+      o.lookAt = o.lookAtV.copy(K.focus);
+      K.onCounter(o.L, 'L', 0.22, 0);
+      const R = o.R, beat = 0.5 + 0.5 * Math.sin(t * 5.2);
+      R.rel = 'root';
+      R.t.set(-0.17 + Math.sin(t * 2.1) * 0.03, K.headY - 0.44 + beat * 0.05, 0.3 + beat * 0.03);
+      R.along.set(-0.2, 0.3, 1);
+      R.palm.set(0.1, 1, 0.25);
+      R.pole.set(-0.9, -0.6, -0.4);
+    },
+  },
+  // the right arm out toward the vault door (her right), the torso turned a little with it
+  point: {
+    dur: [99, 99],
+    blend: 0.5,
+    fn(o, t, K) {
+      counterLean(o, 0.6);
+      o.look = 1;
+      o.lookAt = o.lookAtV.copy(K.focus);
+      o.sy = -0.1;
+      o.cy = -0.16;
+      K.onCounter(o.L, 'L', 0.2, 0);
+      const R = o.R;
+      R.rel = 'root';
+      R.t.set(-0.56, K.headY - 0.22 + Math.sin(t * 3) * 0.01, 0.3);
+      R.along.set(-1, 0.06, 0.25);
+      R.palm.set(0, -1, 0.1);
+      R.pole.set(-0.3, -1, -0.5);
+    },
+  },
+  // both hands up and open in front of her: "wait" / receiving something
+  greet: {
+    dur: [99, 99],
+    blend: 0.7,
+    fn(o, t, K) {
+      o.hrx = 0.04;
+      o.sx = 0.08;
+      o.look = 1;
+      o.lookAt = o.lookAtV.copy(K.focus);
+      for (const [a, sd] of [[o.L, 1], [o.R, -1]]) {
+        a.rel = 'root';
+        a.t.set(sd * 0.16, K.headY - 0.5 + Math.sin(t * 1.7 + sd) * 0.01, 0.36);
+        a.along.set(sd * -0.15, 0.1, 1);
+        a.palm.set(0, 1, 0.1);
+        a.pole.set(sd * 0.9, -0.8, -0.3);
+      }
+    },
+  },
 };
 for (const k in POSES) POSES[k].name = k;
 const TASKS = ['pour', 'swirl', 'pipette', 'clipboard', 'scope', 'monitor', 'valve'].map((k) => POSES[k]);
@@ -539,6 +597,7 @@ export function createLabTech(parent, work) {
   const K = {
     props: P,
     headY: 0, // her head joint's rest height (root space)
+    focus: V(-4.6, -1.6, 2), // cutscenes: the point she talks to / looks at
     at: {
       rack: work.rack[4],
       tubes: work.rack,
@@ -788,6 +847,24 @@ export function createLabTech(parent, work) {
     },
     get station() {
       return station.key;
+    },
+    /** cutscenes: hold a story pose ('talk' | 'point' | 'greet') until release(), looking at `focus` */
+    perform(name, focus = null) {
+      const p = POSES[name];
+      if (!p) return;
+      if (focus) K.focus.copy(focus);
+      if (move.active) {
+        move.active = false;
+        st.pending = null;
+      }
+      enter(p);
+    },
+    /** back to her work */
+    release() {
+      if (st.pose.dur[0] >= 99) next();
+    },
+    get focus() {
+      return K.focus;
     },
     /** debug: run a pose now (walks to its spot first) */
     force(name) {
