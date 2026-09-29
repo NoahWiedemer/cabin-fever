@@ -59,6 +59,8 @@ export const GLB_BODIES = {
   meshy: { url: MODELS.meshy, height: 1.78, armSpread: 0.12, fallback: 'soldier' },
   // bust: breast region enlarged by `enlarge` and re-skinned to two spring-driven jiggle bones (jiggle.js)
   viper: { url: MODELS.viper, height: 1.72, armSpread: 0.12, fallback: 'soldier2', bust: { enlarge: 0.3 } },
+  // Meshy "Merc" (Meshy's biped rig with Mixamo joint names; its baked clips aren't used: animated like the others)
+  raven: { url: MODELS.raven, height: 1.72, armSpread: 0.12, fallback: 'soldier2' },
   // UniRig zombie (assets/source/zombie.glb) in the smoker slot: a bit taller than a survivor
   smoker: { url: MODELS.smoker, height: 1.86, armSpread: 0.12, fallback: 'mauler2' },
   // UniRig zombie in a gas mask and fatigues: another Mauler body
@@ -68,7 +70,7 @@ export const GLB_BODIES = {
   // the Stalker: a gaunt UniRig mutant, taller than a survivor (actors/stalker.js hunches it)
   stalker: { url: MODELS.stalker, height: 1.95, armSpread: 0.12, fallback: 'mauler2' },
   // the Crusher boss (zombie type scale 1.4 on top): heavy UniRig tank, arms held clear of the gut
-  // the Striker: gas-mask bomber that scatters three charges when it dies
+  // the Striker: gas-mask bomber that bursts into three flesh pods when it dies
   bomber: { url: MODELS.bomber, height: 1.76, armSpread: 0.14, fallback: 'striker' },
   // zombie woman in the Mauler rotation (replaced the procedural mauler / mauler2 bodies)
   woman: { url: MODELS.woman, height: 1.68, armSpread: 0.12, fallback: 'mauler2' },
@@ -92,7 +94,7 @@ export const GLB_BODIES = {
   emosquad: { url: MODELS.emosquad, height: 1.8, armSpread: 0.12, fallback: 'soldier' },
 };
 // finger curl per joint (rad): a rifle grip for the survivors, a loose claw for the infected
-const CURL = { coach: 0.5, ellis: 0.5, meshy: 0.45, viper: 0.45, smoker: 0.3, boomer: 0.3, woman: 0.3, tank: 0.35, bomber: 0.3, gasmask: 0.3, biter: 0.4, stalker: 0.5, normal: 0.3, worker: 0.3, survivor: 0.3, shopkeeper: 0.28, nadja: 0.3, emosquad: 0.45 };
+const CURL = { coach: 0.5, ellis: 0.5, meshy: 0.45, viper: 0.45, raven: 0.45, smoker: 0.3, boomer: 0.3, woman: 0.3, tank: 0.35, bomber: 0.3, gasmask: 0.3, biter: 0.4, stalker: 0.5, normal: 0.3, worker: 0.3, survivor: 0.3, shopkeeper: 0.28, nadja: 0.3, emosquad: 0.45 };
 
 const normName = (n) => n.replace(/(_\d+)+$/, '').replace(/[^a-z0-9]/gi, '').toLowerCase().replace(/^(valvebiped|mixamorig)/, '');
 

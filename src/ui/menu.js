@@ -22,6 +22,8 @@ import { LobbyStage } from './lobbyStage.js';
 const MAP_EMBLEMS = {
   farm: '<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 15L16 5l12 10M7 13v14h18V13"/><path d="M13 27v-7h6v7M9.5 17h3v3h-3zM19.5 17h3v3h-3z"/></svg>',
   appenweier: '<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 27h26M5 27V15l7-4 7 4v12M19 27V17h9v10"/><path d="M9 3h6v8M9 7h6M8.5 20h3v4h-3zM21 20h5M21 23h5"/></svg>',
+  // the Hive: a hexagon (NOX Biosystems) over a shaft going down
+  hive: '<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M16 3l9 5v10l-9 5-9-5V8z"/><path d="M12 17V9l8 8V9M16 23v6M11 29h10"/></svg>',
 };
 
 const LS_SETTINGS = 'cabinfever.settings.v1';
@@ -30,16 +32,24 @@ const STANDARD_PRIMARY = 'm4a1';
 
 const DEFAULT_SETTINGS = Object.freeze({
   sensitivity: 1.0,
+  adsSens: 1.0, // mouse speed while aiming, on top of the zoom's own scaling (player.js)
+  invertY: false,
+  toggleAds: false, // a click toggles aiming (weapons.js) instead of holding the button
   fov: 90,
   quality: 'high',
   volume: 0.8,
   music: 0.9,
   showFps: false,
+  shake: 1.0, // screen shake strength (player.js camera)
+  bob: true, // the camera's head bob while walking
+  crosshair: 'white', // CROSSHAIRS below
   fullscreen: false, // the whole page (core/fullscreen.js); re-entered on the next click after a reload
   rev: 2, // settings revision (2: louder music default)
 });
 
 const QUALITIES = ['low', 'medium', 'high', 'ultra'];
+// crosshair colours (the HUD's --xc)
+export const CROSSHAIRS = { white: '#ffffff', green: '#5dff6e', cyan: '#5de8ff', yellow: '#ffe24a', red: '#ff4a3d', pink: '#ff6ad5' };
 
 // main-menu views → camera shot behind them (game.js MENU_SHOTS)
 const VIEWS = { home: 'title', play: 'lobby', career: 'interior', leaderboard: 'interior', settings: 'interior', controls: 'interior', credits: 'interior' };
@@ -83,17 +93,19 @@ const TIPS = [
   {
     farm: 'Every kill by your fireteam pays everyone. Spend it in the cellar gun shop between rounds.',
     appenweier: 'Every kill by your fireteam pays everyone. Spend it in the garage gun shop behind 13a between rounds.',
+    hive: 'Every kill by your fireteam pays everyone. The safe zone opens between rounds: the armory is next to Nadja’s lab.',
   },
   {
     farm: 'A gas mask from the gun shop lets you breathe outside for a while. Upgrade the filter for longer.',
     appenweier: 'The toxic haze only thickens at the edge of Appenweier. Keep to the houses and the road.',
+    hive: 'No gas down here, and no sky. The Hive’s corridors are long: a scope pays off.',
   },
   'Gear from the gun shop stays with you all match: one item per body slot, and owned gear goes back on for free.',
   'Barricade kits from the gun shop board up a doorway. You can still shoot through the gaps between the planks.',
   'Stick with your fireteam. Infected flank lone survivors.',
-  { farm: 'Stay out of the green gas. It hurts more than it looks.', appenweier: 'Listen to the corn field across the road. The infected come out of it.' },
+  { farm: 'Stay out of the green gas. It hurts more than it looks.', appenweier: 'Listen to the corn field across the road. The infected come out of it.', hive: 'A round start shuts the safe zone’s door: whoever is still inside is put out in the atrium.' },
   'Mutant dogs hunt in packs from round 3. Listen for them.',
-  { farm: 'Rare weapons appear in the basement once it opens.', appenweier: 'Rare weapons wait in the fire station and the drugstore once they open.' },
+  { farm: 'Rare weapons appear in the basement once it opens.', appenweier: 'Rare weapons wait in the fire station and the drugstore once they open.', hive: 'The north wing opens in round 4, the outer ring in round 10: more ways in for them, rare weapons for you.' },
   'Chain kills quickly to build a combo multiplier.',
   'Crouch to steady your aim.',
 ];
@@ -148,6 +160,12 @@ function sanitizeSettings(s) {
   if (s && typeof s === 'object') {
     const n = (v, d) => (typeof v === 'number' && isFinite(v) ? v : d);
     o.sensitivity = clamp(n(s.sensitivity, o.sensitivity), 0.1, 3);
+    o.adsSens = clamp(n(s.adsSens, o.adsSens), 0.3, 2);
+    o.invertY = !!s.invertY;
+    o.toggleAds = !!s.toggleAds;
+    o.shake = clamp(n(s.shake, o.shake), 0, 1.5);
+    o.bob = s.bob !== false;
+    o.crosshair = s.crosshair in CROSSHAIRS ? s.crosshair : o.crosshair;
     o.fov = Math.round(clamp(n(s.fov, o.fov), 70, 110));
     o.quality = QUALITIES.includes(s.quality) ? s.quality : o.quality;
     o.volume = clamp(n(s.volume, o.volume), 0, 1);
@@ -466,7 +484,7 @@ export class Menu {
         .join('');
       E.unlocks.innerHTML = c.unlocks
         .map((u) => {
-          const what = u.kind === 'camo' ? `CAMO · ${esc(WEAPONS[u.weapon]?.name ?? '')}` : 'OPERATOR';
+          const what = u.kind === 'camo' ? `CAMO · ${esc(WEAPONS[u.weapon]?.name ?? '')}` : u.kind === 'weapon' ? 'IN THE GUN STORE' : 'OPERATOR';
           const sw = u.kind === 'camo' ? this._swatch(u.id) : null;
           return `<span class="cf-ec-un">${sw ? `<i style="background-image:url(${sw})"></i>` : ''}<small>UNLOCKED</small><b>${esc(u.name)}</b><em>${what}</em></span>`;
         })
@@ -982,7 +1000,7 @@ export class Menu {
 
   _opHint(C) {
     const me = Progress.character();
-    const text = me.bot ? `You are ${FIRETEAM_BY_ID[me.bot]?.name ?? me.name} now: the bot sits out your fireteam.` : 'Your own operator. Scorpion and Viper can be earned.';
+    const text = me.bot ? `You are ${FIRETEAM_BY_ID[me.bot]?.name ?? me.name} now: the bot sits out your fireteam.` : 'Your own operator. Scorpion, Viper and Raven can be earned.';
     for (const c of C ? [C] : this.$main.cars) c.opHint.textContent = text;
   }
 
@@ -1514,6 +1532,18 @@ export class Menu {
         <label>MOUSE SENSITIVITY</label><span class="cf-set-val"></span>
         <input class="cf-range" type="range" min="0.1" max="3" step="0.05" data-sfx>
       </div>
+      <div class="cf-set-row" data-key="adsSens">
+        <label>AIM SENSITIVITY</label><span class="cf-set-val"></span>
+        <input class="cf-range" type="range" min="0.3" max="2" step="0.05" data-sfx>
+      </div>
+      <div class="cf-set-row cf-set-toggle" data-key="invertY">
+        <label>INVERT MOUSE Y</label>
+        <button class="cf-toggle" data-sfx role="switch"><i></i><span class="cf-toggle-off">OFF</span><span class="cf-toggle-on">ON</span></button>
+      </div>
+      <div class="cf-set-row cf-set-toggle" data-key="toggleAds">
+        <label>TOGGLE AIM</label>
+        <button class="cf-toggle" data-sfx role="switch"><i></i><span class="cf-toggle-off">HOLD</span><span class="cf-toggle-on">CLICK</span></button>
+      </div>
       <div class="cf-set-row" data-key="fov">
         <label>FIELD OF VIEW</label><span class="cf-set-val"></span>
         <input class="cf-range" type="range" min="70" max="110" step="1" data-sfx>
@@ -1534,6 +1564,18 @@ export class Menu {
         <label>MUSIC VOLUME</label><span class="cf-set-val"></span>
         <input class="cf-range" type="range" min="0" max="1" step="0.01" data-sfx>
       </div>
+      <div class="cf-set-row" data-key="shake">
+        <label>SCREEN SHAKE</label><span class="cf-set-val"></span>
+        <input class="cf-range" type="range" min="0" max="1.5" step="0.05" data-sfx>
+      </div>
+      <div class="cf-set-row cf-set-toggle" data-key="bob">
+        <label>HEAD BOB</label>
+        <button class="cf-toggle" data-sfx role="switch"><i></i><span class="cf-toggle-off">OFF</span><span class="cf-toggle-on">ON</span></button>
+      </div>
+      <div class="cf-set-row cf-set-seg" data-key="crosshair">
+        <label>CROSSHAIR</label><span class="cf-set-val"></span>
+        <div class="cf-seg cf-seg-xc">${Object.entries(CROSSHAIRS).map(([k, c]) => `<button data-sfx data-xc="${k}" title="${k.toUpperCase()}"><i style="background:${c}"></i></button>`).join('')}</div>
+      </div>
       <div class="cf-set-row cf-set-toggle" data-key="showFps">
         <label>SHOW FPS</label>
         <button class="cf-toggle" data-sfx role="switch"><i></i><span class="cf-toggle-off">OFF</span><span class="cf-toggle-on">ON</span></button>
@@ -1542,7 +1584,7 @@ export class Menu {
     container.appendChild(wrap);
 
     const ranges = {};
-    for (const key of ['sensitivity', 'fov', 'volume', 'music']) {
+    for (const key of ['sensitivity', 'adsSens', 'fov', 'volume', 'music', 'shake']) {
       const row = wrap.querySelector(`[data-key="${key}"]`);
       const input = row.querySelector('input');
       const val = row.querySelector('.cf-set-val');
@@ -1552,9 +1594,14 @@ export class Menu {
     }
     const segBtns = [...wrap.querySelectorAll('[data-q]')];
     const qVal = wrap.querySelector('[data-key="quality"] .cf-set-val');
-    wrap.querySelector('.cf-seg').addEventListener('click', (e) => {
+    wrap.querySelector('[data-key="quality"] .cf-seg').addEventListener('click', (e) => {
       const b = e.target.closest('[data-q]');
       if (b) this._setSetting('quality', b.dataset.q);
+    });
+    const xcBtns = [...wrap.querySelectorAll('[data-xc]')];
+    wrap.querySelector('.cf-seg-xc').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-xc]');
+      if (b) this._setSetting('crosshair', b.dataset.xc);
     });
     const toggles = [...wrap.querySelectorAll('.cf-set-toggle')].map((row) => {
       const key = row.dataset.key;
@@ -1569,6 +1616,8 @@ export class Menu {
 
     const fmt = {
       sensitivity: (v) => v.toFixed(2),
+      adsSens: (v) => `×${v.toFixed(2)}`,
+      shake: (v) => `${Math.round(v * 100)}%`,
       fov: (v) => `${Math.round(v)}°`,
       volume: (v) => `${Math.round(v * 100)}%`,
       music: (v) => `${Math.round(v * 100)}%`,
@@ -1585,6 +1634,7 @@ export class Menu {
           val.textContent = fmt[key](s[key]);
         }
         for (const b of segBtns) b.classList.toggle('sel', b.dataset.q === s.quality);
+        for (const b of xcBtns) b.classList.toggle('sel', b.dataset.xc === s.crosshair);
         qVal.textContent = '';
         for (const { key, btn } of toggles) {
           btn.classList.toggle('on', !!s[key]);
@@ -1599,6 +1649,10 @@ export class Menu {
 
   _setSetting(key, value) {
     if (key === 'sensitivity') value = clamp(Math.round(value * 100) / 100, 0.1, 3);
+    if (key === 'adsSens') value = clamp(Math.round(value * 100) / 100, 0.3, 2);
+    if (key === 'shake') value = clamp(Math.round(value * 100) / 100, 0, 1.5);
+    if (key === 'crosshair' && !(value in CROSSHAIRS)) return;
+    if (key === 'invertY' || key === 'toggleAds' || key === 'bob') value = !!value;
     if (key === 'fov') value = Math.round(clamp(value, 70, 110));
     if (key === 'volume' || key === 'music') value = clamp(Math.round(value * 100) / 100, 0, 1);
     if (key === 'quality' && !QUALITIES.includes(value)) return;

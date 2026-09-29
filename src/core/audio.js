@@ -774,6 +774,16 @@ def('m4_fire', { d: 0.6, v: 5, gain: 0.72, rev: 0.3, max: 8, jit: 0.03, ref: 3 }
   mech: { t: 0.012, g: 0.25, f: rnd(0.95, 1.08), dec: 0.04 },
 }));
 
+// AK-47: 7.62x39 at 600 rpm, a rougher, deeper bark than the 5.56 carbine: a lower crack, a heavier thump
+def('ak_fire', { d: 0.62, v: 5, gain: 0.76, rev: 0.3, max: 8, jit: 0.03, ref: 3.2 }, (b) => gunshot(b, {
+  crackF: rnd(2200, 2800), crackQ: 0.75, crackD: 0.05, crackG: 0.95, airG: 0.38, airD: 0.024,
+  thF0: rnd(122, 142), thF1: 44, thSweep: 0.07, thD: 0.16, thG: 1.0, thDrive: 2.0, sub: 55, subG: 0.3,
+  bodyF: rnd(650, 820), bodyD: 0.1, bodyG: 0.65, drive: 4.8,
+  tailF: 1250, tailD: 0.38, tailG: 0.24,
+  echoT: rnd(0.07, 0.1), echoFb: 0.26, echoLP: 2300, echoWet: 0.26,
+  mech: { t: 0.013, g: 0.32, f: rnd(0.82, 0.92), dec: 0.05 },
+}));
+
 // full-power LMG: deeper thump and a heavier body than the carbine, short enough for 750 rpm
 def('lmg_fire', { d: 0.7, v: 5, gain: 0.8, rev: 0.32, max: 9, jit: 0.03, ref: 3.5 }, (b) => gunshot(b, {
   crackF: rnd(2100, 2700), crackQ: 0.7, crackD: 0.05, crackG: 0.95, airG: 0.4, airD: 0.028,
@@ -840,10 +850,10 @@ def('m4_reload', { d: 1.85, v: 2, gain: 0.5, rev: 0.1, max: 2 }, (b) => {
   chargingHandle(b, 1.3);
 });
 
-def('shotgun_fire', { d: 1.0, v: 5, gain: 0.85, rev: 0.32, max: 6, jit: 0.03, ref: 4 }, (b) => gunshot(b, {
+def('shotgun_fire', { d: 1.0, v: 5, gain: 0.95, rev: 0.32, max: 6, jit: 0.03, ref: 4 }, (b) => gunshot(b, {
   crackF: rnd(1600, 2000), crackQ: 0.5, crackD: 0.07, crackG: 1, airG: 0.45, airD: 0.03,
-  thF0: rnd(110, 125), thF1: 36, thSweep: 0.12, thD: 0.28, thG: 1.15, thDrive: 2.5, sub: 55, subG: 0.7,
-  bodyF: rnd(550, 700), bodyQ: 0.6, bodyD: 0.16, bodyG: 0.85, drive: 6,
+  thF0: rnd(105, 120), thF1: 34, thSweep: 0.13, thD: 0.32, thG: 1.35, thDrive: 2.8, sub: 52, subG: 0.95,
+  bodyF: rnd(550, 700), bodyQ: 0.6, bodyD: 0.17, bodyG: 0.9, drive: 6.5,
   tailF: 1000, tailD: 0.6, tailG: 0.3,
   echoT: rnd(0.1, 0.13), echoFb: 0.3, echoLP: 1600, echoWet: 0.3,
 }));
@@ -942,6 +952,25 @@ def('machete_swing', { d: 0.5, v: 4, gain: 0.42, rev: 0.1, max: 3, jit: 0.05 }, 
   b.whoosh(t + 0.02, dur * 0.85, { f0: 700, fm: rnd(3200, 3800), f1: 1100, q: 5, g: 0.45, peak: 0.55 });
   b.modal(t + dur * 0.35, [[rnd(2350, 2550), 0.05, 0.22], [rnd(3900, 4200), 0.035, 0.16], [rnd(6100, 6500), 0.02, 0.1]], 1);
   b.cloth(t, 0.12, { g: 0.3, f: 1200 });
+});
+
+// the baseball bat (store gear): a heavier, lower whoosh than the machete's...
+def('bat_swing', { d: 0.6, v: 4, gain: 0.45, rev: 0.1, max: 3, jit: 0.05 }, (b) => {
+  const t = 0.004;
+  const dur = rnd(0.34, 0.42);
+  b.whoosh(t, dur, { f0: rnd(160, 210), fm: rnd(700, 900), f1: 260, q: 1.2, g: 1.1, kind: 'pink', peak: 0.5 });
+  b.whoosh(t + 0.03, dur * 0.8, { f0: 400, fm: rnd(1500, 1800), f1: 600, q: 3, g: 0.35, peak: 0.55 });
+  b.cloth(t, 0.14, { g: 0.35, f: 900 });
+});
+
+// ...and when it connects: the hollow knock of the wood and a meaty thud (no ring of a blade)
+def('bat_hit', { d: 0.5, v: 4, gain: 0.7, rev: 0.14, max: 4 }, (b) => {
+  const t = 0.003;
+  b.click(t, 0.8, 0.0015);
+  b.thump(t, { f0: 150, f1: 55, sweep: 0.06, d: 0.16, g: 1.3, drive: 2.2 });
+  b.modal(t + 0.002, [[rnd(420, 470), 0.07, 0.35], [rnd(980, 1080), 0.05, 0.2], [rnd(1650, 1800), 0.03, 0.12]], 1);
+  b.nb(t, { kind: 'pink', type: 'bandpass', f: 600, f2: 300, ft: 0.12, q: 1.0, a: 0.001, d: 0.14, g: 0.8, drive: 2 });
+  b.crackle(t + 0.004, 0.04, 0.002, 0.35, b.out, { w: 2 });
 });
 
 def('machete_hit', { d: 0.55, v: 4, gain: 0.6, rev: 0.14, max: 4 }, (b) => {
@@ -1902,6 +1931,15 @@ def('boomer_burst', { d: 1.6, v: 3, gain: 0.95, rev: 0.3, max: 3, jit: 0.04, ref
   }
 });
 
+// a Striker's flesh pod beating: a wet throb with a squelch (played faster and higher as it's about to burst)
+def('pod_pulse', { d: 0.26, v: 4, gain: 0.5, rev: 0.1, max: 6, jit: 0.05 }, (b) => {
+  const t = 0.003;
+  b.thump(t, { f0: rnd(105, 130), f1: 48, sweep: 0.05, a: 0.004, d: 0.13, g: 1.1, drive: 1.5 });
+  b.nb(t, { kind: 'brown', type: 'lowpass', f: 220, a: 0.004, d: 0.1, g: 0.6 });
+  b.nb(t + 0.01, { kind: 'pink', type: 'bandpass', f: rnd(500, 750), q: 1.4, a: 0.003, d: 0.07, g: 0.5, drive: 3 }); // the squelch
+  b.gurgle(t + 0.02, 0.12, { rate: 60, f0: 180, f1: 420, g: 0.35 });
+});
+
 def('charger_fuse', { d: 1.0, xf: 0.06, xfLinear: true, loop: true, v: 1, gain: 0.45, rev: 0.15, max: 4, jit: 0 }, (b) => {
   const T = b.dur;
   const L = b.L;
@@ -1920,6 +1958,22 @@ def('charger_fuse', { d: 1.0, xf: 0.06, xfLinear: true, loop: true, v: 1, gain: 
     gate.gain.setValueAtTime(0.55, t0 + 0.04);
     gate.gain.linearRampToValueAtTime(0, t0 + 0.046);
   }
+});
+
+// the heal grenade (game.js healCloud): the can pops its cap...
+def('heal_pop', { d: 0.6, v: 3, gain: 0.55, rev: 0.18, max: 3, jit: 0.04 }, (b) => {
+  const t = 0.003;
+  b.click(t, 0.6, 0.0012);
+  b.thump(t, { f0: 240, f1: 110, sweep: 0.03, d: 0.07, g: 0.7 });
+  b.nb(t + 0.004, { kind: 'white', type: 'bandpass', f: 2600, f2: 1400, ft: 0.4, q: 0.8, a: 0.004, d: 0.45, g: 0.8 });
+  b.chirp(t + 0.02, 1500, 2400, 0.05, 0.35); // a bright ping of the spoon flying off
+});
+
+// ...and the medical mist hisses out of it for as long as the cloud lasts (seamless)
+def('heal_hiss', { d: 2.0, xf: 0.2, loop: true, v: 1, gain: 0.3, rev: 0.12, max: 4, jit: 0 }, (b) => {
+  const T = b.dur;
+  b.noise('pink', 0, T).connect(b.f('bandpass', 3200, 0.7)).connect(b.g(0.35, b.out));
+  b.noise('white', 0, T).connect(b.f('highpass', 6500)).connect(b.g(0.1, b.out));
 });
 
 def('acid_hiss', { d: 2.0, xf: 0.15, loop: true, v: 1, gain: 0.35, rev: 0.12, max: 4, jit: 0 }, (b) => {
@@ -2150,7 +2204,7 @@ def('countdown_tick', { d: 0.15, v: 1, gain: 0.35, rev: 0.05, max: 2, jit: 0 }, 
   b.nb(t, { type: 'bandpass', f: 1800, q: 6, a: 0.0005, d: 0.03, g: 0.4 });
 });
 
-// Striker charge timer: a hard little piezo beep (played faster and higher as the fuse runs down)
+// the pipe bomb's timer: a hard little piezo beep (played faster and higher as the fuse runs down)
 def('charge_beep', { d: 0.09, v: 1, gain: 0.32, rev: 0.06, max: 6, jit: 0 }, (b) => {
   const t = 0.002;
   b.tone(t, 3150, { d: 0.055, g: 0.55 });
@@ -2663,6 +2717,23 @@ def('wind_loop', { d: 8, xf: 0.6, loop: true, v: 1, ch: 2, sr: 24000, gain: 0.45
     wam.connect(b.g(0.5, p));
   }
   b.noise('brown', 0, T).connect(b.f('lowpass', 160)).connect(b.g(0.12, b.out));
+});
+
+// the Hive (world/hive.js, audio.underground): the air handlers deep in the walls, breathing slowly, a hiss from
+// the vents and a faint mains hum (whole cycles per loop: seamless)
+def('hive_hum', { d: 8, xf: 0.6, loop: true, v: 1, ch: 2, sr: 24000, gain: 0.5, rev: 0, max: 1, jit: 0 }, (b) => {
+  const T = b.dur;
+  const L = b.L;
+  const hz = (k) => k / L;
+  for (const [pan, k] of [[-0.6, 1], [0.6, 2]]) {
+    const p = b.pan(pan);
+    const am = b.g(0.8);
+    b.osc('sine', hz(k), 0, T).connect(b.g(0.2)).connect(am.gain);
+    b.noise('brown', 0, T).connect(b.f('lowpass', 140)).connect(am);
+    am.connect(b.g(0.5, p));
+    b.noise('pink', 0, T).connect(b.f('bandpass', rnd(900, 1300), 0.7)).connect(b.g(0.05, p));
+  }
+  for (const [fq, a] of [[50, 0.05], [100, 0.07], [150, 0.03], [200, 0.015]]) b.osc('sine', fq, 0, T).connect(b.g(a, b.out));
 });
 
 def('_thunder', { d: 7, v: 3, ch: 2, sr: 22050, gain: 0.75, rev: 0, max: 3, jit: 0 }, (b) => {
@@ -3377,13 +3448,17 @@ export class AudioSystem {
     A.roofAmt = gain(1, A.roof);
     A.windAmt = gain(1, A.windGust); // a lull now and then (_ambTick)
 
-    const rain = loopSrc('rain_loop');
+    // underground (an indoor map: world/hive.js): no weather, only the air handlers' drone
+    const under = !!this.underground;
+    const rain = under ? null : loopSrc('rain_loop');
     if (rain) rain.s.connect(gain(rain.gain, A.rainAmt));
-    const roof = loopSrc('_rain_roof');
+    const roof = under ? null : loopSrc('_rain_roof');
     if (roof) roof.s.connect(gain(roof.gain, A.roofAmt));
-    const wind = loopSrc('wind_loop');
+    const wind = under ? null : loopSrc('wind_loop');
     if (wind) wind.s.connect(gain(wind.gain, A.windAmt));
-    for (const x of [rain, roof, wind]) {
+    const hum = under ? loopSrc('hive_hum') : null;
+    if (hum) hum.s.connect(gain(hum.gain, A.level));
+    for (const x of [rain, roof, wind, hum]) {
       if (!x) continue;
       x.s.start(t, Math.random() * x.s.buffer.duration);
       A.sources.push(x.s);
@@ -3469,7 +3544,10 @@ export class AudioSystem {
     }
     if (now >= this._nextCreak) {
       this._nextCreak = now + rnd(7, 20);
-      if (chance(0.35 + 0.65 * this._indoor)) {
+      if (this.underground) {
+        // a duct ticking as it cools, a relay snapping somewhere down the corridor
+        if (chance(0.55)) this.play(chance(0.75) ? 'impact_metal' : 'power_zap', { position: this._around(rnd(9, 20), rnd(1, 3)), volume: rnd(0.2, 0.45), reverb: 0.7 });
+      } else if (chance(0.35 + 0.65 * this._indoor)) {
         this.play('wood_creak', { position: this._around(rnd(4, 14), rnd(-1, 4)), volume: rnd(0.9, 1.6), reverb: 0.5 });
       }
     }

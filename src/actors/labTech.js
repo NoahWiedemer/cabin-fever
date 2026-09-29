@@ -597,7 +597,7 @@ export function createLabTech(parent, work) {
   const K = {
     props: P,
     headY: 0, // her head joint's rest height (root space)
-    focus: V(-4.6, -1.6, 2), // cutscenes: the point she talks to / looks at
+    focus: work.focus ?? V(-4.6, -1.6, 2), // cutscenes: the point she talks to / looks at (the farm lab's, unless the work says)
     at: {
       rack: work.rack[4],
       tubes: work.rack,
@@ -607,7 +607,7 @@ export function createLabTech(parent, work) {
       monitor: work.monitor,
       valve: work.valve,
       glassLow: V(work.glass.x, work.top + 0.1, work.glass.z),
-      hall: V(-4.6, -4.5, 14),
+      hall: work.hall ?? V(-4.6, -4.5, 14),
     },
     tmpP: tmp.p,
     tmpQ: tmp.q,
@@ -766,7 +766,7 @@ export function createLabTech(parent, work) {
     move.feet0 = { L: feetW.L.clone(), R: feetW.R.clone() };
     enter(POSES.step);
     st.dur = 0.95 * move.n;
-    st.data.look = V(dst.x, work.top + 0.15, 4.6);
+    st.data.look = V(dst.x, work.top + 0.15, work.lookZ ?? 4.6);
   };
   const next = () => {
     if (st.pose === POSES.step) {

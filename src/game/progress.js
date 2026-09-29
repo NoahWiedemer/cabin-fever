@@ -66,7 +66,17 @@ export const CHARACTER_SKINS = [
   { id: 'emosquad', name: 'EMO SQUAD', body: 'emosquad', bot: null, unlock: null, how: 'Your own operator' },
   { id: 'scorpion', name: 'SCORPION', body: 'meshy', bot: 'meshy', unlock: { rank: 5 }, how: 'Reach the rank of Sergeant' },
   { id: 'viper', name: 'VIPER', body: 'viper', bot: 'viper', unlock: { win: ['hard', 'extreme'] }, how: 'Win the Story on Hard or Extreme' },
+  { id: 'raven', name: 'RAVEN', body: 'raven', bot: 'raven', unlock: { rank: 8 }, how: 'Reach the rank of Master Sergeant' },
 ];
+
+// store weapons the career unlocks (Combat Arms style: a rank lets you buy it); game/shop.js shows them locked
+// with `how` until then
+export const WEAPON_UNLOCKS = [{ id: 'chaingun', name: 'MINIGUN', unlock: { rank: 7 }, how: 'Reach the rank of Sergeant First Class' }];
+
+export function weaponUnlocked(id) {
+  const u = WEAPON_UNLOCKS.find((w) => w.id === id);
+  return !u || prof().unlockAll || rankOf().index >= u.unlock.rank;
+}
 
 function load() {
   let p = null;
@@ -230,7 +240,7 @@ export function win() {
 
 /**
  * the run is over: the after-action report { xp, parts, rank, rankBefore, promoted, progress (0..1 to the next),
- * mastery: [{ weapon, kills, level, before, into, span }], unlocks: [{ kind: 'character' | 'camo', name,
+ * mastery: [{ weapon, kills, level, before, into, span }], unlocks: [{ kind: 'character' | 'camo' | 'weapon', name,
  * weapon? }] } (null without a run)
  */
 export function runEnd() {
@@ -239,6 +249,7 @@ export function runEnd() {
   p.runs++;
   const r = rankOf(p.xp);
   const unlocks = [];
+  for (const u of WEAPON_UNLOCKS) if (r.index >= u.unlock.rank && RUN.rank0 < u.unlock.rank) unlocks.push({ kind: 'weapon', name: u.name });
   for (const c of CHARACTER_SKINS) {
     if (c.unlock?.rank != null && r.index >= c.unlock.rank && RUN.rank0 < c.unlock.rank) unlocks.push({ kind: 'character', name: c.name });
     if (c.unlock?.win && RUN.won && RUN.mode === 'cabinfever' && c.unlock.win.includes(RUN.difficulty) && c.unlock.win.reduce((n, d) => n + (p.wins['cabinfever:' + d] ?? 0), 0) === 1) unlocks.push({ kind: 'character', name: c.name });

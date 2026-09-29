@@ -3,12 +3,13 @@
 import * as THREE from 'three';
 import { WEAPONS } from './weaponDefs.js';
 import { effectiveDef } from '../game/shop.js';
+import { opticDef } from './optics.js';
 import { akimboDef, akimboTriggers, akimboTryReload, akimboReloadTick, akimboRounds } from './akimbo.js';
 import { gearDef, PACK_SLOT } from '../game/gear.js';
 import { rogueDef } from '../game/rogue.js';
 
 // slot 3's throwables in the order key 4 cycles through the ones in stock
-const THROWABLES = ['m67', 'molotov', 'mine', 'pipebomb'];
+const THROWABLES = ['m67', 'molotov', 'mine', 'pipebomb', 'healnade'];
 import { clamp, coneDirection, damp, rand } from '../core/utils.js';
 
 const _dir = new THREE.Vector3();
@@ -28,6 +29,8 @@ export class WeaponSystem {
     this.molotovs = 0;
     this.mines = 0; // store M16A1 mines
     this.pipebombs = 0; // store pipe bombs (the lure)
+    this.healnades = 0; // store heal grenades (game.js healCloud)
+    this.healLevel = 0; // their MEDIC upgrade level (0..2: weaponDefs healnade.levels)
     this.barricades = 0; // store barricade kits (slot 5; world/barricades.js does the building)
     this.buildT = null; // seconds into nailing one up (viewmodel hammer swing), set by world/barricades.js
     this.gascans = 0; // jerry cans from upstairs (slot 6; world/power.js does the refuelling)
@@ -65,7 +68,8 @@ export class WeaponSystem {
     this.tossT = 0; // > 0: an emptied launcher is tossed when it runs out (_toss)
     this.tossId = null;
     this.owned = new Set([primaryId, 'm9']); // store inventory
-    this.upgrades = {}; // id -> { dmg, mag, reload, rate } (replaced, never mutated)
+    this.upgrades = {}; // id -> { dmg, mag, reload, rate, pen } (replaced, never mutated)
+    this.optics = {}; // id -> { own: [optic kinds bought], on: the one mounted or null } (player/optics.js, replaced)
     this.akimbo = new Set(); // pistols with the akimbo upgrade (player/akimbo.js)
     this.duo = null;
     this.game.fx?.mags?.clear(); // last run's empty magazines
@@ -75,6 +79,8 @@ export class WeaponSystem {
     this.molotovs = 0;
     this.mines = 0;
     this.pipebombs = 0;
+    this.healnades = 0;
+    this.healLevel = 0;
     this.barricades = 0;
     this.buildT = null;
     this.gascans = 0;
@@ -290,20 +296,21 @@ export class WeaponSystem {
     return true;
   }
 
-  /** Carried count of a throwable ('m67' frags, 'molotov', 'mine', 'pipebomb'). */
+  /** Carried count of a throwable ('m67' frags, 'molotov', 'mine', 'pipebomb', 'healnade'). */
   throwCount(id = this.slots[3]) {
-    return id === 'molotov' ? this.molotovs : id === 'mine' ? this.mines : id === 'pipebomb' ? this.pipebombs : this.grenades;
+    return id === 'molotov' ? this.molotovs : id === 'mine' ? this.mines : id === 'pipebomb' ? this.pipebombs : id === 'healnade' ? this.healnades : this.grenades;
   }
 
   /** All the throwables you carry. */
   _throwTotal() {
-    return this.grenades + this.molotovs + this.mines + this.pipebombs;
+    return this.grenades + this.molotovs + this.mines + this.pipebombs + this.healnades;
   }
 
   _useThrowable(id) {
     if (id === 'molotov') this.molotovs--;
     else if (id === 'mine') this.mines--;
     else if (id === 'pipebomb') this.pipebombs--;
+    else if (id === 'healnade') this.healnades--;
     else this.grenades--;
   }
 
@@ -449,8 +456,13 @@ export class WeaponSystem {
 
     const fireDown = input ? input.mouse(0) : false;
     const firePressed = input ? input.mouseHit(0) : false;
-    const altDown = input ? input.mouse(2) : false;
     const altPressed = input ? input.mouseHit(2) : false;
+    // settings.toggleAds: a click toggles aiming instead of holding the button (anything that can't aim drops it,
+    // below; a melee weapon's heavy attack still wants the plain button)
+    const toggleAim = !!this.game.settings?.toggleAds && d.mode !== 'melee';
+    if (toggleAim && altPressed) this.adsLatch = !this.adsLatch;
+    if (input?.hit('ShiftLeft') || input?.hit('ShiftRight')) this.adsLatch = false; // (sprint breaks a toggled aim)
+    const altDown = toggleAim ? !!this.adsLatch : input ? input.mouse(2) : false;
     const gun = d.mode === 'auto' || d.mode === 'semi' || d.mode === 'bolt' || d.mode === 'pump' || d.mode === 'burst';
 
     // a click is buffered briefly: pressed during the sprint-out, a bolt cycle or a hair before the
@@ -533,6 +545,7 @@ export class WeaponSystem {
     // ADS: eases toward the target (fast start, settled in ~adsTime, out a bit quicker); the linear
     // floor lands it exactly, so full ADS accuracy arrives on time
     const canAds = !d.akimbo && d.mode !== 'melee' && d.mode !== 'grenade' && d.mode !== 'build' && d.mode !== 'pour' && (this.state === 'idle' || this.state === 'bolt' || this.state === 'draw') && !(d.scope && this.state === 'bolt') && !p.latchedBy; // no aiming with a Biter on your back
+    if (!canAds) this.adsLatch = false;
     this.adsWanted = altDown && canAds;
     const adsTime = d.adsTime ?? 0.2;
     const adsGoal = this.adsWanted ? 1 : 0;
@@ -663,7 +676,7 @@ export class WeaponSystem {
       }
       if (this.reloadEmpty && !this.phaseDone.bolt && f > 0.8) {
         this.phaseDone.bolt = true;
-        this.game.audio.play(d.id === 'l96a1' ? 'sniper_bolt' : 'm4_bolt', { volume: 0.8 });
+        this.game.audio.play(d.ammoKind === 'sniper' ? 'sniper_bolt' : 'm4_bolt', { volume: 0.8 });
       }
     }
     if (!this.phaseDone.ammo && f > 0.6) {
@@ -776,10 +789,12 @@ export class WeaponSystem {
       game.launchProjectile(d, origin.clone().addScaledVector(_fwd, 0.4), _dir.clone(), p);
     } else {
       const dealt = game.hitAccum;
+      if (d.pellets > 1) game.beginVolley(); // (buckshot: the pellets' damage adds up to a stagger and a shove)
       for (let i = 0; i < d.pellets; i++) {
         coneDirection(_fwd, spreadDeg * DEG * 0.5, _dir);
         game.hitscan(origin, _dir, d, p, { tracerFrom: tracer || (d.pellets > 1 && i < 3) ? _muzzle : null, pellet: i });
       }
+      if (d.pellets > 1) game.endVolley(_fwd);
       // accuracy for the after-action report: a shot (all its pellets) hits if it damaged anything
       if (p.stats) {
         p.stats.shots = (p.stats.shots ?? 0) + 1;
@@ -790,7 +805,7 @@ export class WeaponSystem {
     // feedback
     if (d.sound) game.audio.play(d.sound, { volume: 1 });
     if (d.id === 'chaingun' && !this.fireHandle) this.fireHandle = game.audio.play('minigun_fire', { loop: true, volume: 0.9 });
-    game.lighting.muzzleFlash(_muzzle, d.pellets > 1 ? 1.4 : d.id === 'l96a1' ? 1.6 : 1);
+    game.lighting.muzzleFlash(_muzzle, d.pellets > 1 ? 1.7 : d.ammoKind === 'sniper' ? 1.6 : 1);
     game.fx.muzzleSmoke(_muzzle, _fwd, d.pellets > 1 ? 1.5 : 0.6);
     // recoil: an instant kick on the aim (the player springs most of it back once you stop firing),
     // an aim-neutral camera punch, a sharp viewmodel punch and a thump of shake on the heavy hitters
@@ -808,7 +823,7 @@ export class WeaponSystem {
     } else if (d.id === 'm4super90' || d.id === 'goldenPunisher') {
       this._ejectShell('shotgun', 1);
     }
-    game.alertNoise(p.pos, d.id === 'l96a1' ? 45 : 30);
+    game.alertNoise(p.pos, d.ammoKind === 'sniper' ? 45 : 30);
     if (d.fixedAmmo && a.mag <= 0) {
       // the last grenade: the launcher is tossed once the shot is off (update -> _toss)
       this.tossId = d.id;
@@ -849,11 +864,19 @@ export class WeaponSystem {
   }
 
   // ------------------------------------------------------------------ store (see game/shop.js)
-  /** Def of any weapon id with its store upgrades applied (base def when not upgraded). */
+  /** Def of any weapon id with its store upgrades and its optic applied (base def when neither). */
   defOf(id) {
     const base = WEAPONS[id];
     const lv = this.upgrades?.[id];
-    return lv && base ? effectiveDef(base, lv) : base;
+    const d = lv && base ? effectiveDef(base, lv) : base;
+    return opticDef(d, this.optics?.[id]?.on);
+  }
+
+  /** The optic on a store weapon: `kind` ('reddot' / 'acog') bought now (own it), or null for the irons. */
+  setOptic(id, kind) {
+    const o = this.optics[id] ?? { own: [], on: null };
+    this.optics[id] = { own: kind && !o.own.includes(kind) ? [...o.own, kind] : o.own, on: kind || null };
+    if (this.slots[this.cur] === id) this.vm.refreshOptic(this.def);
   }
 
   upgradeLevel(id, key) {

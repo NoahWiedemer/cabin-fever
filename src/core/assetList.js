@@ -6,6 +6,7 @@ export const MODELS = {
   ellis: '/models/characters/ellis.glb',
   meshy: '/models/characters/meshy.glb',
   viper: '/models/characters/viper.glb',
+  raven: '/models/characters/raven.glb',
   shopkeeper: '/models/characters/shopkeeper.glb', // gun shop clerk (not a bot)
   nadja: '/models/characters/nadja.glb', // lab tech behind the basement's armored glass (not a bot)
   emosquad: '/models/characters/emosquad.glb', // your own character (cutscenes, the store paperdoll; not a bot)
@@ -33,6 +34,13 @@ export const MODELS = {
   mozambique: '/models/weapons/mozambique.glb',
   softball: '/models/weapons/softball.glb',
   molotov: '/models/weapons/molotov.glb',
+  g36c: '/models/weapons/g36c.glb', // the user's AI models, normalized in tools/blender/weapons_import.py
+  ak47: '/models/weapons/ak47.glb',
+  awm: '/models/weapons/awm.glb',
+  minigun: '/models/weapons/minigun.glb', // weaponDefs chaingun's model (the procedural chain gun stands in without it)
+  axmc: '/models/weapons/axmc.glb',
+  tomahawk: '/models/weapons/tomahawk.glb', // melee (tools/melee-import.mjs, player/meleeGlb.js)
+  bat: '/models/weapons/bat.glb',
   arms: '/models/arms/arms.glb',
   // environment
   church: '/models/environment/church.glb',

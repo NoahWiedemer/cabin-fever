@@ -614,7 +614,7 @@ export function buildLevel() {
   }
   lamps.push({ pos: new THREE.Vector3(11.0, FLOOR.outside + 1.2, 14.0), level: 1, color: 0xff7a2a, intensity: 30, angle: 0, distance: 14, flicker: 1, spot: false, fire: true });
 
-  // trees in a ring, away from spawn lanes
+  // trees in a ring, away from what were the spawn lanes (the old fixed ring: kept, it places the trees)
   const spawnPoints = [];
   for (let i = 0; i < 14; i++) {
     const a = (i / 14) * Math.PI * 2 + 0.2;
@@ -649,6 +649,40 @@ export function buildLevel() {
   // ------------------------------------------------------------------ the ranch: barn, paddock, windmill, ...
   const ranch = buildRanch({ B, world, prop, lamp, lamps, rnd, dynamic });
   for (const w of ranch.windows) windows.push(w); // (after the house window loop: moonlight shafts only)
+
+  // ------------------------------------------------------------------ spawns
+  // Open ground all round the farm on a jittered 3 m grid: game.js _spawnOne picks from it within spawnBand of the
+  // fireteam, where there is a way in, rather out of sight, so a wave never comes out of the same few spots (the ring
+  // above only places the trees now). Not in or right by the house, in the barn, down the cellar stairwell, on or in
+  // anything. (A hash, not rnd(): the layout after this point must not shift.)
+  const G = FLOOR.outside;
+  const clearAt = (x, y, z) => {
+    let blocked = false;
+    world.query(x - 0.55, z - 0.55, x + 0.55, z + 0.55, (bx) => {
+      if (bx.maxY > y + 0.25 && bx.minY < y + 1.8) return (blocked = true);
+    });
+    return !blocked;
+  };
+  const hash = (x, z) => {
+    const s = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453;
+    return s - Math.floor(s);
+  };
+  const spawnGrid = [];
+  for (let gx = -36; gx <= 36; gx += 3) {
+    for (let gz = -36; gz <= 36; gz += 3) {
+      const x = gx + (hash(gx, gz) - 0.5) * 2.4, z = gz + (hash(gz + 7.1, gx - 3.3) - 0.5) * 2.4;
+      if (Math.abs(x) < 14.5 && Math.abs(z) < 11.5) continue; // the house, porch, balcony and a margin
+      if (x > -18 && x < -10.5 && z > -4 && z < -0.6) continue; // the cellar stairwell
+      if (inBarn(x, z, 2) || world.groundHeight(x, z, 0.45, G + 0.3) > G + 0.05 || !clearAt(x, G, z)) continue;
+      spawnGrid.push(new THREE.Vector3(x, G, z));
+    }
+  }
+  // upstairs: just inside the windows they climb in at (and the balcony, over its railing), clear of the furniture;
+  // game.js sends one in now and then while nobody is up there, once the stairs are open
+  const upperSpawns = [[-11.0, 3.6], [-8.4, -6.9], [9.6, -6.9], [11.0, -4.2], [9.8, 7.0], [4.6, 9.0], [10.4, 9.0]]
+    .filter(([x, z]) => clearAt(x, FLOOR.upper, z))
+    .map(([x, z]) => new THREE.Vector3(x, FLOOR.upper + 0.05, z));
+  const isUpstairs = (p) => levelOf(p.y + 0.3) === 2 && ((Math.abs(p.x) < 12 && Math.abs(p.z) < 8) || (p.x > 3.8 && p.x < 11.2 && p.z > 7.9 && p.z < 9.8));
 
   // ------------------------------------------------------------------ nav metadata
   const portals = [
@@ -778,7 +812,10 @@ export function buildLevel() {
     world,
     lamps,
     windows,
-    spawnPoints,
+    spawnPoints: spawnGrid,
+    spawnBand: [16, 34], // m from the nearest survivor (game.js _spawnOne)
+    upperSpawns,
+    isUpstairs,
     portals,
     navBlocks,
     entrances,

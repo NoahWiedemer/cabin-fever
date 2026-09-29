@@ -99,7 +99,7 @@ export class Pickups {
     let w;
     try {
       // the bots' third-person gun: the real model for GLB guns (the light procedural one has none of them)
-      w = new THREE.Group().add(buildBotWeapon(id).root);
+      w = new THREE.Group().add(buildBotWeapon(id, WEAPONS[id]?.model).root);
     } catch (e) {
       w = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.1, 0.8), new THREE.MeshStandardMaterial({ color: 0x222222 }));
     }

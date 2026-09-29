@@ -22,6 +22,8 @@ import * as THREE from 'three';
 import { esc, weaponSvg, fmtCash } from './hud.js';
 import { WEAPONS } from '../player/weaponDefs.js';
 import { buildWeaponModel } from '../player/gunSafe.js';
+import { mountOptic } from '../player/optics.js';
+import { buildHealCanister } from '../player/throwables.js';
 import { buildBarricadeKit } from '../player/barricadeKit.js';
 import { buildProp } from '../world/propsSafe.js';
 import { gasMask, kevlarVest } from '../world/gearModels.js';
@@ -43,7 +45,10 @@ import {
   buyUpgrade,
   buyEquipment,
   buyAkimbo,
+  buyTrack,
   akimboState,
+  opticsState,
+  buyOptic,
   itemSection,
   hasPack,
   primaryTarget,
@@ -75,6 +80,7 @@ const stageKey = (item) => item.sk ?? item.k;
 const GEAR_POSE = {
   frag: { rot: [0, -Math.PI / 2, 0], az: 0.5, el: 0.28, fill: 0.74, env: 0.45 },
   molotov: { rot: [0, -Math.PI / 2, 0], roll: -0.95, az: 0.45, el: 0.2, fill: 0.86, env: 0.6 },
+  healnade: { rot: [0, 0, 0], az: 0.45, el: 0.18, fill: 0.72, env: 0.7 },
   armor: { rot: [0, 0, 0], az: -0.5, el: 0.16, fill: 0.8, env: 0.4 },
   ammo: { rot: [0, 0, 0], az: 0.62, el: 0.42, fill: 0.84, env: 0.5 },
   gasmask: { rot: [0, 0, 0], az: 0.5, el: 0.12, fill: 0.78, env: 0.6 },
@@ -88,6 +94,8 @@ function gearBuilder(it) {
       return () => buildWeaponModel('m67').root;
     case 'molotov':
       return () => buildWeaponModel('molotov').root;
+    case 'healnade':
+      return () => buildHealCanister();
     case 'armor':
       return kevlarVest;
     case 'gasmask':
@@ -131,6 +139,7 @@ const ITEM_PATHS = {
     'M50 22h28v3H50ZM42 6a4 4 0 1 0 0.01 0Z',
   pipebomb:
     'M30 13h58v14H30ZM22 10h9v20h-9ZM87 10h9v20h-9ZM50 7h14v6H50ZM96 19h9v2h-9ZM106 15l5-4-1 6 6 1-6 3 2 6-6-4Z',
+  healnade: 'M50 9h28v28q0 2-2 2H52q-2 0-2-2ZM54 3h20v6H54ZM74 5l12-3 1 3-12 3Z' + 'M61 15h6v6h6v6h-6v6h-6v-6h-6v-6h6Z',
   ammo:
     'M34 13L94 13L94 37L34 37ZM31 9L97 9L97 14L31 14ZM56 3L72 3L72 9L68 9L68 6L60 6L60 9L56 9Z' +
     'M44 19L50 19L50 31L44 31ZM54 19L60 19L60 31L54 31ZM64 19L70 19L70 31L64 31ZM74 19L80 19L80 31L74 31Z',
@@ -201,6 +210,7 @@ const UPG_VAL = {
   mag: (d) => `${d.mag}`,
   reload: (d) => `${(d.reloadType === 'shell' ? d.shellTime : d.reload ?? 0).toFixed(2)}s`,
   rate: (d) => `${Math.round(d.rpm)}`,
+  pen: (d) => `${(d.penetration ?? 0) + 1} ${(d.penetration ?? 0) ? 'BODIES' : 'BODY'}`, // (how many one round goes through)
 };
 
 const pips = (n, max) => `<span class="cf-st-pips">${'<i class="on"></i>'.repeat(n)}${'<i></i>'.repeat(Math.max(0, max - n))}</span>`;
@@ -431,7 +441,13 @@ export class Store {
     if (item.kind === 'weapon') {
       const def = WEAPONS[item.e.id];
       if (stageKey(item) !== item.k) return { build: () => pistolPair(def.model || item.e.id), pose: PAIR_POSE };
-      return { build: () => buildWeaponModel(def.model || item.e.id).root, pose: item.e.slot === 1 ? PISTOL_POSE : GUN_POSE };
+      const optic = this.game?.weapons.optics?.[item.e.id]?.on; // (the live preview shows the optic on it)
+      const build = () => {
+        const m = buildWeaponModel(def.model || item.e.id);
+        if (optic) mountOptic(m, optic);
+        return m.root;
+      };
+      return { build, pose: item.e.slot === 1 ? PISTOL_POSE : GUN_POSE };
     }
     const build = gearBuilder(item.it);
     return build ? { build, pose: GEAR_POSE[item.it.key] || { az: 0.5, el: 0.2, fill: 0.8 } } : null;
@@ -464,7 +480,8 @@ export class Store {
       const w = g.weapons;
       let act = null;
       let done = s.where === PACK_SLOT ? 'IN BACKPACK' : s.equipped ? 'EQUIPPED' : '';
-      if (!s.owned) act = { label: 'BUY', cost: price(e.price) };
+      if (s.locked) done = 'LOCKED'; // (the career unlocks it, game/progress.js: the detail says how)
+      else if (!s.owned) act = { label: 'BUY', cost: price(e.price) };
       else if (target != null && s.where !== target) {
         // moving it from slot 1 into an empty backpack would leave slot 1 empty
         if (s.where === 0 && !w.slots[target]) done = 'EQUIPPED';
@@ -691,7 +708,9 @@ export class Store {
     }
     const tag = s.equipped ? '<span class="cf-st-tag on">EQUIPPED</span>' : s.owned ? '<span class="cf-st-tag">OWNED</span>' : '';
     const held = WEAPONS[w.slots[s.target ?? e.slot]]; // the backpack picker's slot, if any
-    const warn = s.target == null && !s.equipped && e.slot === 0 && held?.special ? `<div class="cf-st-warn">REPLACES YOUR ${esc(held.name)}</div>` : ''; // (backpack: the picker says it)
+    const warn = s.locked
+      ? `<div class="cf-st-warn">${LOCK_SVG} ${esc((s.how ?? 'Locked').toUpperCase())}</div>` // (a career unlock, game/progress.js)
+      : s.target == null && !s.equipped && e.slot === 0 && held?.special ? `<div class="cf-st-warn">REPLACES YOUR ${esc(held.name)}</div>` : ''; // (backpack: the picker says it)
     const bars = STATS.map(([label, key], i) => {
       const ghost = next[key] ? next[key][i] - cur[i] : 0;
       return `<div class="cf-st-bar" data-u="${key}"><em>${label}</em><i><b style="width:${pct(b0[i])}"></b>${
@@ -726,11 +745,24 @@ export class Store {
           <span class="cf-st-upg-p">${ak.owned ? 'OWNED' : money(ak.cost)}</span>
         </button><div class="cf-st-ak-hint">${ak.owned ? 'MOUSE1 RIGHT GUN · MOUSE2 LEFT GUN' : 'DUAL WIELD · MOUSE2 FIRES THE LEFT GUN · NO ADS'}</div>`
       : '';
+    // optics (a gun with a rail, once owned): the irons, a red dot, a 3x scope; bought once, switched for free
+    const ops = opticsState(g, e);
+    const opRow = ops
+      ? `<div class="cf-st-optics"><div class="cf-st-sub">OPTIC</div><div class="cf-st-opts">${[{ kind: 'iron', name: 'IRON SIGHTS', own: true, on: !ops.some((o) => o.on), afford: true }, ...ops]
+          .map(
+            (o) =>
+              `<button class="cf-st-opt${o.on ? ' on' : ''}${o.afford ? '' : ' poor'}" data-sfx data-act="optic" data-id="${e.id}" data-key="${o.kind}"${o.on ? ' disabled' : ''}><span>${o.name}</span><em>${
+                o.on ? 'ON' : o.own ? 'EQUIP' : money(o.cost)
+              }</em></button>`
+          )
+          .join('')}</div></div>`
+      : '';
     return (
       this._head(base.name, e.type, tag) +
       warn +
       `<div class="cf-st-bars">${bars}</div>` +
-      (rows ? `<div class="cf-st-upgs${s.owned ? '' : ' locked'}"><div class="cf-st-sub">UPGRADES</div>${rows}${akRow}</div>` : '')
+      (rows ? `<div class="cf-st-upgs${s.owned ? '' : ' locked'}"><div class="cf-st-sub">UPGRADES</div>${rows}${akRow}</div>` : '') +
+      opRow
     );
   }
 
@@ -784,7 +816,23 @@ export class Store {
       meter = `<div class="cf-st-meter"><em>RESERVES</em><span class="cf-st-meter-v"><b${s.maxed ? '' : ' class="nx"'}>${s.maxed ? 'FULL' : 'REFILL'}</b></span></div>`;
     }
     if (it.slot) return this._head(it.name, it.type, gearSlotTag(it, s)) + gearDetailHtml(it) + meter; // GEAR (under the paperdoll)
-    return this._head(it.name, it.type, '') + meter; // a consumable
+    return this._head(it.name, it.type, '') + meter + this._trackRow(it); // a consumable (+ its upgrade track)
+  }
+
+  /** A consumable's per-match upgrade track (the heal grenade's MEDIC): what it is, the next level, its price. */
+  _trackRow(it) {
+    const u = it.track;
+    if (!u) return '';
+    const g = this.game;
+    const lv = u.level(g), max = u.costs.length, done = lv >= max;
+    const cost = done ? 0 : price(u.costs[lv]);
+    const poor = !done && !g.economy.canAfford(g.player, cost);
+    return `<div class="cf-st-upgs"><div class="cf-st-sub">UPGRADE</div>
+      <button class="cf-st-upg${done ? ' max' : ''}${poor ? ' poor' : ''}" data-sfx data-act="track" data-key="${it.key}"${done ? ' disabled' : ''}>
+        <span class="cf-st-upg-n">${u.name}</span>${pips(lv, max)}
+        <span class="cf-st-upg-v">${u.value(lv)}${done ? '' : `<i>›</i><b>${u.value(lv + 1)}</b>`}</span>
+        <span class="cf-st-upg-p">${done ? 'MAX' : money(cost)}</span>
+      </button><div class="cf-st-ak-hint">${esc(u.desc(lv))}</div></div>`;
   }
 
   /* ------------------------------------------------------------ wallet */
@@ -911,6 +959,8 @@ export class Store {
     if (act === 'buy') res = this._buy();
     else if (act === 'upgrade') res = buyUpgrade(this.game, b.dataset.id, b.dataset.key);
     else if (act === 'akimbo') res = buyAkimbo(this.game, b.dataset.id);
+    else if (act === 'track') res = buyTrack(this.game, b.dataset.key);
+    else if (act === 'optic') res = buyOptic(this.game, b.dataset.id, b.dataset.key === 'iron' ? null : b.dataset.key);
     else if (act === 'wear') {
       // an owned alternative put on from under the worn item: it becomes the selection
       res = buyEquipment(this.game, b.dataset.key);
@@ -919,6 +969,7 @@ export class Store {
     if (!res) return;
     this._feedback(res, act === 'upgrade' || act === 'akimbo' ? b.dataset.key : null);
     this.render();
+    if (act === 'optic' && res.ok) this._select(this.sel[this.tab], true); // the preview gets the optic
     if (act === 'akimbo' && res.ok) {
       this._select(this.sel[this.tab], true); // the preview becomes the pair
       this._bakeAll(); // and so does the card's thumbnail

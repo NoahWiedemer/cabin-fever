@@ -23,7 +23,7 @@ export const RAGDOLL = {
   chance: 0.2, // ordinary kills
   blast: [0.6, 1], // explosions: at the edge → at the center of the blast
   buckshot: { near: 3.5, far: 7, p: [0.55, 0.2] }, // pellet guns by distance to the shooter (never below `chance`)
-  heavy: { l96a1: 0.5, sigma: 0.3, devotion: 0.3, chaingun: 0.3 }, // sniper / LMG rounds
+  heavy: { l96a1: 0.5, awm: 0.5, axmc: 0.5, sigma: 0.3, devotion: 0.3, chaingun: 0.3 }, // sniper / LMG rounds
   max: 6, // bodies simulated at once (4 on low quality)
   life: 6, // s: freeze even if still moving
   hz: 120, // substep rate
@@ -430,7 +430,7 @@ class Ragdoll {
       H = lerp(12, 7, clamp((d - 1) / 6, 0, 1));
       U = rand(3.5, 4.5);
       spin = rand(5, 7);
-    } else if (opts.weapon === 'l96a1') {
+    } else if (RAGDOLL.heavy[opts.weapon] >= 0.5) { // the sniper rifles
       H = rand(10, 12);
       U = rand(3.5, 4.5);
       spin = rand(6, 8);

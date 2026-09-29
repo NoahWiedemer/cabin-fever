@@ -111,6 +111,10 @@
 .cf-vig-dmg {
   background: radial-gradient(ellipse 60% 62% at 50% 50%, transparent 48%, rgba(200, 0, 0, 0.34) 76%, rgba(130, 0, 0, 0.8) 100%);
 }
+/* a heal grenade's cloud healing you (hud.healFx) */
+.cf-vig-heal {
+  background: radial-gradient(ellipse 62% 64% at 50% 50%, transparent 52%, rgba(60, 230, 120, 0.22) 78%, rgba(20, 150, 70, 0.55) 100%);
+}
 .cf-vig-low {
   background: radial-gradient(ellipse 58% 60% at 50% 50%, transparent 42%, rgba(120, 0, 0, 0.46) 74%, rgba(45, 0, 0, 0.94) 100%);
   transition: opacity 0.4s;
@@ -194,6 +198,25 @@
   stroke-width: 1.25px;
   vector-effect: non-scaling-stroke;
 }
+/* the 3x prism scope (player/optics.js 'acog'): its chevron instead of the mil-dots, a wider, softer field
+   (.cf-scope in front: .cf-hud svg would win over a lone class and show the chevron in the rifle scopes too) */
+.cf-scope .cf-acog-ret,
+.cf-scope.acog .cf-scope-ret:not(.cf-acog-ret) {
+  display: none;
+}
+.cf-scope.acog .cf-acog-ret {
+  display: block;
+}
+.cf-scope.acog .cf-scope-mask {
+  background: radial-gradient(circle at 50% 50%, transparent 0, transparent calc(47vmin - 6vmin), rgba(0, 0, 0, 0.6) calc(47vmin - 1px), #020202 47vmin, #000 100%);
+}
+.cf-acog-ret line {
+  stroke-width: 1.6px;
+}
+.cf-acog-chev {
+  fill: #ff3a1e;
+  filter: drop-shadow(0 0 3px rgba(255, 60, 30, 0.9));
+}
 @keyframes cf-scope-in {
   from { transform: scale(1.1); }
   to { transform: scale(1); }
@@ -238,6 +261,7 @@
 /* small CoD-style crosshair: 4 thin ticks around a gap (--g, px) that is the live spread cone */
 .cf-xhair {
   --g: 8px;
+  --xc: #fff; /* the colour picked in the settings (ui/menu.js crosshair) */
   position: absolute;
   left: 0;
   top: 0;
@@ -252,7 +276,7 @@
   --th: 2px;
   position: absolute;
   display: block;
-  background: #fff;
+  background: var(--xc);
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
   will-change: transform;
 }
@@ -269,7 +293,7 @@
   width: calc(var(--g) * 2);
   height: calc(var(--g) * 2);
   box-sizing: border-box;
-  border: 1.5px solid rgba(255, 255, 255, 0.92);
+  border: 1.5px solid var(--xc);
   border-radius: 50%;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4), inset 0 0 0 1px rgba(0, 0, 0, 0.4);
 }
@@ -281,7 +305,7 @@
   width: 2px;
   height: 2px;
   margin: -1px 0 0 -1px;
-  background: #fff;
+  background: var(--xc);
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
 }
 .cf-xhair.ring i { display: none; }
@@ -2573,6 +2597,21 @@
   color: #1b1207;
   background: linear-gradient(180deg, #ffb840, #e08a1a);
   border-color: #ffb840;
+}
+/* the crosshair colours: a swatch each, the picked one framed in amber */
+.cf-seg-xc {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+.cf-seg-xc button i {
+  display: inline-block;
+  width: calc(var(--u) * 12);
+  height: calc(var(--u) * 12);
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
+  vertical-align: middle;
+}
+.cf-seg-xc button.sel {
+  background: rgba(245, 165, 36, 0.14);
 }
 .cf-toggle {
   position: relative;

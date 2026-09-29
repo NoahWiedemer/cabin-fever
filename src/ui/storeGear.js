@@ -6,6 +6,7 @@ import { esc } from './hud.js';
 import { WEAPONS } from '../player/weaponDefs.js';
 import { buildWeaponModel } from '../player/gunSafe.js';
 import { buildMachete } from '../player/machete.js';
+import { buildMeleeProduct } from '../player/meleeGlb.js';
 import { grenadierVest, magPouchVest, weaponBackpack, defibrillator, combatBoots, tacticalGloves } from '../world/gearModels.js';
 import { buildShockwaveDevice } from '../player/throwables.js';
 import { PACK_SLOT, SLOT_LABEL } from '../game/gear.js';
@@ -55,6 +56,8 @@ export const GEAR_POSES = {
   boots: { rot: [0, -0.35, 0], az: 0.62, el: 0.32, fill: 0.86, env: 0.4 },
   gloves: { rot: [0, 0, 0], az: 0.25, el: 0.95, fill: 0.84, env: 0.4 },
   machete: { rot: [0, -Math.PI / 2, 0], roll: 0.18, az: 0.3, el: 0.3, fill: 0.95, env: 1.5 },
+  tomahawk: { rot: [0, -Math.PI / 2, 0], roll: 0.18, az: 0.3, el: 0.3, fill: 0.92, env: 1.2 },
+  bat: { rot: [0, -Math.PI / 2, 0], roll: 0.1, az: 0.3, el: 0.25, fill: 0.95, env: 0.9 },
   shockwave: { rot: [0, 0, 0], az: 0.45, el: 0.28, fill: 0.8, env: 0.6 },
 };
 
@@ -75,6 +78,9 @@ export function gearModelBuilder(key) {
       return tacticalGloves;
     case 'shockwave':
       return buildShockwaveDevice;
+    case 'tomahawk':
+    case 'bat':
+      return () => buildMeleeProduct(key); // (the contract frame: the head along -Z, laid out straight)
     case 'machete':
       return () => {
         // a product shot: the blade laid out straight (blade -Z, spine up), not the in-hand angle
@@ -113,6 +119,8 @@ export const GEAR_ICON_PATHS = {
     'M70 38L72 24L68 12L72 11L76 20L78 6L82 6L82 19L86 5L90 5L88 20L94 8L98 9L92 24L100 20L102 23L92 32L90 38Z',
   machete:
     'M4 22L30 18L30 26L4 26Q2 26 2 24Z' + 'M30 16L34 16L34 28L30 28Z' + 'M34 18L104 16Q118 16 126 24L112 28L34 26Z',
+  tomahawk: 'M4 18L100 16L100 23L4 24Q2 21 4 18Z' + 'M98 8L110 6L112 13L126 36L102 30L100 23L98 16Z' + 'M110 10L122 4L124 8L112 14Z',
+  bat: 'M2 20Q2 16 7 16L12 17L62 16L116 11Q126 11 126 20Q126 29 116 29L62 24L12 23L7 24Q2 24 2 20Z',
   shockwave:
     'M38 7L90 7Q94 7 94 11L94 31Q94 35 90 35L38 35Q34 35 34 31L34 11Q34 7 38 7Z' +
     'M64 10a11 11 0 1 0 0.01 0ZM64 14a7 7 0 1 1-0.01 0ZM64 18a3 3 0 1 0 0.01 0Z' + 'M40 2h22v5H40Z',

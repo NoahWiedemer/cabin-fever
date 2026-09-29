@@ -72,10 +72,13 @@ void main() {
 `;
 
 export class Lighting {
-  constructor(scene, lamps, quality) {
+  /** indoor: an underground map (level.indoor): no moon, no lightning; { sky, ground } its hemisphere's indoor colours */
+  constructor(scene, lamps, quality, indoor = null) {
     this.scene = scene;
     this.lamps = lamps;
     this.q = quality;
+    this.underground = !!indoor;
+    this.hemiBase = indoor?.hemi ?? 1; // (an underground map lit by baked light: only a little sky fill for the characters)
     this.time = 0;
     this.lightning = 0;
     this.dipT = 0;
@@ -108,7 +111,7 @@ export class Lighting {
     this.moon = enableVM(new THREE.DirectionalLight(0x9db3de, 0.55));
     this.moon.position.copy(this.moonDir).multiplyScalar(60);
     this.moon.target.position.set(0, 0, 0);
-    this.moon.castShadow = true;
+    this.moon.castShadow = !this.underground; // (fixed before the first compile: changing it later recompiles everything)
     const ms = this.moon.shadow;
     ms.mapSize.set(quality.moonShadow, quality.moonShadow);
     ms.camera.left = -32;
@@ -124,7 +127,12 @@ export class Lighting {
     ms.needsUpdate = true;
     scene.add(this.moon, this.moon.target);
     this.frame = 0;
-    this.moonBase = 0.55;
+    this.moonBase = this.underground ? 0 : 0.55;
+    if (this.underground) {
+      this.nextLightning = Infinity;
+      if (indoor.sky) this.hemiInSky.set(indoor.sky);
+      if (indoor.ground) this.hemiInGround.set(indoor.ground);
+    }
 
     // Lamp light pool
     this.shadowSlots = [];
@@ -354,7 +362,7 @@ export class Lighting {
     const pw = this.mains;
     this.hemi.color.copy(this.hemiOutSky).lerp(this._c.copy(this.hemiDarkSky).lerp(this.hemiInSky, pw), ind);
     this.hemi.groundColor.copy(this.hemiOutGround).lerp(this._c.copy(this.hemiDarkGround).lerp(this.hemiInGround, pw), ind);
-    this.hemi.intensity = (0.8 + ind * (0.06 + 0.86 * pw)) * this.hemiScale + this.lightning * 2.2;
+    this.hemi.intensity = (0.8 + ind * (0.06 + 0.86 * pw)) * this.hemiScale * this.hemiBase + this.lightning * 2.2;
 
     // lamp flicker + weights; a close lightning strike makes the mains stutter for a moment (dipT)
     const dip = this.dipT > 0 ? 0.5 + 0.5 * Math.min(1, (0.6 - this.dipT) / 0.6) : 1;

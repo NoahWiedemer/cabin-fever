@@ -4,7 +4,7 @@
 //                         stencil, the M605 fuze with its three prongs, a safety pin with a pull ring (the
 //                         viewmodel's pin part: pulled before the throw) and an arming LED (game/projectiles.js)
 //   pipe bomb             the taped steel pipe (hex caps, a timer box with a red LED, leads, a fuse): the lure
-//                         grenade, and the Striker's death charge
+//                         grenade
 //   shockwave emitter     a rugged belt box with a ringed emitter dish and a blue core (the store's product shot)
 // buildMineModel() / buildCharge() are world models (projectiles); build*Viewmodel() follow the first-person
 // weapon contract ({ root, muzzle, rightHand, leftHand, sight, parts, magazineModel }).
@@ -150,7 +150,7 @@ export function buildMineViewmodel() {
 
 /**
  * A taped steel pipe bomb (hex end caps, hazard band, timer box with a red LED, red / yellow leads, a burning
- * fuse). Pipe axis = local Y. Named parts: led, glow, fuseTip. (The Striker's death charge and the lure grenade.)
+ * fuse). Pipe axis = local Y. Named parts: led, glow, fuseTip. (The lure grenade.)
  */
 export function buildCharge() {
   const g = new THREE.Group();
@@ -234,6 +234,74 @@ export function buildPipeBombViewmodel() {
     sight: { eye: new THREE.Vector3(0, 0.06, 0.1) },
     parts: { pin },
     magazineModel: () => buildCharge(),
+    shellType: null,
+  });
+}
+
+/* ------------------------------------------------------------------ the heal grenade */
+
+/**
+ * The heal grenade (store consumable, game.js healCloud): a smoke-grenade can in white with a green band and
+ * white crosses, the fuse head, spoon and pull ring on top, vent holes underneath. Can axis = local Y. Named
+ * part: ring (the pin's pull ring).
+ */
+export function buildHealCanister() {
+  const K = gunKit;
+  K.seed(0x4ea1);
+  const g = new THREE.Group();
+  g.name = 'healnade';
+  const B = new K.PB();
+  const up = [PI / 2, 0, 0]; // (the kit's cylinders run along Z: stood up)
+  B.add('white', K.xf(K.cyl(0.03, 0.112, 28, 0.003), [0, 0, 0], up));
+  B.add('greenTip', K.xf(K.tube(0.0312, 0.0296, 0.036, 28, 0.0008), [0, 0.004, 0], up));
+  // white crosses on the band, front and back
+  for (const s of [1, -1]) {
+    B.add('white', K.cbox(0.018, 0.0055, 0.002, 0.0006, [0, 0.004, s * 0.0316]));
+    B.add('white', K.cbox(0.0055, 0.018, 0.002, 0.0006, [0, 0.004, s * 0.0316]));
+  }
+  // the fuse on top: its cap, the head, the spoon down the side
+  B.add('park', K.xf(K.cyl(0.023, 0.01, 22, 0.0015), [0, 0.061, 0], up));
+  B.add('park', K.cbox(0.024, 0.02, 0.028, 0.003, [0, 0.075, 0]));
+  B.add('steel', K.cbox(0.012, 0.07, 0.0028, 0.0008, [0, 0.05, 0.0325], [0.12, 0, 0]), new THREE.Color(0x8a8d90));
+  B.add('steel', K.cbox(0.012, 0.004, 0.02, 0.0008, [0, 0.084, 0.024]), new THREE.Color(0x8a8d90));
+  // vents underneath
+  B.add('park', K.xf(K.cyl(0.022, 0.004, 22, 0.001), [0, -0.058, 0], up));
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * PI * 2 + 0.4;
+    B.add('hole', K.xf(K.cyl(0.0035, 0.002, 10), [Math.cos(a) * 0.012, -0.06, Math.sin(a) * 0.012], up));
+  }
+  B.build(g, 'healnade');
+  // the pin's pull ring on the fuse head's side (the viewmodel pulls it before the throw)
+  const ring = K.grp('ring', g, [0.017, 0.078, 0]);
+  const R = new K.PB();
+  R.add('steel', K.xf(K.torus(0.0105, 0.0014, 8, 24), [0.009, 0, 0], [0, PI / 2, 0]), new THREE.Color(0xa6a9ad));
+  R.add('steel', K.xf(K.cyl(0.0013, 0.02, 8), [-0.004, 0, 0], [0, PI / 2, 0]), new THREE.Color(0xa6a9ad));
+  R.build(ring, 'healnadeRing');
+  return g;
+}
+
+/** First-person: the heal grenade upright in the fist, a white cross toward you (parts.pin: the ring pulled). */
+export function buildHealGrenadeViewmodel() {
+  const K = gunKit;
+  const root = K.grp('healnade');
+  const body = K.grp('body', root, [0.0, -0.045, -0.04]);
+  const can = buildHealCanister();
+  const tilt = new THREE.Euler(-0.45, 0.3, 0.1);
+  can.rotation.copy(tilt);
+  body.add(can);
+  const up = new THREE.Vector3(0, 1, 0).applyEuler(tilt);
+  const pin = can.getObjectByName('ring');
+  const muzzle = K.empty('muzzle', body, up.clone().multiplyScalar(0.09).toArray());
+  const rightHand = K.handTarget('rightHand', body, [0.0, 0.0, 0.0], [-1, 0, 0], up.toArray(), false, { rx: 0.032, rz: 0.032, curl: 0.84, thumb: 0.5, gy: 0.02 });
+  return K.finishWeapon({
+    root,
+    muzzle,
+    ejectPort: null,
+    rightHand,
+    leftHand: null,
+    sight: { eye: new THREE.Vector3(0, 0.06, 0.1) },
+    parts: { pin },
+    magazineModel: () => buildHealCanister(),
     shellType: null,
   });
 }

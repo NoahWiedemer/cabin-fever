@@ -9,15 +9,19 @@ children and `${prefix}_*` markers. Materials/textures are kept (the game uses t
     w.export('/abs/path/r201_raw.glb')
 """
 import math
+import os
 
 import bmesh
 import bpy
 from mathutils import Euler, Matrix, Vector
 
-SRC = '/Users/noahwiedemer/Documents/Personal/shooter/assets/source/'
+# the source GLBs (assets/source/, trailing slash); CF_ASSETS overrides it on other machines
+SRC = os.environ.get('CF_ASSETS', '/Users/noahwiedemer/Documents/Personal/shooter/assets/source/')
 
 
 def _scene():
+    if bpy.context.window is None:  # headless (blender -b): no window to switch scenes in, use the current one
+        return bpy.context.scene
     sc = bpy.data.scenes.get('Imports') or bpy.data.scenes.new('Imports')
     bpy.context.window.scene = sc
     return sc

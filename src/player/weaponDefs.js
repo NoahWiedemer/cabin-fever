@@ -36,11 +36,31 @@ export const WEAPONS = {
     adsZoom: 1.35, adsTime: 0.15, sound: 'm4_fire', shell: 'rifle', tracerEvery: 2, moveMul: 1.0,
     hip: [0.2, -0.21, -0.16], hipRot: [0.02, 0.08, 0.04], ammoKind: 'rifle', drawTime: 0.36,
   },
+  g36c: {
+    // compact 5.56 rifle: soft-shooting and quick to handle, a flat-top rail for the store's optics
+    id: 'g36c', name: 'G36C', slot: 0, model: 'g36c', mode: 'auto', rpm: 750,
+    damage: 34, pellets: 1, penetration: 1, falloff: [35, 90, 0.65],
+    spreadHip: 1.5, spreadAds: 0.08, spreadMove: 1.3, spreadAir: 3, spreadPerShot: 0.26, spreadMax: 2.2,
+    recoilV: 0.3, recoilH: 0.12, recoilRecover: 8, kick: 0.9,
+    mag: 30, reserve: 180, maxReserve: 300, reload: 2.0, reloadEmpty: 2.45, reloadType: 'mag',
+    adsZoom: 1.35, adsTime: 0.17, sound: 'm4_fire', shell: 'rifle', tracerEvery: 2, moveMul: 1.0,
+    hip: [0.19, -0.2, -0.17], hipRot: [0.02, 0.08, 0.04], ammoKind: 'rifle', drawTime: 0.36,
+  },
+  ak47: {
+    // 7.62 mm: slower and harder-kicking than the 5.56 rifles, but each round hits harder (a headshot kills more)
+    id: 'ak47', name: 'AK-47', slot: 0, model: 'ak47', mode: 'auto', rpm: 600,
+    damage: 46, pellets: 1, penetration: 1, falloff: [35, 90, 0.65],
+    spreadHip: 1.8, spreadAds: 0.12, spreadMove: 1.5, spreadAir: 3, spreadPerShot: 0.34, spreadMax: 2.6,
+    recoilV: 0.5, recoilH: 0.2, recoilRecover: 6.5, kick: 1.2,
+    mag: 30, reserve: 180, maxReserve: 300, reload: 2.3, reloadEmpty: 2.8, reloadType: 'mag',
+    adsZoom: 1.3, adsTime: 0.18, sound: 'ak_fire', shell: 'rifle', tracerEvery: 2, moveMul: 0.98,
+    hip: [0.19, -0.2, -0.16], hipRot: [0.02, 0.08, 0.04], ammoKind: 'rifle', drawTime: 0.4,
+  },
   spas12: {
     id: 'spas12', name: 'SPAS-12', slot: 0, model: 'spas12', mode: 'pump', rpm: 110, boltTime: 0.5, cycleAt: 0.14, cycleSound: 'shotgun_pump',
-    damage: 34, pellets: 9, penetration: 0, falloff: [11, 36, 0.4],
+    damage: 41, pellets: 9, penetration: 0, falloff: [13, 38, 0.45],
     spreadHip: 4.0, spreadAds: 2.4, spreadMove: 1.0, spreadAir: 2, spreadPerShot: 0.6, spreadMax: 1.2,
-    recoilV: 2.6, recoilH: 0.6, recoilRecover: 6, kick: 2.5, shake: 0.2,
+    recoilV: 2.8, recoilH: 0.6, recoilRecover: 6, kick: 3.1, shake: 0.27,
     mag: 8, reserve: 40, maxReserve: 64, reloadType: 'shell', reloadStart: 0.3, shellTime: 0.42, reloadEnd: 0.45,
     adsZoom: 1.15, adsTime: 0.19, sound: 'shotgun_fire', shell: 'shotgun', tracerEvery: 0, moveMul: 0.96,
     hip: [0.19, -0.2, -0.14], hipRot: [0.02, 0.08, 0.05], ammoKind: 'shotgun', drawTime: 0.42,
@@ -99,18 +119,18 @@ export const WEAPONS = {
   },
   mozambique: {
     id: 'mozambique', name: 'SA-3 MOZAMBIQUE', slot: 1, model: 'mozambique', mode: 'semi', rpm: 280,
-    damage: 34, pellets: 3, penetration: 0, falloff: [10, 30, 0.45],
+    damage: 39, pellets: 3, penetration: 0, falloff: [11, 32, 0.5],
     spreadHip: 2.2, spreadAds: 1.1, spreadMove: 1.0, spreadAir: 2.5, spreadPerShot: 0.6, spreadMax: 2.0,
-    recoilV: 1.5, recoilH: 0.45, recoilRecover: 8, kick: 1.5, shake: 0.1,
+    recoilV: 1.6, recoilH: 0.45, recoilRecover: 8, kick: 1.8, shake: 0.13,
     mag: 6, reserve: 36, maxReserve: 60, reload: 1.8, reloadEmpty: 2.1, reloadType: 'mag',
     adsZoom: 1.2, adsTime: 0.14, sound: 'shotgun_fire', shell: 'shotgun', tracerEvery: 0, moveMul: 1.05,
     hip: [0.13, -0.15, -0.32], hipRot: [0, 0.06, 0], ammoKind: 'shotgun', drawTime: 0.3,
   },
   m4super90: {
     id: 'm4super90', name: 'M4 SUPER 90', slot: 0, model: 'm4super90', mode: 'semi', rpm: 260,
-    damage: 21, pellets: 9, penetration: 0, falloff: [8, 30, 0.35],
+    damage: 26, pellets: 9, penetration: 0, falloff: [10, 32, 0.4],
     spreadHip: 4.2, spreadAds: 2.8, spreadMove: 1.0, spreadAir: 2, spreadPerShot: 0.5, spreadMax: 1.5,
-    recoilV: 2.2, recoilH: 0.6, recoilRecover: 6, kick: 2.2, shake: 0.16,
+    recoilV: 2.3, recoilH: 0.6, recoilRecover: 6, kick: 2.7, shake: 0.21,
     mag: 7, reserve: 42, maxReserve: 70, reloadType: 'shell', reloadStart: 0.35, shellTime: 0.46, reloadEnd: 0.35,
     adsZoom: 1.15, adsTime: 0.19, sound: 'shotgun_fire', shell: 'shotgun', tracerEvery: 0, moveMul: 0.97,
     hip: [0.19, -0.2, -0.12], hipRot: [0.02, 0.08, 0.05], ammoKind: 'shotgun', drawTime: 0.42,
@@ -123,6 +143,26 @@ export const WEAPONS = {
     mag: 6, reserve: 18, maxReserve: 30, reload: 3.1, reloadEmpty: 3.1, reloadType: 'mag',
     adsZoom: 4.5, scope: true, adsTime: 0.25, sound: 'sniper_fire', shell: 'sniper', tracerEvery: 1, moveMul: 0.92,
     hip: [0.2, -0.2, -0.1], hipRot: [0.02, 0.07, 0.04], ammoKind: 'sniper', drawTime: 0.5, special: true,
+  },
+  // the gun store's sniper rifles (the L96A1 above is a special pickup): through one body as bought, the PENETRATION
+  // upgrade (game/shop.js) adds up to three more. The AWM is the handier one, the AXMC hits hardest
+  awm: {
+    id: 'awm', name: 'AWM', slot: 0, model: 'awm', mode: 'bolt', rpm: 66, boltTime: 0.9,
+    damage: 360, pellets: 1, penetration: 1, falloff: [200, 300, 1],
+    spreadHip: 4.5, spreadAds: 0.0, spreadMove: 3, spreadAir: 6, spreadPerShot: 0, spreadMax: 6,
+    recoilV: 3.1, recoilH: 0.5, recoilRecover: 5, kick: 2.4, shake: 0.19,
+    mag: 5, reserve: 25, maxReserve: 40, reload: 2.9, reloadEmpty: 3.3, reloadType: 'mag',
+    adsZoom: 4, scope: true, adsTime: 0.23, sound: 'sniper_fire', shell: 'sniper', tracerEvery: 1, moveMul: 0.93,
+    hip: [0.2, -0.2, -0.1], hipRot: [0.02, 0.07, 0.04], ammoKind: 'sniper', drawTime: 0.5,
+  },
+  axmc: {
+    id: 'axmc', name: 'AXMC .338', slot: 0, model: 'axmc', mode: 'bolt', rpm: 55, boltTime: 1.05,
+    damage: 480, pellets: 1, penetration: 1, falloff: [220, 320, 1],
+    spreadHip: 5, spreadAds: 0.0, spreadMove: 3.2, spreadAir: 6, spreadPerShot: 0, spreadMax: 6,
+    recoilV: 3.8, recoilH: 0.55, recoilRecover: 4.6, kick: 2.9, shake: 0.24,
+    mag: 8, reserve: 24, maxReserve: 40, reload: 3.2, reloadEmpty: 3.7, reloadType: 'mag',
+    adsZoom: 5.5, scope: true, adsTime: 0.29, sound: 'sniper_fire', shell: 'sniper', tracerEvery: 1, moveMul: 0.9,
+    hip: [0.2, -0.2, -0.1], hipRot: [0.02, 0.07, 0.04], ammoKind: 'sniper', drawTime: 0.58,
   },
   m9: {
     id: 'm9', name: 'M9', slot: 1, model: 'm9', mode: 'semi', rpm: 480,
@@ -145,6 +185,21 @@ export const WEAPONS = {
     damage: 160, heavyDamage: 380, range: 2.15, heavyRange: 1.95, swingTime: 0.33, heavyTime: 0.72,
     hitAt: 0.1, heavyHitAt: 0.29, oneHit: ['biter'], swingSound: 'machete_swing', hitSound: 'machete_hit',
     moveMul: 1.08, hip: [0.17, -0.16, -0.33], hipRot: [-0.1, 0.22, 0.28], drawTime: 0.3,
+  },
+  tomahawk: {
+    // store gear (belt) like the machete: a hatchet, the heavier chop; cuts a Biter or a dog down in one
+    id: 'tomahawk', name: 'TOMAHAWK', slot: 2, model: 'tomahawk', mode: 'melee',
+    damage: 190, heavyDamage: 430, range: 2.0, heavyRange: 1.9, swingTime: 0.38, heavyTime: 0.78,
+    hitAt: 0.13, heavyHitAt: 0.33, oneHit: ['biter', 'dog'], swingSound: 'machete_swing', hitSound: 'machete_hit',
+    moveMul: 1.06, hip: [0.17, -0.16, -0.33], hipRot: [-0.1, 0.22, 0.28], drawTime: 0.32,
+  },
+  bat: {
+    // store gear (belt): a baseball bat, two hands on it. Slow; the swing sweeps up to three in front of you and
+    // shoves them back reeling (game.meleeAttack cleave / knock), the overhead smash puts all of it into one
+    id: 'bat', name: 'BASEBALL BAT', slot: 2, model: 'bat', mode: 'melee',
+    damage: 120, heavyDamage: 340, range: 2.3, heavyRange: 2.1, swingTime: 0.5, heavyTime: 0.9,
+    hitAt: 0.2, heavyHitAt: 0.46, cleave: 3, knock: [4.5, 0.6], heavyKnock: [6.5, 0.9], swingSound: 'bat_swing', hitSound: 'bat_hit',
+    moveMul: 1.02, hip: [0.25, -0.25, -0.36], hipRot: [0, 0, 0], drawTime: 0.42,
   },
   m67: {
     id: 'm67', name: 'M67 FRAG', slot: 3, model: 'm67', mode: 'grenade',
@@ -169,6 +224,19 @@ export const WEAPONS = {
     id: 'pipebomb', name: 'PIPE BOMB', slot: 3, model: 'pipebomb', mode: 'grenade',
     damage: 340, radius: 6.5, fuse: 6.5, lure: 30, throwSpeed: 15, moveMul: 1.05,
     hip: [0.15, -0.16, -0.34], hipRot: [0.2, 0.2, -0.15], drawTime: 0.3,
+  },
+  healnade: {
+    // store (EQUIPMENT, with a MEDIC upgrade track): where it lands it pops a cloud of green medical mist (game.js
+    // healCloud) that heals everyone of the fireteam in it; at the top level it also gets the downed back up
+    id: 'healnade', name: 'HEAL GRENADE', slot: 3, model: 'healnade', mode: 'grenade',
+    fuse: 1.4, throwSpeed: 13, moveMul: 1.05,
+    hip: [0.15, -0.16, -0.34], hipRot: [0.2, 0.2, -0.15], drawTime: 0.3,
+    // per MEDIC level: cloud radius m, HP / armor per s, how long s, whether it revives the downed in it
+    levels: [
+      { radius: 4.5, hps: 12, aps: 0, dur: 7, revive: false },
+      { radius: 5.5, hps: 16, aps: 4, dur: 9, revive: false },
+      { radius: 6.5, hps: 20, aps: 6, dur: 11, revive: true },
+    ],
   },
   barricade: {
     // store kit, slot 5 (world/barricades.js): hold fire at a doorway to nail planks across it
@@ -202,22 +270,23 @@ export const WEAPONS = {
   },
   goldenPunisher: {
     id: 'goldenPunisher', name: 'GOLDEN PUNISHER', slot: 0, model: 'goldenPunisher', mode: 'auto', rpm: 340,
-    damage: 23, pellets: 10, penetration: 0, falloff: [10, 34, 0.4],
+    damage: 27, pellets: 10, penetration: 0, falloff: [11, 36, 0.45],
     spreadHip: 3.6, spreadAds: 2.6, spreadMove: 0.8, spreadAir: 2, spreadPerShot: 0.35, spreadMax: 1.6,
-    recoilV: 1.7, recoilH: 0.55, recoilRecover: 6, kick: 1.9, shake: 0.12,
+    recoilV: 1.8, recoilH: 0.55, recoilRecover: 6, kick: 2.3, shake: 0.16,
     mag: 12, reserve: 48, maxReserve: 72, reloadType: 'shell', reloadStart: 0.35, shellTime: 0.36, reloadEnd: 0.4,
     adsZoom: 1.15, adsTime: 0.19, sound: 'shotgun_fire', shell: 'shotgun', tracerEvery: 0, moveMul: 0.96,
     hip: [0.19, -0.2, -0.26], hipRot: [0.02, 0.08, 0.04], ammoKind: 'shotgun', drawTime: 0.44, special: true,
     adsLeft: { shoulder: [-0.08, -0.56, 0.0], pole: [-0.45, -1, 0.1] }, // (see softball)
   },
   chaingun: {
-    id: 'chaingun', name: 'CHAIN GUN', slot: 0, model: 'chaingun', mode: 'auto', rpm: 1500, spinup: 0.5,
+    id: 'chaingun', name: 'MINIGUN', slot: 0, model: 'minigun', mode: 'auto', rpm: 1500, spinup: 0.5,
     damage: 32, pellets: 1, penetration: 1, falloff: [40, 90, 0.6],
     spreadHip: 2.0, spreadAds: 1.5, spreadMove: 1, spreadAir: 3, spreadPerShot: 0.03, spreadMax: 1.5,
     recoilV: 0.12, recoilH: 0.16, recoilRecover: 8, kick: 0.45, shake: 0.05,
     mag: 900, reserve: 0, maxReserve: 0, noReload: true,
     adsZoom: 1.08, adsTime: 0.27, sound: null, shell: 'rifle', tracerEvery: 3, moveMul: 0.72,
-    hip: [0.2, -0.2, -0.28], hipRot: [0, 0.05, 0], ammoKind: 'none', drawTime: 0.68, special: true,
+    // at the hip on the right, the barrels (13 cm under the grip) turned in toward the middle of the view
+    hip: [0.23, -0.17, -0.33], hipRot: [0.05, 0.32, 0.1], ammoKind: 'none', drawTime: 0.68, special: true,
   },
 };
 
@@ -225,5 +294,5 @@ export const SPECIAL_SPAWNS = [
   { round: 11, weapon: 'l96a1', spot: 'l96a1', banner: 'L96A1 BLACK-MAGNUM', where: 'in the basement' },
   { round: 13, weapon: 'm32', spot: 'm32', banner: 'M32 MGL', where: 'on the kitchen table' },
   { round: UPSTAIRS_ROUND, weapon: 'goldenPunisher', spot: 'goldenPunisher', banner: 'GOLDEN PUNISHER', where: 'upstairs by the bathroom' }, // appears as the upstairs opens
-  { round: 14, weapon: 'chaingun', spot: 'chaingun', banner: 'CHAIN GUN', where: 'in the living room' },
+  { round: 14, weapon: 'chaingun', spot: 'chaingun', banner: 'MINIGUN', where: 'in the living room' },
 ];

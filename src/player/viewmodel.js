@@ -8,6 +8,8 @@ import { buildGasCanViewmodel, buildRepairTool } from './gasCan.js';
 import { buildReviveHands } from './reviveHands.js';
 import { AkimboRig } from './akimboRig.js';
 import { macheteSwing } from './machete.js';
+import { mountOptic } from './optics.js';
+import { batSwing } from './meleeGlb.js';
 import { VIEWMODEL_LAYER } from '../core/renderer.js';
 import { tex } from '../world/textures.js';
 import { clamp, damp, lerp, smoothstep } from '../core/utils.js';
@@ -265,6 +267,7 @@ export class Viewmodel {
     this.drawT = state === 'quick' ? 0.6 : 0;
     this.anim = null;
     this._resetParts(m);
+    mountOptic(m, def.optic ?? null, setLayer); // the red dot / 3x scope bought for it (player/optics.js), else the irons
     if (this.arms?.config?.straighten) {
       const c = this.arms.config, pistol = def.slot === 1;
       // long guns: move the elbows until forearm and hand line up (no kinked wrists); pistols are held
@@ -279,6 +282,10 @@ export class Viewmodel {
       if (def.akimbo) {
         c.shoulders.left.set(-0.2, -0.3, 0.06);
         c.poles.left.set(-1, -0.45, 0);
+      } else if (m.leftArm) {
+        // a gun whose support grip wants the arm another way (player/gltfGuns.js: the minigun's carry handle)
+        c.shoulders.left.fromArray(m.leftArm.shoulder);
+        c.poles.left.fromArray(m.leftArm.pole);
       }
       // the support arm as set up for this gun (update() blends it toward m.adsLeft while aiming)
       this.armBase = { shoulder: c.shoulders.left.clone(), pole: c.poles.left.clone() };
@@ -293,6 +300,13 @@ export class Viewmodel {
     m.root.add(this.leftProxy);
     this.flashGroup.visible = false;
     if (state === 'quick') this.anim = { kind: 'grenade', t: 0 };
+  }
+
+  /** the held gun's optic changed in the store (weapons.setOptic): swap it without a new draw */
+  refreshOptic(def) {
+    if (!this.cur || this.def?.model !== def.model) return;
+    this.def = def;
+    mountOptic(this.cur, def.optic ?? null, setLayer);
   }
 
   _resetParts(m) {
@@ -325,7 +339,7 @@ export class Viewmodel {
     this.flashT = this.flashDur = def.pellets > 1 ? 0.06 : 0.045;
     this.flashGroup.visible = true;
     this.flashGroup.rotation.z = Math.random() * Math.PI * 2;
-    const s = def.pellets > 1 ? 1.5 : def.id === 'l96a1' ? 1.8 : def.id === 'm9' ? 0.75 : def.id === 'chaingun' ? 1.2 : 1;
+    const s = def.pellets > 1 ? 1.5 : def.ammoKind === 'sniper' ? 1.8 : def.id === 'm9' ? 0.75 : def.id === 'chaingun' ? 1.2 : 1;
     this.flashS = s * (0.8 + Math.random() * 0.4);
     this.flashGroup.scale.setScalar(this.flashS);
     this.slideT = 0;
@@ -727,7 +741,8 @@ export class Viewmodel {
         if (rb > 0) {
           P.boltHandle.updateMatrixWorld(true);
           m.root.updateMatrixWorld(true);
-          this.rightProxy.position.copy(P.boltHandle.getWorldPosition(_v));
+          // (a scanned rifle's added handle names its knob, player/gltfGuns.js boltKnob; the L96A1's is taken at its root)
+          this.rightProxy.position.copy((P.boltHandle.getObjectByName('knob') ?? P.boltHandle).getWorldPosition(_v));
           m.root.worldToLocal(this.rightProxy.position);
           this.rightProxy.position.lerpVectors(m.rightHand.position, this.rightProxy.position, rb);
           this.rightProxy.quaternion.copy(m.rightHand.quaternion);
@@ -738,9 +753,10 @@ export class Viewmodel {
       const heavy = st === 'heavy';
       const T = heavy ? def.heavyTime : def.swingTime;
       const f = clamp(weapons.stateT / T, 0, 1);
-      if (def.id === 'machete') {
-        // store gear: a diagonal chop / an overhead hack (player/machete.js)
-        const o = macheteSwing(f, heavy, Object.assign((this._mo ??= {}), { x: 0, y: 0, z: 0, rx: 0, ry: 0, rz: 0 }));
+      if (def.id === 'machete' || def.id === 'tomahawk' || def.id === 'bat') {
+        // store gear: a diagonal chop / an overhead hack (player/machete.js; the tomahawk chops alike), the bat's
+        // flat sweep / overhead smash (player/meleeGlb.js)
+        const o = (def.id === 'bat' ? batSwing : macheteSwing)(f, heavy, Object.assign((this._mo ??= {}), { x: 0, y: 0, z: 0, rx: 0, ry: 0, rz: 0 }));
         pos.x += o.x;
         pos.y += o.y;
         pos.z += o.z;

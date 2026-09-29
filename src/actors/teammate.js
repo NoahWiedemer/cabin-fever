@@ -28,8 +28,10 @@ const BOT_GUNS = {
   r201: { damage: 16, falloff: [30, 90, 0.6], shots: [4, 7], pause: [0.5, 0.95], aim: 0.9, tracer: 0.55, flash: 0.85, sound: 'm4_fire', vol: 0.7, pitch: 1.08 },
   // Viper · LMG: long strings that wind up from 480 to 960 rpm, light rounds that punch through one body
   devotion: { damage: 10, penetration: 1, falloff: [35, 100, 0.65], shots: [10, 20], pause: [0.35, 0.7], aim: 1.15, tracer: 0.5, flash: 1.0, sound: 'lmg_fire', vol: 0.62, pitch: 1 },
+  // Raven · P90: quick strings of light rounds from a 50-round top magazine, best up close and at mid range
+  p90: { damage: 12, falloff: [16, 45, 0.55], shots: [5, 9], pause: [0.45, 0.85], aim: 0.95, tracer: 0.5, flash: 0.8, sound: 'smg_fire', vol: 0.7, pitch: 1 },
   // Coach · pump shotgun: 9 pellets, slow pump cadence, shell-by-shell reloads, only engages up close
-  spas12: { damage: 12, falloff: [9, 32, 0.35], shots: [1, 1], pause: [0.75, 0.95], aim: 0.85, spread: 2.0, range: 22, flash: 1.35, sound: 'shotgun_fire', vol: 0.8, pitch: 1 },
+  spas12: { damage: 14, falloff: [10, 34, 0.4], shots: [1, 1], pause: [0.75, 0.95], aim: 0.85, spread: 2.0, range: 22, flash: 1.35, sound: 'shotgun_fire', vol: 0.8, pitch: 1 },
 };
 
 /** weaponDefs entry with the bot damage model on top (what game.hitscan reads) + the bot tuning in .bot */
@@ -160,7 +162,7 @@ export class Teammate {
     this.weaponName = c.gun;
     let w;
     try {
-      w = buildBotWeapon(this.weapon.id);
+      w = buildBotWeapon(this.weapon.id, this.weapon.model);
     } catch (e) {
       const root = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.08, 0.7), new THREE.MeshStandardMaterial({ color: 0x111111 }));
       root.position.z = -0.25;
@@ -565,10 +567,12 @@ export class Teammate {
     if (pellets > 1) {
       // buckshot: pellets spread around the aim point, two of them draw tracers
       const pd = new THREE.Vector3();
+      game.beginVolley();
       for (let i = 0; i < pellets; i++) {
         coneDirection(dir, (g.spread ?? 2) * DEG, pd);
         game.hitscan(origin, pd, w, this, { tracerFrom: i < 2 ? muzzle : null, bot: true, pellet: i });
       }
+      game.endVolley(dir);
     } else {
       game.hitscan(origin, dir, w, this, { tracerFrom: Math.random() < (g.tracer ?? 0.55) ? muzzle : null, bot: true });
     }

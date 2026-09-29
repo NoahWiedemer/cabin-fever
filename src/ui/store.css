@@ -887,6 +887,63 @@
 .cf-st-upg.flash {
   animation: cf-st-row-flash 0.7s ease-out;
 }
+
+/* optics (player/optics.js): the irons, a red dot, a 3x scope side by side */
+.cf-st-optics {
+  margin-top: calc(var(--u) * 14);
+}
+.cf-st-opts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: calc(var(--u) * 5);
+}
+.cf-st-opt {
+  display: grid;
+  gap: calc(var(--u) * 4);
+  justify-items: center;
+  padding: calc(var(--u) * 8) calc(var(--u) * 6);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.03);
+  transition: border-color 0.15s, background-color 0.15s, transform 0.15s;
+}
+.cf-st-opt span {
+  font-weight: 700;
+  font-size: calc(var(--u) * 11);
+  letter-spacing: 0.16em;
+  color: #c9c2b6;
+  white-space: nowrap;
+}
+.cf-st-opt em {
+  font-style: normal;
+  font-family: var(--f-num);
+  font-size: calc(var(--u) * 19);
+  line-height: 0.85;
+  color: var(--gold);
+}
+.cf-st-opt:hover:not(:disabled),
+.cf-st-opt:focus-visible {
+  border-color: rgba(127, 226, 255, 0.55);
+  background: rgba(127, 226, 255, 0.07);
+  outline: none;
+}
+.cf-st-opt:active:not(:disabled) {
+  transform: scale(0.98);
+}
+.cf-st-opt.on {
+  cursor: default;
+  border-color: rgba(245, 165, 36, 0.45);
+  background: rgba(245, 165, 36, 0.07);
+}
+.cf-st-opt.on em {
+  font-family: var(--f-ui);
+  font-weight: 700;
+  font-size: calc(var(--u) * 12);
+  letter-spacing: 0.22em;
+  color: var(--c-amber-2);
+}
+.cf-st-opt.poor em {
+  color: #7b6a58;
+}
 @keyframes cf-st-row-flash {
   0% { background: rgba(127, 226, 255, 0.35); border-color: #bff1ff; }
   100% { background: rgba(255, 255, 255, 0.03); }

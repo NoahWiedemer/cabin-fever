@@ -5,7 +5,8 @@ import { buildGltfWeapon, hasGltfWeapon } from './gltfGuns.js';
 import { buildGltfArms, hasGltfArms } from './gltfArms.js';
 import { buildBarricadeKit } from './barricadeKit.js';
 import { buildMachete } from './machete.js';
-import { buildMineViewmodel, buildPipeBombViewmodel } from './throwables.js';
+import { buildMeleeGlb, hasMeleeGlb } from './meleeGlb.js';
+import { buildMineViewmodel, buildPipeBombViewmodel, buildHealGrenadeViewmodel } from './throwables.js';
 
 const fbMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.5, metalness: 0.6 });
 
@@ -30,13 +31,21 @@ function fallbackWeapon(id) {
 }
 
 // GLB weapons borrow a procedural model when their file is missing or broken
-const STAND_IN = { m16a2: 'm4a1', spas12: 'm4super90', r201: 'm4a1', devotion: 'm4a1', sigma: 'm4a1', p90: 'm4a1', mg42: 'm4a1', mozambique: 'm9', softball: 'm32', molotov: 'm67' };
+const STAND_IN = { m16a2: 'm4a1', spas12: 'm4super90', r201: 'm4a1', devotion: 'm4a1', sigma: 'm4a1', p90: 'm4a1', mg42: 'm4a1', mozambique: 'm9', softball: 'm32', molotov: 'm67', g36c: 'm4a1', ak47: 'm4a1', awm: 'l96a1', axmc: 'l96a1', minigun: 'chaingun', tomahawk: 'knife', bat: 'knife' };
 
 export function buildWeaponModel(id) {
   if (id === 'barricade') return buildBarricadeKit();
   if (id === 'machete') return buildMachete(); // store gear (game/gear.js)
+  if (hasMeleeGlb(id)) {
+    try {
+      return buildMeleeGlb(id); // the tomahawk, the bat (store gear too)
+    } catch (e) {
+      console.warn('GLB melee model failed', id, e);
+    }
+  }
   if (id === 'mine') return buildMineViewmodel(); // store throwables (player/throwables.js)
   if (id === 'pipebomb') return buildPipeBombViewmodel();
+  if (id === 'healnade') return buildHealGrenadeViewmodel();
   if (hasGltfWeapon(id)) {
     try {
       return buildGltfWeapon(id);
@@ -102,10 +111,10 @@ const TP_MARKERS = {
  * the shooter's eye when aiming down the sights), stock (z of the butt), shellType, glb }. GLB guns bring their own markers; anything else is the
  * cheap third-person model (its stand-in for a missing GLB) with the M4A1 markers.
  */
-export function buildBotWeapon(id) {
-  if (hasGltfWeapon(id)) {
+export function buildBotWeapon(id, model = id) {
+  if (hasGltfWeapon(model)) {
     try {
-      const m = buildGltfWeapon(id);
+      const m = buildGltfWeapon(model);
       m.root.updateMatrixWorld(true);
       const box = new THREE.Box3().setFromObject(m.root);
       const R = m.rightHand.position.clone();
@@ -115,7 +124,7 @@ export function buildBotWeapon(id) {
       console.warn('GLB bot weapon failed', id, e);
     }
   }
-  const tp = STAND_IN[id] ?? id;
+  const tp = STAND_IN[model] ?? STAND_IN[id] ?? id;
   const root = buildThirdPersonWeapon(tp);
   root.updateMatrixWorld(true);
   const mk = TP_MARKERS[tp] ?? TP_MARKERS.m4a1;

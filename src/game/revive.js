@@ -402,6 +402,14 @@ export class Revives {
     return true;
   }
 
+  /** A heal grenade's top level (game.js healCloud): whoever lies downed within `radius` m of `pos` gets up. */
+  reviveIn(pos, radius, by) {
+    for (const r of [...this.downed]) {
+      if (Math.hypot(r.pos.x - pos.x, r.pos.z - pos.z) > radius || Math.abs(r.pos.y - pos.y) > 2) continue;
+      this._revive(r, by);
+    }
+  }
+
   // ---------------------------------------------------------------- back up
   _revive(r, by) {
     const g = this.game, m = r.m;

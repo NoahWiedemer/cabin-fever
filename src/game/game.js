@@ -68,7 +68,7 @@ const _n = new THREE.Vector3();
 const _dawnFog = new THREE.Color(0.42, 0.36, 0.36);
 const _dawnSun = new THREE.Color(1.0, 0.72, 0.52);
 const _wp = new THREE.Vector3();
-const LOOT_GUNS = ['p90', 'r201', 'spas12', 'devotion', 'sigma']; // the Survivalist's stash (one you don't carry)
+const LOOT_GUNS = ['p90', 'r201', 'spas12', 'devotion', 'sigma', 'g36c', 'ak47']; // the Survivalist's stash (one you don't carry)
 // ...and from round LAUNCHER_LOOT.round on, now and then the Softball grenade launcher (a special: no
 // store sells it, one load and no reloads, marked on the map)
 const LAUNCHER_LOOT = { round: 7, chance: 0.22 };
@@ -81,6 +81,10 @@ const masteryWeapon = (id) => (id && WEAPONS[id] && WEAPONS[id].slot >= 0 ? id :
 const BOT_GRADE = [1, 2, 3, 5, 8, 10];
 // who a pipe bomb's beeping draws in (game.lureStart)
 const LURED = new Set(['mauler', 'worker', 'survivor', 'dog', 'charger', 'striker']);
+// the upstairs (level.upperSpawns, once its stairs are open): this share of the wave climbs in at a window up there
+// while nobody is upstairs, at most `max` of them up there at once, and comes down the stairs (_upperSpawn)
+const UPPER = { share: 0.12, max: 3, types: new Set(['mauler', 'worker', 'survivor', 'striker', 'charger']) };
+const _look = new THREE.Vector3();
 
 // Main-menu camera shots: a / b = [camX, camY, camZ, lookX, lookY, lookZ], eased over `period` s.
 const MENU_SHOTS = {
@@ -154,7 +158,7 @@ export class Game {
 
     await step(0.64, 'Wiring the lights');
     this.quality = QUALITY[this.settings.quality] || QUALITY.high;
-    this.lighting = new Lighting(scene, this.level.lamps, this.quality);
+    this.lighting = new Lighting(scene, this.level.lamps, this.quality, this.level.indoor ?? null);
     this.lighting.world = this.world; // flashlight auto-dim raycast
     this.lighting.moonFollow = !!this.level.bigMap; // (the moon's shadow box slides with the camera)
     this.lighting.onThunder = (intensity, delay) => {
@@ -166,6 +170,7 @@ export class Game {
 
     await step(0.7, 'Summoning the storm');
     this.weather = new Weather(scene, this.level);
+    this.audio.underground = !!this.level.indoor; // (core/audio.js startAmbience: the air handlers instead of the weather)
 
     await step(0.76, 'Computing navigation');
     this.nav = new NavGrid(this.world, this.level.portals, this.level.navBlocks, this.level.navOpts ?? {});
@@ -390,6 +395,9 @@ export class Game {
     this.roundTime = 0;
     this.toSpawn = [];
     this.spawnT = 0;
+    for (const z of [...(this.healZones ?? [])]) this._endHeal(z);
+    this.healZones = []; // heal grenade clouds (healCloud)
+    this._upperWarned = false; // (_climbedIn: the first one upstairs gets a banner)
     this.intermissionT = 6;
     this.running = true;
     this.paused = false;
@@ -404,8 +412,9 @@ export class Game {
     this.pulseReady = true; // the shockwave emitter's charge (once a round)
     this.unlocked = Object.fromEntries((this.level.unlocks ?? []).map((u) => [u.id, false])); // (the farm: basement, upstairs)
     this.dawn = 0;
-    this.lighting.moonBase = 0.55;
+    this.lighting.moonBase = this.level.indoor ? 0 : 0.55;
     for (const p of this.level.portals) p.enabled = !!p.always; // `always`: open from round 1 (e.g. a ladder)
+    this.level.resetDoors?.(this); // (a map whose unlocks open doors: shut again for a new run, world/hive.js)
     this.postFields.clear();
     this.horde?.reset();
 
@@ -608,6 +617,7 @@ export class Game {
     this.shopOpen = false;
     this.gunshop?.setOpen(false);
     this.gunshop?.evacuate(this.player);
+    for (const b of this.bots) if (b.alive) this.gunshop?.evacuate(b);
     this.roundTime = 0;
     this.toSpawn = this._composition(this.round);
     this.breach?.onRoundStart(this.toSpawn); // rarely: a Boomer blows a hole in the wall this round
@@ -808,17 +818,32 @@ export class Game {
       if (z) this.shaft.onSpawn(z);
       return;
     }
+    const top = this._upperSpawn(type);
+    if (top) {
+      const z = this.zombies.spawn(type, top, r, hpMult, spd);
+      if (z) this._climbedIn(z);
+      return;
+    }
     // choose a spawn point far from the player, in the fog
-    // (a big map: level.spawnBand [near, far] m from the nearest survivor, closer or farther counts against it)
+    // (level.spawnBand [near, far] m from the nearest survivor, closer or farther counts against it; only where
+    // there is a way to you, and rather not where the player is looking)
     const pts = this.level.spawnPoints;
     const band = this.level.spawnBand;
+    const cam = this.camera;
+    cam.getWorldDirection(_look);
+    const fl = Math.hypot(_look.x, _look.z) || 1, fx = _look.x / fl, fz = _look.z / fl;
+    const cosHalf = Math.cos(Math.atan(Math.tan((cam.fov * Math.PI) / 360) * cam.aspect) + 0.2); // (half the view, wider)
     let best = null, bs = -Infinity;
     for (let i = 0; i < (band ? 14 : 5); i++) {
       const p = pick(pts);
-      if (band && !(this.nav.distanceAt(1, p.x, p.z) < 1e6)) continue; // (a big map: only where there is a way to you)
+      if (band && !(this.nav.distanceAt(1, p.x, p.z) < 1e6)) continue;
       let d = Infinity;
       for (const m of this.team) if (m.alive) d = Math.min(d, p.distanceTo(m.pos));
-      const s = band ? (d < band[0] ? d - band[0] * 3 : d > band[1] ? band[1] - (d - band[1]) * 2 : band[1]) + Math.random() * 14 : Math.min(d, 40) + Math.random() * 6;
+      let s = band ? (d < band[0] ? d - band[0] * 3 : d > band[1] ? band[1] - (d - band[1]) * 2 : band[1]) + Math.random() * 14 : Math.min(d, 40) + Math.random() * 6;
+      if (band) {
+        const dx = p.x - cam.position.x, dz = p.z - cam.position.z, dl = Math.hypot(dx, dz) || 1;
+        if ((dx * fx + dz * fz) / dl > cosHalf && this.world.lineOfSight(cam.position.x, cam.position.y, cam.position.z, p.x, p.y + 1.4, p.z)) s -= 30;
+      }
       if (s > bs) {
         bs = s;
         best = p;
@@ -834,6 +859,28 @@ export class Game {
       this.toSpawn.shift();
       this.zombies.spawn(type, best.clone().add(new THREE.Vector3(rand(-2, 2), 0.05, rand(-2, 2))), r, hpMult, spd);
     }
+  }
+
+  /** _spawnOne: a spot upstairs for this one (UPPER), if nobody is up there and the stairs are open, else null */
+  _upperSpawn(type) {
+    const L = this.level;
+    if (!L.upperSpawns?.length || !this.unlocked?.upstairs || !UPPER.types.has(type) || Math.random() > UPPER.share) return null;
+    if (this.team.some((m) => m.alive && L.isUpstairs(m.pos))) return null;
+    let n = 0;
+    for (const z of this.zombies.list) if (z.active && z.alive && L.isUpstairs(z.pos)) n++;
+    if (n >= UPPER.max) return null;
+    const ok = L.upperSpawns.filter((p) => this.nav.distanceAt(2, p.x, p.z) < 1e6); // (a way down to you)
+    return ok.length ? pick(ok).clone() : null;
+  }
+
+  /** one climbed in upstairs: a creak and a groan overhead, and it comes straight down (the first time, a warning) */
+  _climbedIn(z) {
+    z._alert(0);
+    this.audio.play('wood_creak', { position: z.pos, volume: 0.9 });
+    if (Math.random() < 0.7) this.audio.play('zombie_groan', { position: z.pos, volume: 1.2 });
+    if (this._upperWarned) return;
+    this._upperWarned = true;
+    this.hud.banner('UPSTAIRS', 'Something climbed in up there · watch the stairs', 3, 'danger');
   }
 
   // ------------------------------------------------------------------ damage routing
@@ -859,7 +906,8 @@ export class Game {
     for (const h of hits) {
       const [f0, f1, fmin] = def.falloff || [30, 80, 0.6];
       const fall = h.t <= f0 ? 1 : h.t >= f1 ? fmin : 1 - (1 - fmin) * ((h.t - f0) / (f1 - f0));
-      const dmg = def.damage * fall * (h.zombie.type.partMult?.[h.part] ?? PART_MULT[h.part] ?? 1) * mul * (h.part === 'head' ? headMul : 1); // (the Crusher's skull is armoured)
+      // (the Crusher's skull is armoured; buckshot: a type's `buckshot` share, the Crusher's hide tears under it)
+      const dmg = def.damage * fall * (h.zombie.type.partMult?.[h.part] ?? PART_MULT[h.part] ?? 1) * mul * (h.part === 'head' ? headMul : 1) * (def.pellets > 1 ? h.zombie.type.buckshot ?? 1 : 1);
       const pt = new THREE.Vector3().copy(origin).addScaledVector(dir, h.t);
       // a hard hat (the Worker): some headshots glance off it with a spark and a ping, and the round is spent
       if (h.part === 'head' && h.zombie.type.helmet && Math.random() < h.zombie.type.helmet) {
@@ -871,7 +919,10 @@ export class Game {
       }
       const res = h.zombie.damage(dmg, h.part, dir, shooter, { weapon: def.id, headshot: h.part === 'head' });
       const bloodCol = h.zombie.typeName === 'crusher' ? [0.05, 0.12, 0.3] : null;
-      this.fx.bloodHit(pt, dir, { amount: def.pellets > 1 ? 0.45 : 1, headshot: h.part === 'head', color: bloodCol });
+      this.fx.bloodHit(pt, dir, { amount: (def.pellets > 1 ? 0.45 : 1) * (res.guarded ? 0.35 : 1), headshot: h.part === 'head', color: bloodCol });
+      // fresh up the coal tunnel (world/shaft.js): the round mostly slaps coal dust off it
+      if (res.guarded) this.fx.impact(pt, _n.copy(dir).negate(), SURF.mud, { noDecal: true, silent: true });
+      if (this._volleyOn && !res.killed) this._volleyOn.set(h.zombie, (this._volleyOn.get(h.zombie) ?? 0) + (res.dealt ?? dmg));
       if (h.part === 'head' && !opts.bot) this.audio.play('headshot', { position: pt, volume: 0.7 });
       else this.audio.play('impact_flesh', { position: pt, volume: 0.5 });
       if (isPlayer) {
@@ -907,9 +958,120 @@ export class Game {
       if (wallBox.tag === 'labGlass') this.lab?.onGlassHit(end);
     }
     if (opts.tracerFrom) {
-      this.fx.tracer(opts.tracerFrom, end, { speed: def.id === 'l96a1' ? 600 : 360, length: def.id === 'l96a1' ? 8 : 3.5, width: def.id === 'l96a1' ? 0.03 : 0.016 });
+      const snipe = def.ammoKind === 'sniper';
+      this.fx.tracer(opts.tracerFrom, end, { speed: snipe ? 600 : 360, length: snipe ? 8 : 3.5, width: snipe ? 0.03 : 0.016 });
     }
     return { endT, stoppedByZombie };
+  }
+
+  /**
+   * A shot of several pellets (weapons.js, teammate.js) is fired as beginVolley(), a hitscan per pellet, endVolley():
+   * the pellets' damage adds up per infected, and whatever took a real share of its health at once reels and is
+   * shoved back along the shot. (One pellet alone is too little to stagger anything, see Zombie.damage.)
+   */
+  beginVolley() {
+    (this._volley ??= new Map()).clear();
+    this._volleyOn = this._volley;
+  }
+
+  endVolley(dir) {
+    const v = this._volleyOn;
+    this._volleyOn = null;
+    if (!v) return;
+    const len = Math.hypot(dir.x, dir.z) || 1;
+    for (const [z, dealt] of v) {
+      if (!z.alive || z.typeName === 'crusher' || z.type.haunt) continue; // (the boss doesn't budge, the Stalker has its own)
+      const k = dealt / z.maxHp; // share of its health this one blast took
+      if (k < 0.15) continue;
+      z.stagger = Math.max(z.stagger, 0.3 + 0.45 * Math.min(1, k));
+      const push = Math.min(5, 2 + 9 * k) / (z.type.mass ?? 1);
+      z.knock((dir.x / len) * push, (dir.z / len) * push, 0.35);
+    }
+    v.clear();
+  }
+
+  /**
+   * A heal grenade popped (game/projectiles.js): a cloud of green medical mist on the floor under it. `L` = its
+   * level's { radius, hps, aps, dur, revive } (weaponDefs.js healnade.levels): the fireteam in it heals, and the
+   * top level gets the downed in it back up (game/revive.js reviveIn).
+   */
+  healCloud(pos, L, by) {
+    const p = pos.clone();
+    const down = this.world.raycast(p.x, p.y + 0.3, p.z, 0, -1, 0, 3, bulletFilter, _hit);
+    if (down) p.y += 0.3 - down.t;
+    this.healZones ??= [];
+    // its reach on the floor: a glowing ring and a faint disc (pulsing, fading out with the cloud)
+    const ring = new THREE.Group();
+    const mat = (o) => new THREE.MeshBasicMaterial({ color: 0x49ff8c, transparent: true, opacity: o, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, side: THREE.DoubleSide });
+    const edge = new THREE.Mesh(new THREE.RingGeometry(L.radius * 0.95, L.radius, 64), mat(0.5));
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(L.radius * 0.95, 64), mat(0.07));
+    for (const m of [edge, disc]) {
+      m.rotation.x = -Math.PI / 2;
+      m.renderOrder = 8;
+      ring.add(m);
+    }
+    ring.position.copy(p).setY(p.y + 0.03);
+    this.scene.add(ring);
+    this.healZones.push({ pos: p, L, by, t: 0, emitT: 0, tickT: 0, ring, edge, disc, hiss: this.audio.play('heal_hiss', { position: p, volume: 0.85, loop: true }) });
+    this.audio.play('heal_pop', { position: p, volume: 1 });
+    this.lighting.flashAt(_wp.copy(p).setY(p.y + 0.6), 0x5cff8a, 70, 0.7, L.radius * 2);
+    for (let i = 0; i < 22; i++) {
+      const a = Math.random() * Math.PI * 2, s = rand(1.5, 4.5);
+      this.fx.smoke.emit(p.x, p.y + 0.15, p.z, Math.cos(a) * s, rand(0.1, 0.6), Math.sin(a) * s, { life: rand(0.8, 1.4), size: rand(0.5, 0.9), grow: 1.5, drag: 3, gravity: 0, color: [0.55, 1.0, 0.7], alpha: 0.32 });
+    }
+  }
+
+  _updateHeal(dt) {
+    const zones = this.healZones;
+    if (!zones?.length) return;
+    for (let i = zones.length - 1; i >= 0; i--) {
+      const z = zones[i], L = z.L;
+      z.t += dt;
+      const fade = 1 - Math.max(0, (z.t - (L.dur - 1.5)) / 1.5); // the last 1.5 s it thins out
+      z.hiss?.setVolume?.(0.85 * fade);
+      const pulse = 0.75 + 0.25 * Math.sin(z.t * 4);
+      z.edge.material.opacity = 0.5 * pulse * fade * Math.min(1, z.t * 4);
+      z.disc.material.opacity = 0.07 * fade;
+      // the mist: green billows that hug the floor (standing in it, you still see over it), a few rising motes
+      z.emitT -= dt;
+      if (z.emitT <= 0) {
+        z.emitT = 0.06;
+        for (let k = 0; k < 2; k++) {
+          const a = Math.random() * Math.PI * 2, r = Math.sqrt(Math.random()) * L.radius * 0.85;
+          this.fx.smoke.emit(z.pos.x + Math.cos(a) * r, z.pos.y + rand(0.02, 0.3), z.pos.z + Math.sin(a) * r, rand(-0.25, 0.25), rand(0, 0.08), rand(-0.25, 0.25), {
+            life: rand(1.6, 2.6), size: rand(0.8, 1.3), grow: 1.15, drag: 1.5, gravity: 0, color: [0.3, 1.0, 0.48], alpha: 0.22 * fade,
+          });
+        }
+        if (Math.random() < 0.6) {
+          const a = Math.random() * Math.PI * 2, r = Math.random() * L.radius * 0.7;
+          this.fx.sparks.emit(z.pos.x + Math.cos(a) * r, z.pos.y + rand(0.1, 0.8), z.pos.z + Math.sin(a) * r, 0, rand(0.5, 1.2), 0, { life: rand(0.5, 1), length: 0.02, color: [0.8, 3.2, 1.4], width: 0.012, gravity: -0.4, drag: 1 });
+        }
+      }
+      // heal four times a second: everyone of the fireteam standing in it (the upper floor of a house doesn't count)
+      z.tickT -= dt;
+      if (z.tickT <= 0 && fade > 0) {
+        z.tickT = 0.25;
+        for (const m of this.team) {
+          if (!m.alive || Math.hypot(m.pos.x - z.pos.x, m.pos.z - z.pos.z) > L.radius || Math.abs(m.pos.y - z.pos.y) > 2) continue;
+          const hp0 = m.hp;
+          m.hp = Math.min(m.maxHp ?? 100, m.hp + L.hps * 0.25);
+          if (L.aps && (m.ap ?? 0) < 100) m.ap = Math.min(100, (m.ap ?? 0) + L.aps * 0.25); // (plates beyond 100 stay theirs)
+          if (m.isPlayer && m.hp > hp0) this.hud.healFx?.();
+        }
+        if (L.revive) this.revives?.reviveIn(z.pos, L.radius, z.by);
+      }
+      if (z.t >= L.dur) this._endHeal(z);
+    }
+  }
+
+  _endHeal(z) {
+    z.hiss?.stop?.();
+    this.scene.remove(z.ring);
+    for (const m of [z.edge, z.disc]) {
+      m.geometry.dispose();
+      m.material.dispose();
+    }
+    this.healZones.splice(this.healZones.indexOf(z), 1);
   }
 
   /** a round on one of the NOX squad (hitscan): the shield rings and stops it, flesh takes the damage */
@@ -943,24 +1105,27 @@ export class Game {
     this.audio.play('hitmarker', { volume: 0.5, pitch: head ? 1.2 : 1 });
   }
 
-  /** `def`: the melee weapon (knife / machete: its hit sound, `oneHit` infected types). */
+  /**
+   * `def`: the melee weapon (knife / machete / tomahawk / bat: its hit sound, `oneHit` infected types; `cleave`: a
+   * light swing takes up to this many in its arc, nearest first, the others at 70 %; `knock` / `heavyKnock`:
+   * [shove m/s, stagger s] for whatever survives the blow).
+   */
   meleeAttack(player, damage, range, heavy, def = null) {
     const cam = player.camera;
     const fwd = cam.getWorldDirection(new THREE.Vector3());
     const eye = cam.position;
-    let best = null, bd = Infinity;
+    const inArc = [];
     for (const z of this.zombies.list) {
       if (!z.alive || !z.hipsWorld) continue;
       const to = z.hipsWorld.clone().sub(eye);
       const d = to.length();
       if (d > range + z.type.radius + 0.3) continue;
       to.normalize();
-      if (to.dot(fwd) < 0.55) continue;
-      if (d < bd) {
-        bd = d;
-        best = z;
-      }
+      if (to.dot(fwd) < (def?.cleave && !heavy ? 0.4 : 0.55)) continue; // (a wide swing sweeps a wider arc)
+      inArc.push({ z, d });
     }
+    inArc.sort((a, b) => a.d - b.d);
+    const best = inArc[0]?.z ?? null, bd = inArc[0]?.d ?? Infinity;
     // one of the NOX squad nearer than any infected: the blade is for it (a shield from the front turns it)
     const mt = this.mercs?.meleeTarget(eye, fwd, range);
     if (mt && mt.dist < bd) {
@@ -981,17 +1146,28 @@ export class Game {
       return;
     }
     if (best) {
-      const back = new THREE.Vector3(Math.sin(best.yaw), 0, Math.cos(best.yaw));
-      const fromBehind = back.dot(fwd) > 0.5;
-      let dmg = damage * (fromBehind ? 2 : 1);
-      if (def?.oneHit?.includes(best.typeName)) dmg = Math.max(dmg, best.hp + 1); // the machete vs a Biter
-      const res = best.damage(dmg, 'torso', fwd, player, { weapon: 'knife', tool: def?.id ?? 'knife' }); // (tool: whose mastery)
-      this.hitAccum += res.dealt ?? dmg;
-      const pt = best.hipsWorld.clone().addScaledVector(fwd, -0.2);
-      this.fx.bloodHit(pt, fwd, { amount: heavy ? 1.3 : 0.8 });
-      this.audio.play(def?.hitSound ?? 'knife_hit', { position: pt, volume: 0.9 });
-      if (!res.immune) this.hud.hitMarker(res.killed, false);
-      this.shake.add(0.12);
+      const n = heavy ? 1 : def?.cleave ?? 1;
+      const knock = heavy ? def?.heavyKnock : def?.knock;
+      for (let i = 0; i < Math.min(n, inArc.length); i++) {
+        const z = inArc[i].z;
+        const back = new THREE.Vector3(Math.sin(z.yaw), 0, Math.cos(z.yaw));
+        const fromBehind = back.dot(fwd) > 0.5;
+        let dmg = damage * (fromBehind ? 2 : 1) * (i ? 0.7 : 1);
+        if (def?.oneHit?.includes(z.typeName)) dmg = Math.max(dmg, z.hp + 1); // the machete vs a Biter
+        const res = z.damage(dmg, 'torso', fwd, player, { weapon: 'knife', tool: def?.id ?? 'knife' }); // (tool: whose mastery)
+        this.hitAccum += res.dealt ?? dmg;
+        const pt = z.hipsWorld.clone().addScaledVector(fwd, -0.2);
+        this.fx.bloodHit(pt, fwd, { amount: heavy ? 1.3 : 0.8 });
+        if (i < 2) this.audio.play(def?.hitSound ?? 'knife_hit', { position: pt, volume: 0.9 });
+        if (!res.immune && i === 0) this.hud.hitMarker(res.killed, false);
+        // a heavy blunt blow sends it reeling back (the bat); the boss and the Stalker don't budge
+        if (knock && z.alive && z.typeName !== 'crusher' && !z.type.haunt) {
+          const l = Math.hypot(fwd.x, fwd.z) || 1, push = knock[0] / (z.type.mass ?? 1);
+          z.stagger = Math.max(z.stagger, knock[1]);
+          z.knock((fwd.x / l) * push, (fwd.z / l) * push, 0.4);
+        }
+      }
+      this.shake.add(knock ? 0.18 : 0.12);
       return;
     }
     if (this.barricades?.melee(eye, fwd, range, damage)) return; // hacking at a barricade
@@ -1010,6 +1186,7 @@ export class Game {
     if (def.id === 'molotov') this.projectiles.throwMolotov(pos, vel, player, def);
     else if (def.id === 'mine') this.projectiles.throwMine(pos, vel, player, def);
     else if (def.id === 'pipebomb') this.projectiles.throwPipeBomb(pos, vel, player, def);
+    else if (def.id === 'healnade') this.projectiles.throwHeal(pos, vel, player, def, this.weapons.healLevel);
     else this.projectiles.throwFrag(pos, vel, player, def);
   }
 
@@ -1274,7 +1451,7 @@ export class Game {
       else this.pendingExplosions.push({ t: 0.45, fn: boom });
     } else if (z.typeName === 'striker') {
       const pos = z.pos.clone();
-      setTimeout(() => this.projectiles.strikerShells(pos), 150);
+      setTimeout(() => this.projectiles.strikerPods(pos), 150);
     } else if (z.typeName === 'stalker') {
       this.stalker?.onKilled(z); // a banner and an ammo box; it stays away for a round
     } else if (z.typeName === 'crusher') {
@@ -1541,6 +1718,7 @@ export class Game {
 
     // zombies
     this.zombies.update(dt, { team: this.team, world: this.world, nav: this.nav, horde: this.horde, time: this.time, roundTime: this.roundTime });
+    this.shaft?.update();
     this.stalker?.update(dt);
     for (let i = this.pendingExplosions.length - 1; i >= 0; i--) {
       const e = this.pendingExplosions[i];
@@ -1551,6 +1729,7 @@ export class Game {
       }
     }
     this.projectiles.update(dt);
+    this._updateHeal(dt);
     this.pickups.update(dt, player, input.locked ? input : null);
     this.level.update(dt);
     this.barnFire?.update(dt);
@@ -1598,7 +1777,7 @@ export class Game {
     this.camera.fov = damp(this.camera.fov, fov, 25, dt);
     this.camera.updateProjectionMatrix();
     this.fovScale = this.camera.fov / baseFov;
-    this.hud.setScope(!!scoped);
+    this.hud.setScope(scoped ? (d.scope === true ? 'sniper' : d.scope) : false); // (d.scope 'acog': a 3x optic, player/optics.js)
     this.viewmodel.setVisible(player.alive && !scoped);
     if (player.alive) {
       this.viewmodel.update(dt, { camera: this.camera, vmCamera: this.gr.vmCamera, player, weapons: this.weapons, mouseDX: input.dx, mouseDY: input.dy });
@@ -1643,7 +1822,7 @@ export class Game {
     this.dawn = this.state === 'victory' ? Math.min(1, (this.dawn ?? 0) + dt / 7) : 0;
     const dw = this.dawn;
     fogCol.setRGB(0.07 + this.lighting.lightning * 0.35, 0.095 + this.lighting.lightning * 0.38, 0.09 + this.lighting.lightning * 0.45);
-    if (dw > 0) {
+    if (dw > 0 && !this.level.indoor) {
       fogCol.lerp(_dawnFog, dw);
       this.lighting.moonBase = 0.55 + dw * 2.2;
       this.lighting.moon.color.lerp(_dawnSun, dw);
@@ -1663,7 +1842,7 @@ export class Game {
     this.indoor = damp(this.indoor ?? 1, sheltered, 3, dt);
     this.lighting.indoor = this.indoor;
     this.audio.setIndoor(this.indoor);
-    this.audio.setRain?.(this.weather.rainK); // the showers come and go (world/weather.js)
+    this.audio.setRain?.(this.level.indoor ? 0 : this.weather.rainK); // the showers come and go (world/weather.js)
     this.audio.setLowHealth(player.alive ? clamp(1 - player.hp / 35, 0, 1) : 0);
 
     // post fx

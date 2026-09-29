@@ -41,7 +41,7 @@ function floorAt(g, x, z, y) {
 export function castOf(g) {
   const bots = g.team.filter((m) => !m.isPlayer);
   let double = g.playerBody?.rig ? g.playerBody : null; // (rig: its GLB body loaded)
-  for (const id of ['meshy', 'soldier', 'viper', 'ellis', 'coach']) {
+  for (const id of ['meshy', 'soldier', 'viper', 'raven', 'ellis', 'coach']) {
     if (double) break;
     double = g.bots.find((x) => x.id === id && !g.team.includes(x)) ?? null;
   }

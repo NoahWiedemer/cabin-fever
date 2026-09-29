@@ -43,9 +43,13 @@ const WEAPON_POOL = [
   { id: 'p90', rarity: 'common' },
   { id: 'mozambique', rarity: 'common' },
   { id: 'm4a1', rarity: 'common' },
+  { id: 'g36c', rarity: 'common' },
+  { id: 'ak47', rarity: 'rare' },
   { id: 'spas12', rarity: 'rare' },
   { id: 'r201', rarity: 'rare' },
   { id: 'l96a1', rarity: 'epic', from: 3 },
+  { id: 'awm', rarity: 'epic', from: 3 },
+  { id: 'axmc', rarity: 'epic', from: 5 },
   { id: 'devotion', rarity: 'epic', from: 4 },
   { id: 'sigma', rarity: 'epic', from: 5 },
   { id: 'mg42', rarity: 'epic', from: 5 },
@@ -53,8 +57,8 @@ const WEAPON_POOL = [
   { id: 'goldenPunisher', rarity: 'legendary', from: 7 },
   { id: 'chaingun', rarity: 'legendary', from: 9 },
 ];
-const WEAPON_TYPE = { m16a2: 'BURST RIFLE', m4super90: 'SEMI-AUTO SHOTGUN', p90: 'SUBMACHINE GUN', mozambique: 'SHOTGUN PISTOL · SIDEARM', m4a1: 'ASSAULT RIFLE', spas12: 'COMBAT SHOTGUN', r201: 'ASSAULT RIFLE', l96a1: 'SNIPER RIFLE', devotion: 'LIGHT MACHINE GUN', sigma: 'HEAVY MACHINE GUN', mg42: 'BELT-FED MACHINE GUN', m32: 'GRENADE LAUNCHER · ONE LOAD', goldenPunisher: 'GOLDEN SHOTGUN', chaingun: 'CHAIN GUN · ONE BELT' };
-const UPG_SHORT = { dmg: 'DMG', mag: 'MAG', reload: 'RLD', rate: 'ROF' };
+const WEAPON_TYPE = { m16a2: 'BURST RIFLE', m4super90: 'SEMI-AUTO SHOTGUN', p90: 'SUBMACHINE GUN', mozambique: 'SHOTGUN PISTOL · SIDEARM', m4a1: 'ASSAULT RIFLE', spas12: 'COMBAT SHOTGUN', r201: 'ASSAULT RIFLE', l96a1: 'SNIPER RIFLE', devotion: 'LIGHT MACHINE GUN', sigma: 'HEAVY MACHINE GUN', mg42: 'BELT-FED MACHINE GUN', m32: 'GRENADE LAUNCHER · ONE LOAD', goldenPunisher: 'GOLDEN SHOTGUN', chaingun: 'MINIGUN · ONE BELT', g36c: 'COMPACT ASSAULT RIFLE', ak47: 'ASSAULT RIFLE', awm: 'SNIPER RIFLE', axmc: 'SNIPER RIFLE' };
+const UPG_SHORT = { dmg: 'DMG', mag: 'MAG', reload: 'RLD', rate: 'ROF', pen: 'PEN' };
 
 // supply cards: instant. `gear`: a store gear item for free (not while you own it)
 const SUPPLIES = [

@@ -49,7 +49,7 @@ const X0 = -11.9, X1 = 2.3; // side walls
 const T = FB + 0.92; // Nadja's counter top
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 
-function mulberry(seed) {
+export function mulberry(seed) {
   let a = seed >>> 0;
   return () => {
     a = (a + 0x6d2b79f5) | 0;
@@ -60,21 +60,21 @@ function mulberry(seed) {
 }
 
 // ---------------------------------------------------------------- canvas textures
-function canvas(w, h, draw) {
+export function canvas(w, h, draw) {
   const c = document.createElement('canvas');
   c.width = w;
   c.height = h;
   draw(c.getContext('2d'), w, h);
   return c;
 }
-function texOf(c, repeat = false) {
+export function texOf(c, repeat = false) {
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.anisotropy = 4;
   if (repeat) t.wrapS = t.wrapT = THREE.RepeatWrapping;
   return t;
 }
-function speckle(g, w, h, rnd, n, cols, size = 2) {
+export function speckle(g, w, h, rnd, n, cols, size = 2) {
   for (let i = 0; i < n; i++) {
     g.fillStyle = cols[Math.floor(rnd() * cols.length)];
     g.fillRect(rnd() * w, rnd() * h, 1 + rnd() * size, 1 + rnd() * size);
@@ -82,7 +82,7 @@ function speckle(g, w, h, rnd, n, cols, size = 2) {
 }
 
 /** white wall panels 1.2 m wide, 2.4 m tall (512 px = 2.4 m) */
-function panelTex() {
+export function panelTex() {
   const rnd = mulberry(11);
   return texOf(canvas(512, 512, (g, w, h) => {
     g.fillStyle = '#dde2e5';
@@ -103,7 +103,7 @@ function panelTex() {
   }), true);
 }
 /** grey epoxy floor, faint 1 m seams (512 px = 2 m) */
-function floorTex() {
+export function floorTex() {
   const rnd = mulberry(12);
   return texOf(canvas(512, 512, (g, w, h) => {
     g.fillStyle = '#8b9296';
@@ -126,7 +126,7 @@ function floorTex() {
   }), true);
 }
 /** 0.6 m ceiling tiles in a T-bar grid (512 px = 2.4 m) */
-function ceilTex() {
+export function ceilTex() {
   const rnd = mulberry(13);
   return texOf(canvas(512, 512, (g, w, h) => {
     g.fillStyle = '#e7eaeb';
@@ -140,7 +140,7 @@ function ceilTex() {
   }), true);
 }
 /** yellow / black diagonal stripes, `wear` 0..1 (256 px = 0.5 m) */
-function hazardCanvas(wear, seed, alpha = false) {
+export function hazardCanvas(wear, seed, alpha = false) {
   const rnd = mulberry(seed);
   return canvas(256, 256, (g, w, h) => {
     g.fillStyle = '#e0ae17';
@@ -186,7 +186,7 @@ function hazardCanvas(wear, seed, alpha = false) {
   });
 }
 /** painted steel of the door leaf: grey-blue paint, scratches and chips down to bare metal (512 px = 1.5 m) */
-function doorPaintTex() {
+export function doorPaintTex() {
   const rnd = mulberry(21);
   return texOf(canvas(512, 512, (g, w, h) => {
     g.fillStyle = '#56626b';
@@ -219,7 +219,7 @@ function doorPaintTex() {
   }), true);
 }
 /** armored glass face: faint tint, dark green edges (the thickness), scratches and smudges */
-function glassCanvas(seed, W = 512, H = 384) {
+export function glassCanvas(seed, W = 512, H = 384) {
   const rnd = mulberry(seed);
   return canvas(W, H, (g, w, h) => {
     g.clearRect(0, 0, w, h);
@@ -257,7 +257,7 @@ function glassCanvas(seed, W = 512, H = 384) {
   });
 }
 
-function biohazard(g, cx, cy, R, color) {
+export function biohazard(g, cx, cy, R, color) {
   const c = canvas(256, 256, (q) => {
     q.translate(128, 128);
     q.fillStyle = '#000';
@@ -302,7 +302,7 @@ function biohazard(g, cx, cy, R, color) {
 }
 
 // sign / label atlas (1024²): region name -> [x, y, w, h] in pixels
-const SIGN = {
+export const SIGN = {
   door: [0, 0, 512, 360],
   bio: [512, 0, 256, 256],
   glass: [768, 0, 256, 96],
@@ -321,7 +321,7 @@ const SIGN = {
   corridor: [384, 712, 256, 64],
   freezer: [384, 776, 128, 64],
 };
-function signCanvas() {
+export function signCanvas() {
   return canvas(1024, 1024, (g) => {
     g.fillStyle = '#ffffff';
     g.fillRect(0, 0, 1024, 1024);
@@ -553,8 +553,8 @@ function signCanvas() {
 }
 
 // monitor screens (1024 x 512, four 512 x 256 screens)
-const SCREEN = { vitals: [0, 0, 512, 256], helix: [512, 0, 512, 256], seq: [0, 256, 512, 256], spectrum: [512, 256, 512, 256] };
-function screenCanvas() {
+export const SCREEN = { vitals: [0, 0, 512, 256], helix: [512, 0, 512, 256], seq: [0, 256, 512, 256], spectrum: [512, 256, 512, 256] };
+export function screenCanvas() {
   const rnd = mulberry(77);
   return canvas(1024, 512, (g) => {
     const text = (s, x, y, font, col, align = 'left') => {
@@ -653,7 +653,7 @@ const bakeShader = (sh) => {
     .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += diffuseColor.rgb * vBake;');
 };
 /** standard material that adds the baked light (vertex attribute `bake`) as emission */
-function bakeMat(params, cast = false) {
+export function bakeMat(params, cast = false) {
   const m = new THREE.MeshStandardMaterial(params);
   m.onBeforeCompile = bakeShader;
   m.customProgramCacheKey = () => 'labBake';
@@ -661,7 +661,7 @@ function bakeMat(params, cast = false) {
   m.userData.cast = cast;
   return m;
 }
-function glow(color, k = 1) {
+export function glow(color, k = 1) {
   const c = new THREE.Color(color);
   return new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: k, roughness: 0.15 });
 }
@@ -681,7 +681,7 @@ const NORMAL = { px: [1, 0, 0], nx: [-1, 0, 0], py: [0, 1, 0], ny: [0, -1, 0], p
 const EXT = { px: (b) => [b[5] - b[2], b[4] - b[1]], nx: (b) => [b[5] - b[2], b[4] - b[1]], py: (b) => [b[3] - b[0], b[5] - b[2]], ny: (b) => [b[3] - b[0], b[5] - b[2]], pz: (b) => [b[3] - b[0], b[4] - b[1]], nz: (b) => [b[3] - b[0], b[4] - b[1]] };
 
 /** axis-aligned box in world space with world-scaled UVs; faces subdivided every `seg` m (smooth bake) */
-function boxGeometry(x0, y0, z0, x1, y1, z1, { faces = Object.keys(FACE), seg = 0, mpr = 1 } = {}) {
+export function boxGeometry(x0, y0, z0, x1, y1, z1, { faces = Object.keys(FACE), seg = 0, mpr = 1 } = {}) {
   const b = [Math.min(x0, x1), Math.min(y0, y1), Math.min(z0, z1), Math.max(x0, x1), Math.max(y0, y1), Math.max(z0, z1)];
   const pos = [], nor = [], uv = [], idx = [];
   for (const f of faces) {
@@ -715,7 +715,7 @@ function boxGeometry(x0, y0, z0, x1, y1, z1, { faces = Object.keys(FACE), seg = 
 }
 
 /** Collects world-space geometry per material and merges it (one mesh per material). */
-class Kit {
+export class Kit {
   constructor() {
     this.parts = new Map();
   }
@@ -785,7 +785,7 @@ class Kit {
 
 // ---------------------------------------------------------------- baked light
 /** does the segment a → b cross the box [x0, y0, z0, x1, y1, z1]? */
-function segHitsBox(ax, ay, az, bx, by, bz, bb) {
+export function segHitsBox(ax, ay, az, bx, by, bz, bb) {
   let t0 = 0, t1 = 1;
   const a = [ax, ay, az], d = [bx - ax, by - ay, bz - az];
   for (let k = 0; k < 3; k++) {
@@ -807,7 +807,7 @@ function segHitsBox(ax, ay, az, bx, by, bz, bb) {
  * soft wrap on the receiving side, a 1 / (1 + d²/r²) falloff and box occluders (the gallery floor),
  * plus a hemispherical ambient (ceilings pick up the floor's bounce).
  */
-function makeBaker(lights, occluders) {
+export function makeBaker(lights, occluders) {
   return (geo) => {
     const P = geo.attributes.position.array, N = geo.attributes.normal.array;
     const n = P.length / 3;
@@ -843,21 +843,21 @@ function makeBaker(lights, occluders) {
 }
 
 // ---------------------------------------------------------------- shared shapes
-function erlenmeyer() {
+export function erlenmeyer() {
   const pts = [[0, 0], [0.043, 0], [0.048, 0.006], [0.046, 0.02], [0.02, 0.1], [0.013, 0.112], [0.013, 0.148], [0.016, 0.152], [0.0125, 0.153]];
   return new THREE.LatheGeometry(pts.map(([x, y]) => new THREE.Vector2(x, y)), 20);
 }
-function erlenLiquid() {
+export function erlenLiquid() {
   // closed: bottom, walls up to y 0.07 (scaled for the level), top cap
   const pts = [[0, 0.003], [0.042, 0.003], [0.044, 0.02], [0.028, 0.07], [0, 0.07]];
   const g = new THREE.LatheGeometry(pts.map(([x, y]) => new THREE.Vector2(x, y)), 18);
   return g;
 }
-function testTube() {
+export function testTube() {
   const pts = [[0, 0], [0.005, 0.001], [0.0078, 0.005], [0.008, 0.012], [0.008, 0.1], [0.0088, 0.102]];
   return new THREE.LatheGeometry(pts.map(([x, y]) => new THREE.Vector2(x, y)), 10);
 }
-function bottleShape(r, h) {
+export function bottleShape(r, h) {
   const pts = [[0, 0], [r, 0], [r, h * 0.72], [r * 0.45, h * 0.86], [r * 0.4, h], [0, h]];
   return new THREE.LatheGeometry(pts.map(([x, y]) => new THREE.Vector2(x, y)), 14);
 }
@@ -1029,97 +1029,8 @@ export function buildLab(B, world, lamps) {
   // pipes along the gallery ceiling toward the hall
   for (const [y, r, m] of [[GC - 0.12, 0.035, M.blue], [GC - 0.2, 0.03, M.green]]) K.rod(m, V(X0, y, 6.35), V(X1, y, 6.35), r, 10);
 
-  // ------------------------------------------------ Nadja's counter
-  const cx0 = -6.3, cx1 = -2.9;
-  K.box(M.white, cx0, FB + 0.1, 4.25, cx1, FB + 0.86, 4.88, { faces: ['pz', 'nx', 'px'] });
-  K.box(M.dark, cx0 + 0.02, FB, 4.3, cx1 - 0.02, FB + 0.1, 4.82, { faces: ['pz'] });
-  K.box(M.top, cx0 - 0.02, FB + 0.86, 4.2, cx1 + 0.02, T, 4.92);
-  for (let i = 0; i < 4; i++) {
-    const x = cx0 + 0.43 + i * 0.85;
-    K.box(M.dark, x - 0.4, FB + 0.12, 4.881, x + 0.4, FB + 0.84, 4.884, { faces: ['pz'] });
-    K.cube(M.steel, x, FB + 0.74, 4.9, 0.28, 0.02, 0.02);
-  }
-  // microscope (station L: she leans over it)
-  const scope = { x: -5.35, z: 4.74 };
-  {
-    const { x, z } = scope;
-    K.cube(M.white, x, T + 0.018, z, 0.2, 0.036, 0.25);
-    K.cube(M.white, x, T + 0.19, z - 0.09, 0.07, 0.32, 0.07);
-    K.cube(M.white, x, T + 0.33, z - 0.02, 0.085, 0.08, 0.2);
-    K.cube(M.black, x, T + 0.15, z + 0.03, 0.15, 0.012, 0.13); // stage
-    K.cyl(U.cyan, x, T + 0.037, z + 0.03, 0.012, 0.012, 0.01, 12);
-    K.cube(U.glass, x, T + 0.158, z + 0.03, 0.075, 0.003, 0.026);
-    K.cyl(U.magenta, x, T + 0.1595, z + 0.03, 0.006, 0.006, 0.002, 10);
-    K.cyl(M.black, x, T + 0.24, z + 0.03, 0.035, 0.03, 0.035, 14);
-    for (let k = 0; k < 3; k++) {
-      const a = (k / 3) * Math.PI * 2;
-      K.cyl(M.steel, x + Math.cos(a) * 0.018, T + 0.19, z + 0.03 + Math.sin(a) * 0.018, 0.007, 0.009, 0.05, 8);
-    }
-    for (const s of [-1, 1]) {
-      // eyepieces tilted toward her (+z) and up
-      K.cyl(M.black, x + s * 0.028, T + 0.35, z + 0.04, 0.013, 0.013, 0.1, 12, [0.8, 0, 0]);
-      K.cyl(M.black, x + s * 0.045, T + 0.1, z - 0.09, 0.028, 0.028, 0.03, 16, [0, 0, Math.PI / 2]); // focus knobs
-    }
-  }
-  // centrifuge, bottles and gloves at the counter's ends
-  {
-    const x = -6.0, z = 4.5;
-    K.cyl(M.white, x, T, z, 0.17, 0.16, 0.2, 24);
-    K.add(M.dark, new THREE.SphereGeometry(0.15, 20, 8, 0, Math.PI * 2, 0, Math.PI / 2), x, T + 0.2, z, null, [1, 0.35, 1]);
-    K.plane(U.screen, 0.09, 0.04, x, T + 0.12, z - 0.168, [0, Math.PI, 0.0], [0, 256, 180, 60], 1024, 512);
-    K.cyl(U.green, x + 0.07, T + 0.16, z - 0.15, 0.006, 0.006, 0.004, 8, [Math.PI / 2, 0, 0]);
-  }
-  for (let i = 0; i < 5; i++) {
-    const x = -6.22 + i * 0.075, z = 4.3 + (i % 2) * 0.05, h = 0.13 + (i % 3) * 0.03;
-    K.add(i === 2 ? U.glass : M.amber, bottleShape(0.03, h), x, T, z);
-    K.cyl(i % 2 ? M.black : M.blue, x, T + h, z, 0.013, 0.013, 0.025, 10);
-    K.plane(M.signs, 0.045, 0.04, x, T + h * 0.45, z - 0.031, [0, Math.PI, 0], SIGN.label);
-    if (i === 2) K.add(U.green, bottleShape(0.027, h * 0.55), x, T + 0.002, z);
-  }
-  K.cube(M.blue, -5.8, T + 0.05, 4.84, 0.24, 0.1, 0.13, 0.1);
-  K.cube(M.white, -5.8, T + 0.101, 4.84, 0.1, 0.002, 0.04, 0.1);
-  K.cyl(M.white, -6.15, T, 4.82, 0.032, 0.03, 0.15, 14);
-  K.rod(M.white, V(-6.15, T + 0.15, 4.82), V(-6.15, T + 0.2, 4.76), 0.004, 6);
-  K.cube(M.yellow, -3.0, T + 0.07, 4.82, 0.12, 0.14, 0.1);
-  // test tube rack (station C)
-  const rack = { x: -4.6, z: 4.61, tubes: [] };
-  {
-    const { x, z } = rack;
-    K.cube(M.white, x, T + 0.02, z, 0.27, 0.01, 0.07);
-    K.cube(M.white, x, T + 0.075, z, 0.27, 0.01, 0.07);
-    for (const s of [-1, 1]) K.cube(M.white, x + s * 0.13, T + 0.04, z, 0.01, 0.08, 0.07);
-    for (let i = 0; i < 8; i++) {
-      const tx = x - 0.105 + i * 0.03;
-      K.add(U.glass, testTube(), tx, T + 0.01, z);
-      const lvl = 0.025 + ((i * 37) % 5) * 0.008;
-      K.cyl(liquids[i % 4], tx, T + 0.013, z, 0.0068, 0.0068, lvl, 8);
-      rack.tubes.push(V(tx, T + 0.112, z));
-    }
-  }
-  // monitor + keyboard (station R), gas turret with a handwheel and a gauge
-  const mon = { x: -3.2, z: 4.46, yaw: -0.87 };
-  {
-    const { x, z, yaw } = mon;
-    K.cube(M.dark, x, T + 0.008, z, 0.2, 0.016, 0.16, yaw);
-    K.cube(M.dark, x, T + 0.12, z - 0.02, 0.04, 0.22, 0.03, yaw);
-    const sc = V(x, T + 0.27, z);
-    K.cube(M.black, sc.x, sc.y, sc.z, 0.44, 0.27, 0.03, yaw);
-    K.plane(U.screen, 0.4, 0.23, sc.x + Math.sin(yaw) * 0.016, sc.y, sc.z + Math.cos(yaw) * 0.016, [0, yaw, 0], SCREEN.spectrum, 1024, 512);
-    mon.screen = sc;
-  }
-  K.cube(M.black, -3.88, T + 0.01, 4.82, 0.38, 0.02, 0.13, 0.05);
-  K.cube(M.dark, -3.88, T + 0.021, 4.82, 0.35, 0.003, 0.1, 0.05);
-  K.cube(M.black, -3.62, T + 0.012, 4.82, 0.05, 0.024, 0.08);
-  const turret = { x: -3.5, z: 4.72 };
-  {
-    const { x, z } = turret;
-    K.cyl(M.steel, x, T, z, 0.022, 0.022, 0.02, 12);
-    K.cyl(M.steel, x, T, z, 0.012, 0.012, 0.24, 10);
-    K.rod(M.steel, V(x, T + 0.16, z), V(x, T + 0.16, z + 0.07), 0.006, 8);
-    K.cyl(M.dark, x, T + 0.12, z - 0.02, 0.036, 0.036, 0.02, 20, [Math.PI / 2, 0, 0]);
-    K.plane(M.signs, 0.062, 0.062, x, T + 0.12, z - 0.0305, [0, Math.PI, 0], SIGN.gauge);
-    K.plane(M.signs, 0.062, 0.062, x, T + 0.12, z - 0.0095, [0, 0, 0], SIGN.gauge);
-  }
+  // ------------------------------------------------ Nadja's counter and her things (buildNadjaStation)
+  const station = buildNadjaStation(K, M, U, dyn, signTex, liquids);
 
   // ------------------------------------------------ hall: vats along the far wall
   const vatZ = 16.9;
@@ -1365,93 +1276,6 @@ export function buildLab(B, world, lamps) {
     K.plane(M.signs, 0.22, 0.22, x, HF + 0.36, z - 0.182, [0, Math.PI, 0], SIGN.bio);
   }
 
-  // ------------------------------------------------ Nadja's moving props
-  const plastic = new THREE.MeshStandardMaterial({ color: 0xdcdfe2, roughness: 0.45 });
-  const darkPlastic = new THREE.MeshStandardMaterial({ color: 0x2b3036, roughness: 0.5 });
-  const mk = (geo, mat, parent, x = 0, y = 0, z = 0) => {
-    const m = new THREE.Mesh(geo, mat);
-    m.position.set(x, y, z);
-    m.castShadow = true;
-    m.receiveShadow = true;
-    if (mat.transparent) m.renderOrder = -1;
-    parent.add(m);
-    return m;
-  };
-  const vessel = (kind, x, z) => {
-    const o = new THREE.Group();
-    o.position.set(x, T, z);
-    let liquid, lip;
-    if (kind === 'flask') {
-      mk(erlenmeyer(), U.glass, o).castShadow = false;
-      liquid = mk(erlenLiquid(), U.blue, o);
-      lip = V(0, 0.153, 0);
-    } else {
-      const g = new THREE.CylinderGeometry(0.036, 0.034, 0.1, 18, 1, true);
-      g.translate(0, 0.05, 0);
-      mk(g, U.glass, o).castShadow = false;
-      mk(new THREE.CircleGeometry(0.034, 18).rotateX(-Math.PI / 2).translate(0, 0.001, 0), U.glass, o);
-      const lg = new THREE.CylinderGeometry(0.033, 0.033, 0.07, 16);
-      lg.translate(0, 0.035, 0);
-      liquid = mk(lg, U.blue, o);
-      liquid.position.y = 0.002;
-      lip = V(0, 0.1, 0);
-    }
-    liquid.castShadow = false;
-    dyn.add(o);
-    return { obj: o, liquid, lip, level: 0.5 };
-  };
-  const flask = vessel('flask', -4.44, 4.78);
-  flask.level = 0.8;
-  const beaker = vessel('beaker', -4.7, 4.79);
-  beaker.level = 0.3;
-  // micropipette hanging in its stand (origin = the grip, axis +y)
-  const pipette = new THREE.Group();
-  {
-    mk(new THREE.CylinderGeometry(0.012, 0.01, 0.13, 12), plastic, pipette);
-    mk(new THREE.CylinderGeometry(0.005, 0.005, 0.035, 8), darkPlastic, pipette, 0, 0.08, 0);
-    mk(new THREE.SphereGeometry(0.009, 10, 6), U.blue, pipette, 0, 0.1, 0).castShadow = false;
-    mk(new THREE.BoxGeometry(0.012, 0.03, 0.02), plastic, pipette, 0, 0.045, 0.015);
-    mk(new THREE.CylinderGeometry(0.004, 0.0012, 0.05, 8).translate(0, -0.09, 0), new THREE.MeshStandardMaterial({ color: 0xf2e9c8, roughness: 0.3 }), pipette);
-    pipette.position.set(-4.26, T + 0.15, 4.72);
-    dyn.add(pipette);
-    K.cube(M.white, -4.26, T + 0.005, 4.7, 0.08, 0.01, 0.08);
-    K.cube(M.white, -4.26, T + 0.12, 4.67, 0.02, 0.24, 0.02);
-    K.cube(M.white, -4.26, T + 0.215, 4.695, 0.03, 0.01, 0.05);
-  }
-  const tip = V(0, -0.115, 0); // pipette tip in its own frame
-  // clipboard with a paper and a pen (origin = board center, +y = paper normal, +z = the clip end)
-  const clipboard = new THREE.Group();
-  const pen = new THREE.Group();
-  {
-    mk(new THREE.BoxGeometry(0.23, 0.006, 0.31), new THREE.MeshStandardMaterial({ color: 0x6b4a2c, roughness: 0.8 }), clipboard);
-    const paper = atlasPlane(0.21, 0.27, SIGN.paper);
-    paper.rotateX(-Math.PI / 2);
-    paper.rotateY(Math.PI); // text reads from the clip end toward her
-    mk(paper, new THREE.MeshStandardMaterial({ map: signTex, roughness: 0.8 }), clipboard, 0, 0.0035, -0.01);
-    mk(new THREE.BoxGeometry(0.1, 0.012, 0.035), new THREE.MeshStandardMaterial({ color: 0xb0b6bb, metalness: 0.8, roughness: 0.3 }), clipboard, 0, 0.007, 0.135);
-    clipboard.position.set(-4.87, T + 0.003, 4.72);
-    clipboard.rotation.y = Math.PI + 0.12;
-    dyn.add(clipboard);
-    mk(new THREE.CylinderGeometry(0.0045, 0.0045, 0.13, 8), darkPlastic, pen);
-    mk(new THREE.ConeGeometry(0.0045, 0.012, 8).rotateX(Math.PI).translate(0, -0.071, 0), new THREE.MeshStandardMaterial({ color: 0xc0c4c8, metalness: 0.9, roughness: 0.3 }), pen);
-    mk(new THREE.CylinderGeometry(0.0052, 0.0052, 0.02, 8), U.blue, pen, 0, 0.055, 0);
-    pen.position.set(0.075, 0.012, -0.02);
-    pen.rotation.set(Math.PI / 2, 0, 0.2);
-    clipboard.add(pen);
-  }
-  // gas turret handwheel (turns while she works it)
-  const wheel = new THREE.Group();
-  {
-    const red = new THREE.MeshStandardMaterial({ color: 0xa11d19, roughness: 0.5 });
-    const g = [new THREE.TorusGeometry(0.03, 0.005, 6, 18).rotateX(Math.PI / 2)];
-    for (const a of [0, Math.PI / 3, (2 * Math.PI) / 3]) g.push(new THREE.BoxGeometry(0.06, 0.004, 0.005).rotateY(a));
-    mk(mergeGeometries(g.map((x) => (x.deleteAttribute('uv'), x))), red, wheel);
-    wheel.position.set(turret.x, T + 0.245, turret.z);
-    dyn.add(wheel);
-  }
-  const stream = mk(new THREE.CylinderGeometry(0.0035, 0.0025, 1, 6).translate(0, -0.5, 0), U.blue, dyn);
-  stream.visible = false;
-  stream.castShadow = false;
 
   K.build(group, makeBaker(lights, occluders));
 
@@ -1644,22 +1468,9 @@ export function buildLab(B, world, lamps) {
 
   // ------------------------------------------------ runtime
   const work = {
-    top: T,
-    floor: FB,
-    edge: 4.92, // z of the counter top's near (her) edge
-    stations: { C: V(-4.6, FB, 5.06), L: V(-5.35, FB, 5.06), R: V(-3.85, FB, 5.06) },
-    flask,
-    beaker,
-    pipette: { obj: pipette, tip },
-    clipboard: { obj: clipboard },
-    pen: { obj: pen },
-    rack: rack.tubes,
-    scope: { eye: V(scope.x, T + 0.43, scope.z + 0.1), knobL: V(scope.x - 0.062, T + 0.1, scope.z - 0.09), knobR: V(scope.x + 0.062, T + 0.1, scope.z - 0.09), slide: V(scope.x, T + 0.16, scope.z + 0.03) },
-    monitor: { screen: mon.screen, keys: V(-3.88, T + 0.02, 4.82), mouse: V(-3.62, T + 0.02, 4.82) },
-    valve: { wheel, top: V(turret.x, T + 0.245, turret.z), gauge: V(turret.x, T + 0.12, turret.z - 0.03) },
+    ...station,
     light: V(-4.6, GC - 0.05, 5.3),
     glass: V((w.x0 + w.x1) / 2, -1.55, BZ),
-    stream,
   };
   let tech = null;
   let active = true; // drawn at load so the shaders compile; update() decides from then on
@@ -1755,8 +1566,234 @@ export function buildLab(B, world, lamps) {
   return lab;
 }
 
+/**
+ * Nadja's lab counter and the things she works with (actors/labTech.js), in this lab's frame: the counter along
+ * x round -4.6 on the gallery floor FB, she stands at z 5.06 facing -z. Static parts go into the Kit, the moving
+ * ones (glassware, pipette, clipboard, the gas turret's wheel, the pour stream) into `dyn`. Returns the station's
+ * part of labTech's `work` contract (the caller adds `light` and `glass`); world/hive.js builds it here and moves
+ * it (offsetStation).
+ */
+export function buildNadjaStation(K, M, U, dyn, signTex, liquids) {
+  // ------------------------------------------------ Nadja's counter
+  const cx0 = -6.3, cx1 = -2.9;
+  K.box(M.white, cx0, FB + 0.1, 4.25, cx1, FB + 0.86, 4.88, { faces: ['pz', 'nx', 'px'] });
+  K.box(M.dark, cx0 + 0.02, FB, 4.3, cx1 - 0.02, FB + 0.1, 4.82, { faces: ['pz'] });
+  K.box(M.top, cx0 - 0.02, FB + 0.86, 4.2, cx1 + 0.02, T, 4.92);
+  for (let i = 0; i < 4; i++) {
+    const x = cx0 + 0.43 + i * 0.85;
+    K.box(M.dark, x - 0.4, FB + 0.12, 4.881, x + 0.4, FB + 0.84, 4.884, { faces: ['pz'] });
+    K.cube(M.steel, x, FB + 0.74, 4.9, 0.28, 0.02, 0.02);
+  }
+  // microscope (station L: she leans over it)
+  const scope = { x: -5.35, z: 4.74 };
+  {
+    const { x, z } = scope;
+    K.cube(M.white, x, T + 0.018, z, 0.2, 0.036, 0.25);
+    K.cube(M.white, x, T + 0.19, z - 0.09, 0.07, 0.32, 0.07);
+    K.cube(M.white, x, T + 0.33, z - 0.02, 0.085, 0.08, 0.2);
+    K.cube(M.black, x, T + 0.15, z + 0.03, 0.15, 0.012, 0.13); // stage
+    K.cyl(U.cyan, x, T + 0.037, z + 0.03, 0.012, 0.012, 0.01, 12);
+    K.cube(U.glass, x, T + 0.158, z + 0.03, 0.075, 0.003, 0.026);
+    K.cyl(U.magenta, x, T + 0.1595, z + 0.03, 0.006, 0.006, 0.002, 10);
+    K.cyl(M.black, x, T + 0.24, z + 0.03, 0.035, 0.03, 0.035, 14);
+    for (let k = 0; k < 3; k++) {
+      const a = (k / 3) * Math.PI * 2;
+      K.cyl(M.steel, x + Math.cos(a) * 0.018, T + 0.19, z + 0.03 + Math.sin(a) * 0.018, 0.007, 0.009, 0.05, 8);
+    }
+    for (const s of [-1, 1]) {
+      // eyepieces tilted toward her (+z) and up
+      K.cyl(M.black, x + s * 0.028, T + 0.35, z + 0.04, 0.013, 0.013, 0.1, 12, [0.8, 0, 0]);
+      K.cyl(M.black, x + s * 0.045, T + 0.1, z - 0.09, 0.028, 0.028, 0.03, 16, [0, 0, Math.PI / 2]); // focus knobs
+    }
+  }
+  // centrifuge, bottles and gloves at the counter's ends
+  {
+    const x = -6.0, z = 4.5;
+    K.cyl(M.white, x, T, z, 0.17, 0.16, 0.2, 24);
+    K.add(M.dark, new THREE.SphereGeometry(0.15, 20, 8, 0, Math.PI * 2, 0, Math.PI / 2), x, T + 0.2, z, null, [1, 0.35, 1]);
+    K.plane(U.screen, 0.09, 0.04, x, T + 0.12, z - 0.168, [0, Math.PI, 0.0], [0, 256, 180, 60], 1024, 512);
+    K.cyl(U.green, x + 0.07, T + 0.16, z - 0.15, 0.006, 0.006, 0.004, 8, [Math.PI / 2, 0, 0]);
+  }
+  for (let i = 0; i < 5; i++) {
+    const x = -6.22 + i * 0.075, z = 4.3 + (i % 2) * 0.05, h = 0.13 + (i % 3) * 0.03;
+    K.add(i === 2 ? U.glass : M.amber, bottleShape(0.03, h), x, T, z);
+    K.cyl(i % 2 ? M.black : M.blue, x, T + h, z, 0.013, 0.013, 0.025, 10);
+    K.plane(M.signs, 0.045, 0.04, x, T + h * 0.45, z - 0.031, [0, Math.PI, 0], SIGN.label);
+    if (i === 2) K.add(U.green, bottleShape(0.027, h * 0.55), x, T + 0.002, z);
+  }
+  K.cube(M.blue, -5.8, T + 0.05, 4.84, 0.24, 0.1, 0.13, 0.1);
+  K.cube(M.white, -5.8, T + 0.101, 4.84, 0.1, 0.002, 0.04, 0.1);
+  K.cyl(M.white, -6.15, T, 4.82, 0.032, 0.03, 0.15, 14);
+  K.rod(M.white, V(-6.15, T + 0.15, 4.82), V(-6.15, T + 0.2, 4.76), 0.004, 6);
+  K.cube(M.yellow, -3.0, T + 0.07, 4.82, 0.12, 0.14, 0.1);
+  // test tube rack (station C)
+  const rack = { x: -4.6, z: 4.61, tubes: [] };
+  {
+    const { x, z } = rack;
+    K.cube(M.white, x, T + 0.02, z, 0.27, 0.01, 0.07);
+    K.cube(M.white, x, T + 0.075, z, 0.27, 0.01, 0.07);
+    for (const s of [-1, 1]) K.cube(M.white, x + s * 0.13, T + 0.04, z, 0.01, 0.08, 0.07);
+    for (let i = 0; i < 8; i++) {
+      const tx = x - 0.105 + i * 0.03;
+      K.add(U.glass, testTube(), tx, T + 0.01, z);
+      const lvl = 0.025 + ((i * 37) % 5) * 0.008;
+      K.cyl(liquids[i % 4], tx, T + 0.013, z, 0.0068, 0.0068, lvl, 8);
+      rack.tubes.push(V(tx, T + 0.112, z));
+    }
+  }
+  // monitor + keyboard (station R), gas turret with a handwheel and a gauge
+  const mon = { x: -3.2, z: 4.46, yaw: -0.87 };
+  {
+    const { x, z, yaw } = mon;
+    K.cube(M.dark, x, T + 0.008, z, 0.2, 0.016, 0.16, yaw);
+    K.cube(M.dark, x, T + 0.12, z - 0.02, 0.04, 0.22, 0.03, yaw);
+    const sc = V(x, T + 0.27, z);
+    K.cube(M.black, sc.x, sc.y, sc.z, 0.44, 0.27, 0.03, yaw);
+    K.plane(U.screen, 0.4, 0.23, sc.x + Math.sin(yaw) * 0.016, sc.y, sc.z + Math.cos(yaw) * 0.016, [0, yaw, 0], SCREEN.spectrum, 1024, 512);
+    mon.screen = sc;
+  }
+  K.cube(M.black, -3.88, T + 0.01, 4.82, 0.38, 0.02, 0.13, 0.05);
+  K.cube(M.dark, -3.88, T + 0.021, 4.82, 0.35, 0.003, 0.1, 0.05);
+  K.cube(M.black, -3.62, T + 0.012, 4.82, 0.05, 0.024, 0.08);
+  const turret = { x: -3.5, z: 4.72 };
+  {
+    const { x, z } = turret;
+    K.cyl(M.steel, x, T, z, 0.022, 0.022, 0.02, 12);
+    K.cyl(M.steel, x, T, z, 0.012, 0.012, 0.24, 10);
+    K.rod(M.steel, V(x, T + 0.16, z), V(x, T + 0.16, z + 0.07), 0.006, 8);
+    K.cyl(M.dark, x, T + 0.12, z - 0.02, 0.036, 0.036, 0.02, 20, [Math.PI / 2, 0, 0]);
+    K.plane(M.signs, 0.062, 0.062, x, T + 0.12, z - 0.0305, [0, Math.PI, 0], SIGN.gauge);
+    K.plane(M.signs, 0.062, 0.062, x, T + 0.12, z - 0.0095, [0, 0, 0], SIGN.gauge);
+  }
+
+  // ------------------------------------------------ Nadja's moving props
+  const plastic = new THREE.MeshStandardMaterial({ color: 0xdcdfe2, roughness: 0.45 });
+  const darkPlastic = new THREE.MeshStandardMaterial({ color: 0x2b3036, roughness: 0.5 });
+  const mk = (geo, mat, parent, x = 0, y = 0, z = 0) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(x, y, z);
+    m.castShadow = true;
+    m.receiveShadow = true;
+    if (mat.transparent) m.renderOrder = -1;
+    parent.add(m);
+    return m;
+  };
+  const vessel = (kind, x, z) => {
+    const o = new THREE.Group();
+    o.position.set(x, T, z);
+    let liquid, lip;
+    if (kind === 'flask') {
+      mk(erlenmeyer(), U.glass, o).castShadow = false;
+      liquid = mk(erlenLiquid(), U.blue, o);
+      lip = V(0, 0.153, 0);
+    } else {
+      const g = new THREE.CylinderGeometry(0.036, 0.034, 0.1, 18, 1, true);
+      g.translate(0, 0.05, 0);
+      mk(g, U.glass, o).castShadow = false;
+      mk(new THREE.CircleGeometry(0.034, 18).rotateX(-Math.PI / 2).translate(0, 0.001, 0), U.glass, o);
+      const lg = new THREE.CylinderGeometry(0.033, 0.033, 0.07, 16);
+      lg.translate(0, 0.035, 0);
+      liquid = mk(lg, U.blue, o);
+      liquid.position.y = 0.002;
+      lip = V(0, 0.1, 0);
+    }
+    liquid.castShadow = false;
+    dyn.add(o);
+    return { obj: o, liquid, lip, level: 0.5 };
+  };
+  const flask = vessel('flask', -4.44, 4.78);
+  flask.level = 0.8;
+  const beaker = vessel('beaker', -4.7, 4.79);
+  beaker.level = 0.3;
+  // micropipette hanging in its stand (origin = the grip, axis +y)
+  const pipette = new THREE.Group();
+  {
+    mk(new THREE.CylinderGeometry(0.012, 0.01, 0.13, 12), plastic, pipette);
+    mk(new THREE.CylinderGeometry(0.005, 0.005, 0.035, 8), darkPlastic, pipette, 0, 0.08, 0);
+    mk(new THREE.SphereGeometry(0.009, 10, 6), U.blue, pipette, 0, 0.1, 0).castShadow = false;
+    mk(new THREE.BoxGeometry(0.012, 0.03, 0.02), plastic, pipette, 0, 0.045, 0.015);
+    mk(new THREE.CylinderGeometry(0.004, 0.0012, 0.05, 8).translate(0, -0.09, 0), new THREE.MeshStandardMaterial({ color: 0xf2e9c8, roughness: 0.3 }), pipette);
+    pipette.position.set(-4.26, T + 0.15, 4.72);
+    dyn.add(pipette);
+    K.cube(M.white, -4.26, T + 0.005, 4.7, 0.08, 0.01, 0.08);
+    K.cube(M.white, -4.26, T + 0.12, 4.67, 0.02, 0.24, 0.02);
+    K.cube(M.white, -4.26, T + 0.215, 4.695, 0.03, 0.01, 0.05);
+  }
+  const tip = V(0, -0.115, 0); // pipette tip in its own frame
+  // clipboard with a paper and a pen (origin = board center, +y = paper normal, +z = the clip end)
+  const clipboard = new THREE.Group();
+  const pen = new THREE.Group();
+  {
+    mk(new THREE.BoxGeometry(0.23, 0.006, 0.31), new THREE.MeshStandardMaterial({ color: 0x6b4a2c, roughness: 0.8 }), clipboard);
+    const paper = atlasPlane(0.21, 0.27, SIGN.paper);
+    paper.rotateX(-Math.PI / 2);
+    paper.rotateY(Math.PI); // text reads from the clip end toward her
+    mk(paper, new THREE.MeshStandardMaterial({ map: signTex, roughness: 0.8 }), clipboard, 0, 0.0035, -0.01);
+    mk(new THREE.BoxGeometry(0.1, 0.012, 0.035), new THREE.MeshStandardMaterial({ color: 0xb0b6bb, metalness: 0.8, roughness: 0.3 }), clipboard, 0, 0.007, 0.135);
+    clipboard.position.set(-4.87, T + 0.003, 4.72);
+    clipboard.rotation.y = Math.PI + 0.12;
+    dyn.add(clipboard);
+    mk(new THREE.CylinderGeometry(0.0045, 0.0045, 0.13, 8), darkPlastic, pen);
+    mk(new THREE.ConeGeometry(0.0045, 0.012, 8).rotateX(Math.PI).translate(0, -0.071, 0), new THREE.MeshStandardMaterial({ color: 0xc0c4c8, metalness: 0.9, roughness: 0.3 }), pen);
+    mk(new THREE.CylinderGeometry(0.0052, 0.0052, 0.02, 8), U.blue, pen, 0, 0.055, 0);
+    pen.position.set(0.075, 0.012, -0.02);
+    pen.rotation.set(Math.PI / 2, 0, 0.2);
+    clipboard.add(pen);
+  }
+  // gas turret handwheel (turns while she works it)
+  const wheel = new THREE.Group();
+  {
+    const red = new THREE.MeshStandardMaterial({ color: 0xa11d19, roughness: 0.5 });
+    const g = [new THREE.TorusGeometry(0.03, 0.005, 6, 18).rotateX(Math.PI / 2)];
+    for (const a of [0, Math.PI / 3, (2 * Math.PI) / 3]) g.push(new THREE.BoxGeometry(0.06, 0.004, 0.005).rotateY(a));
+    mk(mergeGeometries(g.map((x) => (x.deleteAttribute('uv'), x))), red, wheel);
+    wheel.position.set(turret.x, T + 0.245, turret.z);
+    dyn.add(wheel);
+  }
+  const stream = mk(new THREE.CylinderGeometry(0.0035, 0.0025, 1, 6).translate(0, -0.5, 0), U.blue, dyn);
+  stream.visible = false;
+  stream.castShadow = false;
+  return {
+    top: T,
+    floor: FB,
+    edge: 4.92, // z of the counter top's near (her) edge
+    stations: { C: V(-4.6, FB, 5.06), L: V(-5.35, FB, 5.06), R: V(-3.85, FB, 5.06) },
+    flask,
+    beaker,
+    pipette: { obj: pipette, tip },
+    clipboard: { obj: clipboard },
+    pen: { obj: pen },
+    rack: rack.tubes,
+    scope: { eye: V(scope.x, T + 0.43, scope.z + 0.1), knobL: V(scope.x - 0.062, T + 0.1, scope.z - 0.09), knobR: V(scope.x + 0.062, T + 0.1, scope.z - 0.09), slide: V(scope.x, T + 0.16, scope.z + 0.03) },
+    monitor: { screen: mon.screen, keys: V(-3.88, T + 0.02, 4.82), mouse: V(-3.62, T + 0.02, 4.82) },
+    valve: { wheel, top: V(turret.x, T + 0.245, turret.z), gauge: V(turret.x, T + 0.12, turret.z - 0.03) },
+    stream,
+  };
+}
+
+/**
+ * Move a station built by buildNadjaStation by `off` (a Vector3): its Kit geometry (`parts`: the Kit it was built
+ * into, alone), its moving props, and every point of the work contract. Returns the moved work part.
+ */
+export function offsetStation(st, parts, off) {
+  for (const geos of parts.values()) for (const g of geos) g.translate(off.x, off.y, off.z);
+  for (const o of [st.flask.obj, st.beaker.obj, st.pipette.obj, st.clipboard.obj, st.valve.wheel]) o.position.add(off);
+  const p = (v) => v.clone().add(off);
+  return {
+    ...st,
+    top: st.top + off.y,
+    floor: st.floor + off.y,
+    edge: st.edge + off.z,
+    stations: { C: p(st.stations.C), L: p(st.stations.L), R: p(st.stations.R) },
+    rack: st.rack.map(p),
+    scope: { eye: p(st.scope.eye), knobL: p(st.scope.knobL), knobR: p(st.scope.knobR), slide: p(st.scope.slide) },
+    monitor: { screen: p(st.monitor.screen), keys: p(st.monitor.keys), mouse: p(st.monitor.mouse) },
+    valve: { wheel: st.valve.wheel, top: p(st.valve.top), gauge: p(st.valve.gauge) },
+  };
+}
+
 /** plane geometry (normal +z) whose UVs cover atlas region `rect` ([x, y, w, h] px) of a W x H canvas */
-function atlasPlane(w, h, rect, W = 1024, H = 1024) {
+export function atlasPlane(w, h, rect, W = 1024, H = 1024) {
   const g = new THREE.PlaneGeometry(w, h);
   const [rx, ry, rw, rh] = rect;
   const uv = g.attributes.uv;

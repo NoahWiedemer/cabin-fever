@@ -4,6 +4,8 @@
 // (yet) are hidden, as are equipment entries whose `requires` weapon is missing.
 import { WEAPONS } from '../player/weaponDefs.js';
 import { giveAkimbo } from '../player/akimbo.js';
+import { OPTICS, RAILED } from '../player/optics.js';
+import { WEAPON_UNLOCKS, weaponUnlocked } from './progress.js';
 import { SLOT_LABEL, ONE_PER_SLOT, GRENADIER, MAG_VEST, GLOVES, BOOTS, DEFIB, PACK_SLOT } from './gear.js';
 
 // slot 0 = primary, slot 1 = secondary (replaces the M9). `upg` scales upgrade prices. `akimbo`: price
@@ -14,21 +16,30 @@ export const SHOP_WEAPONS = [
   { id: 'm16a2', slot: 0, price: 1500, type: '3-ROUND BURST RIFLE', icon: 'rifle' },
   { id: 'spas12', slot: 0, price: 1800, type: 'COMBAT SHOTGUN', icon: 'shotgun' },
   { id: 'p90', slot: 0, price: 2000, type: 'SUBMACHINE GUN', icon: 'rifle' },
+  { id: 'g36c', slot: 0, price: 2200, type: 'COMPACT ASSAULT RIFLE', icon: 'rifle', upg: 1.1 },
   { id: 'r201', slot: 0, price: 2400, type: 'ASSAULT RIFLE', icon: 'rifle', upg: 1.15 },
+  { id: 'ak47', slot: 0, price: 2600, type: 'ASSAULT RIFLE · 7.62 MM', icon: 'rifle', upg: 1.2 },
+  { id: 'awm', slot: 0, price: 3600, type: 'SNIPER RIFLE · BOLT ACTION', icon: 'sniper', upg: 1.25 },
   { id: 'devotion', slot: 0, price: 3800, type: 'LIGHT MACHINE GUN', icon: 'lmg', upg: 1.3 },
   { id: 'sigma', slot: 0, price: 4500, type: 'HEAVY MACHINE GUN', icon: 'lmg', upg: 1.4 },
   { id: 'mg42', slot: 0, price: 4800, type: 'BELT-FED MACHINE GUN', icon: 'lmg', upg: 1.4 },
+  { id: 'axmc', slot: 0, price: 5400, type: 'SNIPER RIFLE · .338 MAGNUM', icon: 'sniper', upg: 1.45 },
+  // career-locked (game/progress.js WEAPON_UNLOCKS): shown with how to earn it until then; one belt, refilled
+  // by the ammo crate like the other guns' reserves
+  { id: 'chaingun', slot: 0, price: 7500, type: 'MINIGUN · ONE BELT', icon: 'lmg', upg: 1.5 },
   { id: 'm9', slot: 1, price: 0, type: 'PISTOL', icon: 'pistol', upg: 0.6, akimbo: 2500 },
   { id: 'mozambique', slot: 1, price: 700, type: 'SHOTGUN PISTOL', icon: 'pistol', upg: 0.7, akimbo: 3200 },
 ];
 
-// Per-weapon upgrades: `costs[n]` buys level n+1, `mult[level]` is the stat multiplier.
+// Per-weapon upgrades: `costs[n]` buys level n+1, `mult[level]` is the stat multiplier (pen: bodies added to the
+// def's penetration, sniper rifles only: see upgradesFor).
 export const MAX_LEVEL = 3;
 export const UPGRADES = [
   { key: 'dmg', name: 'DAMAGE', short: 'DMG', costs: [450, 900, 1600], mult: [1, 1.15, 1.32, 1.5] },
   { key: 'mag', name: 'MAGAZINE', short: 'MAG', costs: [300, 650, 1200], mult: [1, 1.25, 1.5, 2] },
   { key: 'reload', name: 'RELOAD SPEED', short: 'RLD', costs: [300, 650, 1200], mult: [1, 0.85, 0.72, 0.6] },
   { key: 'rate', name: 'FIRE RATE', short: 'ROF', costs: [400, 850, 1500], mult: [1, 1.08, 1.16, 1.25] },
+  { key: 'pen', name: 'PENETRATION', short: 'PEN', costs: [600, 1100, 1800], mult: [0, 1, 2, 3] },
 ];
 const UPG = Object.fromEntries(UPGRADES.map((u) => [u.key, u]));
 
@@ -64,6 +75,26 @@ export const SHOP_EQUIPMENT = [
     key: 'pipebomb', name: 'PIPE BOMB', type: 'LURES THE HORDE · THEN BLOWS', icon: 'pipebomb', price: 1200, max: 1, carry: true, requires: 'pipebomb',
     count: (g) => g.weapons.pipebombs ?? 0,
     give: (g) => { g.weapons.pipebombs = (g.weapons.pipebombs ?? 0) + 1; },
+  },
+  {
+    // heals the fireteam in its cloud (game.js healCloud); `track`: a per-match upgrade bought from the same card
+    // (the MEDIC levels, weaponDefs.js healnade.levels: bigger, stronger, longer; the top one revives the downed)
+    key: 'healnade', name: 'HEAL GRENADE', type: 'HEALS YOU + THE TEAM IN ITS CLOUD', icon: 'healnade', price: 450, max: 2, carry: true, requires: 'healnade',
+    count: (g) => g.weapons.healnades ?? 0,
+    give: (g) => { g.weapons.healnades = (g.weapons.healnades ?? 0) + 1; },
+    track: {
+      name: 'MEDIC', costs: [700, 1300],
+      level: (g) => g.weapons.healLevel ?? 0,
+      value: (lv) => {
+        const L = WEAPONS.healnade.levels[Math.min(lv, 2)];
+        return L.revive ? 'REVIVES' : `${L.hps} HP/s`;
+      },
+      desc: (lv) => {
+        const L = WEAPONS.healnade.levels[Math.min(lv, 2)];
+        return `${L.radius} m · ${L.hps} HP/s${L.aps ? ` · +${L.aps} AP/s` : ''} · ${L.dur} s${L.revive ? ' · GETS THE DOWNED UP' : ''}`;
+      },
+      apply: (g) => { g.weapons.healLevel = Math.min(2, (g.weapons.healLevel ?? 0) + 1); },
+    },
   },
   {
     key: 'barricade', name: 'BARRICADE KIT', type: 'PLANKS + NAILS · BOARD UP A DOOR', icon: 'barricade',
@@ -133,6 +164,8 @@ export const SHOP_EQUIPMENT = [
     'Recharges every round',
   ]),
   gearItem('machete', 'belt', 'MACHETE', 'REPLACES THE KNIFE · SLOT 3', 'machete', 500, ['Double melee damage, faster swing', 'Cuts a Biter down in one hit']),
+  gearItem('tomahawk', 'belt', 'TOMAHAWK', 'REPLACES THE KNIFE · SLOT 3', 'tomahawk', 750, ['The hardest chop on the belt', 'Cuts a Biter or a dog down in one hit']),
+  gearItem('bat', 'belt', 'BASEBALL BAT', 'REPLACES THE KNIFE · SLOT 3', 'bat', 650, ['Two hands: a slow, wide swing', 'Hits up to three and knocks them back', 'Heavy: an overhead smash']),
 ];
 
 /** A plain gear entry: bought once, worn on `slot` (game/gear.js does the effect). `short`: card label. */
@@ -188,6 +221,7 @@ function deriveDef(base, lv) {
   const f = mult('rate', lv.rate);
   if (base.rpm) d.rpm = base.rpm * f;
   for (const k of CYCLE_KEYS) if (base[k]) d[k] = base[k] / f;
+  if (lv.pen) d.penetration = (base.penetration ?? 0) + mult('pen', lv.pen);
   return d;
 }
 
@@ -214,10 +248,10 @@ export function shopEquipment() {
   return SHOP_EQUIPMENT.filter((e) => !e.requires || WEAPONS[e.requires]);
 }
 
-/** Upgrades that make sense for a weapon def (no mag/reload on belt-fed guns, etc). */
+/** Upgrades that make sense for a weapon def (no mag/reload on belt-fed guns, penetration on the sniper rifles). */
 export function upgradesFor(base) {
   const reloads = !!base?.mag && !base.noReload;
-  return UPGRADES.filter((u) => (u.key === 'dmg' ? base?.damage : u.key === 'rate' ? base?.rpm : reloads));
+  return UPGRADES.filter((u) => (u.key === 'dmg' ? base?.damage : u.key === 'rate' ? base?.rpm : u.key === 'pen' ? base?.ammoKind === 'sniper' : reloads));
 }
 
 export function upgradeCost(entry, key, level) {
@@ -244,7 +278,9 @@ export function weaponState(game, e) {
   const w = game.weapons;
   const owned = !!w.owned?.has(e.id);
   const where = weaponSlotOf(w, e);
-  return { owned, equipped: where >= 0, where, afford: owned || game.economy.canAfford(game.player, price(e.price)) };
+  const locked = !owned && !weaponUnlocked(e.id); // (the career hasn't earned it yet: `how` says what will)
+  const how = locked ? WEAPON_UNLOCKS.find((u) => u.id === e.id)?.how : null;
+  return { owned, equipped: where >= 0, where, locked, how, afford: owned || game.economy.canAfford(game.player, price(e.price)) };
 }
 
 /** True when the weapon backpack is worn: primaries then pick a slot (0 or PACK_SLOT). */
@@ -322,6 +358,7 @@ export function buyWeapon(game, id, target = null) {
     return { ok: true, msg: `${def.name} MOVED${where || ' · SLOT 1'}` };
   }
   if (!w.owned.has(id)) {
+    if (!weaponUnlocked(id)) return { ok: false, msg: (WEAPON_UNLOCKS.find((u) => u.id === id)?.how ?? 'LOCKED').toUpperCase(), sound: 'dryfire' };
     if (!game.economy.spend(game.player, price(e.price))) return NO_CASH;
     w.owned.add(id);
     w.equipFromStore(id, slot);
@@ -359,6 +396,52 @@ export function buyAkimbo(game, id) {
   if (!game.economy.spend(game.player, price(e.akimbo))) return NO_CASH;
   giveAkimbo(w, id);
   return { ok: true, msg: `AKIMBO ${WEAPONS[id].name}`, sound: 'pickup_weapon', cost: price(e.akimbo) };
+}
+
+// ------------------------------------------------------------------ optics (player/optics.js)
+/** The optics row of an owned store gun with a rail: [{ kind, name, cost, own, on, afford }], or null. */
+export function opticsState(game, e) {
+  const w = game.weapons;
+  if (!e || !RAILED.has(e.id) || !w.owned?.has(e.id)) return null;
+  const o = w.optics?.[e.id] ?? { own: [], on: null };
+  return RAILED.get(e.id).map((kind) => {
+    const cost = price(OPTICS[kind].price);
+    const own = o.own.includes(kind);
+    return { kind, name: OPTICS[kind].name, cost, own, on: o.on === kind, afford: own || game.economy.canAfford(game.player, cost) };
+  });
+}
+
+/** Mount optic `kind` on store gun `id` (buying it the first time), or kind null for the iron sights. */
+export function buyOptic(game, id, kind) {
+  const w = game.weapons;
+  if (!RAILED.has(id) || !w.owned?.has(id)) return { ok: false, msg: 'UNAVAILABLE' };
+  const o = w.optics?.[id] ?? { own: [], on: null };
+  if (!kind) {
+    w.setOptic(id, null);
+    return { ok: true, msg: `${WEAPONS[id].name} · IRON SIGHTS`, sound: 'weapon_switch' };
+  }
+  const O = OPTICS[kind];
+  if (!O || !RAILED.get(id).includes(kind)) return { ok: false, msg: 'UNAVAILABLE' };
+  if (o.own.includes(kind)) {
+    w.setOptic(id, kind);
+    return { ok: true, msg: `${O.name} ON`, sound: 'weapon_switch' };
+  }
+  if (!game.economy.spend(game.player, price(O.price))) return NO_CASH;
+  w.setOptic(id, kind);
+  return { ok: true, msg: `${O.name} · ${WEAPONS[id].name}`, sound: 'pickup_weapon', cost: price(O.price) };
+}
+
+/** The next level of a consumable's `track` (the heal grenade's MEDIC). */
+export function buyTrack(game, key) {
+  const it = SHOP_EQUIPMENT.find((i) => i.key === key);
+  const u = it?.track;
+  if (!u) return { ok: false, msg: 'UNAVAILABLE' };
+  const lv = u.level(game);
+  const c = u.costs[lv];
+  if (c == null) return { ok: false, msg: 'MAXED OUT' };
+  if (!game.economy.spend(game.player, price(c))) return NO_CASH;
+  u.apply(game);
+  return { ok: true, msg: `${it.name} · ${u.name} ${lv + 2}`, sound: 'pickup_weapon', cost: price(c) };
 }
 
 export function buyEquipment(game, key) {

@@ -40,8 +40,12 @@ export const GEAR_SLOT = {
   gloves: 'hands',
   boots: 'feet',
   machete: 'belt',
+  tomahawk: 'belt',
+  bat: 'belt',
   shockwave: 'pocket',
 };
+// the belt's melee weapons: worn, one takes the knife's place in slot 3 (weaponDefs.js has their stats)
+export const MELEE_GEAR = new Set(['machete', 'tomahawk', 'bat']);
 
 export class Gear {
   constructor(game) {
@@ -121,7 +125,7 @@ export class Gear {
   _apply(key, on) {
     const w = this.game?.weapons;
     if (key === 'backpack') w?.setBackpack?.(on);
-    else if (key === 'machete') w?.setMelee?.(on ? MACHETE.id : 'knife');
+    else if (MELEE_GEAR.has(key)) w?.setMelee?.(on ? key : 'knife');
     else if (key === 'gloves') tintGloves(on);
   }
 

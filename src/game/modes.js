@@ -62,6 +62,6 @@ export const THREATS = [
   { round: 2, name: 'BOOMERS', text: 'Bloated, they burst: shoot them early' },
   { round: 3, name: 'MUTANT DOGS', text: 'Fast, low and in packs' },
   { round: 4, name: 'BITERS', text: 'Packs that pounce onto your back: mash V' },
-  { round: 5, name: 'STRIKERS', text: 'Leaping, and they drop live shells' },
+  { round: 5, name: 'STRIKERS', text: 'Leaping, and they burst into flesh pods that blow' },
   { round: 11, name: 'CRUSHERS', text: 'Armored tanks that leave acid behind' },
 ];

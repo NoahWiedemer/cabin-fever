@@ -473,6 +473,35 @@ export class Effects {
     this.audio.play('boomer_burst', { position: p, volume: 1 });
   }
 
+  /**
+   * A Striker's flesh pod bursting (game/projectiles.js; the blast itself is game.explode's): a spray of blood, a few
+   * scraps of meat, a red puff and some splats round it. A small cousin of fleshBurst: three of them go at once.
+   */
+  podBurst(p) {
+    const blood = [0.2, 0.012, 0.01], dark = [0.09, 0.008, 0.006];
+    for (let i = 0; i < 3; i++) {
+      _v.set(rand(-1, 1), rand(0.5, 1.3), rand(-1, 1)).normalize().multiplyScalar(rand(2.5, 5.5));
+      _n.set(p.x + rand(-0.05, 0.05), p.y + 0.05, p.z + rand(-0.05, 0.05));
+      this.gib(_n, _v, rand(0.035, 0.06));
+    }
+    for (let i = 0; i < 45; i++) {
+      _v.set(rand(-1, 1), rand(-0.1, 1.2), rand(-1, 1)).normalize().multiplyScalar(rand(2, 7));
+      this.blood.emit(p.x, p.y + 0.05, p.z, _v.x, _v.y, _v.z, { life: rand(0.35, 0.9), size: rand(0.02, 0.05), gravity: 9.8, drag: 1, color: Math.random() < 0.3 ? dark : blood, alpha: 1 });
+    }
+    for (let i = 0; i < 3; i++) {
+      this.smoke.emit(p.x + rand(-0.15, 0.15), p.y + rand(0.05, 0.3), p.z + rand(-0.15, 0.15), rand(-0.5, 0.5), rand(0, 0.4), rand(-0.5, 0.5), {
+        life: rand(0.6, 1.1), size: rand(0.35, 0.6), grow: 1.4, drag: 2.4, gravity: 0.3, color: [0.12, 0.012, 0.01], alpha: 0.5,
+      });
+    }
+    for (let i = 0; i < 4; i++) {
+      const a = Math.random() * Math.PI * 2, r = rand(0.1, 1.4);
+      const x = p.x + Math.cos(a) * r, z = p.z + Math.sin(a) * r;
+      const down = this.decalRay(x, p.y + 0.4, z, 0, -1, 0, 1.5);
+      if (down) this.splat(_v.set(x, p.y + 0.4 - down.t, z), UP, rand(0.3, 0.7), 1, down.box);
+    }
+    this.audio.play('gore_explode', { position: p, volume: 0.55 });
+  }
+
   /** Burning fuel pool (Molotov): ground flames, smoke and a flickering light. Visual only. */
   fireZone(p, radius = 3, duration = 7) {
     this.fireZones.push({ p: p.clone(), radius, life: duration, max: duration, emitT: 0, lightT: 0 });

@@ -5,7 +5,7 @@ import { GameRenderer } from './core/renderer.js';
 import { Input } from './core/input.js';
 import { AudioSystem } from './core/audio.js';
 import { HUD } from './ui/hud.js';
-import { Menu } from './ui/menu.js';
+import { Menu, CROSSHAIRS } from './ui/menu.js';
 import { Store } from './ui/store.js';
 import { Draft } from './ui/draft.js';
 import { MenuMusic } from './ui/music.js';
@@ -100,6 +100,7 @@ const menu = new Menu(document.getElementById('menu'), {
     music.setVolume(settings.volume ?? 0.8, settings.music ?? 0.9);
     if (gr.qualityName !== settings.quality) gr.setQuality(settings.quality);
     hud.setFps(settings.showFps ? 0 : null);
+    hud.root.style.setProperty('--xc', CROSSHAIRS[settings.crosshair] ?? '#fff'); // (the crosshair colour)
     // the switch is a click, so fullscreen can follow right away; refused, the switch goes back off
     if (fsChanged && settings.fullscreen) fullscreen.enter().catch(() => menu.setSetting('fullscreen', false));
     else if (fsChanged) fullscreen.exit();
@@ -198,6 +199,7 @@ function lockOnEscUp() {
 
 const settings = { ...menu.getSettings() };
 music.setVolume(settings.volume ?? 0.8, settings.music ?? 0.9);
+hud.root.style.setProperty('--xc', CROSSHAIRS[settings.crosshair] ?? '#fff');
 
 // FULLSCREEN setting: a browser only goes fullscreen on a user gesture, so with the setting on it's
 // (re-)entered on the next one: the first click after loading, deploy, resume, a click back into the

@@ -1,5 +1,6 @@
 // Physical projectiles: frag grenades (bounce, fuse), 40mm rounds (impact), Molotovs (shatter on
-// impact into a fire pool), Striker death shells, and the store's specials:
+// impact into a fire pool), the Striker's flesh pods (fx/fleshPod.js: they stick where they land, beat faster
+// and faster, swell and blow), and the store's specials:
 //   mine       the M16A1 bounding mine: it lands, stands up, arms (a click, a slow red blink), and when an
 //              infected or a NOX operative steps within def.trigger it clicks, jumps to waist height and bursts
 //              (no friendly fire)
@@ -11,7 +12,8 @@ import { rand } from '../core/utils.js';
 import { FLAG_NOBULLET } from '../world/collision.js';
 import { getGLB } from '../core/assets.js';
 import { MODELS } from '../core/assetList.js';
-import { buildCharge, buildMineModel } from '../player/throwables.js';
+import { buildCharge, buildMineModel, buildHealCanister } from '../player/throwables.js';
+import { buildFleshPod, POD_R } from '../fx/fleshPod.js';
 
 const _hit = {};
 const _rag = new THREE.Vector3();
@@ -19,8 +21,8 @@ const _tip = new THREE.Vector3();
 const _qa = new THREE.Quaternion(), _qb = new THREE.Quaternion(), _qc = new THREE.Quaternion();
 const _UP = new THREE.Vector3(0, 1, 0), _Z = new THREE.Vector3(0, 0, 1);
 const filter = (b) => (b.flags & FLAG_NOBULLET) === 0;
-const CHARGE_SCALE = 1.5; // chunky enough to read at combat distance (~26 cm pipe)
 const MINES_MAX = 8; // planted at once: the oldest goes when a ninth lands
+const PIPE_SCALE = 1.25; // the pipe bomb, chunky enough to read at a distance (~22 cm pipe)
 
 export class Projectiles {
   constructor(game, scene) {
@@ -37,6 +39,7 @@ export class Projectiles {
     this.roundGeo.rotateX(Math.PI / 2);
     this.roundMat = new THREE.MeshStandardMaterial({ color: 0x9a8a40, metalness: 0.7, roughness: 0.4 });
     this.chargeProto = buildCharge();
+    this.podProto = buildFleshPod();
   }
 
   _add(mesh, p) {
@@ -56,6 +59,13 @@ export class Projectiles {
   throwFrag(pos, vel, owner, def) {
     const mesh = this.fragProto.clone();
     return this._add(mesh, { kind: 'frag', pos: pos.clone(), vel: vel.clone(), fuse: def.fuse, owner, def, spin: new THREE.Vector3(rand(-12, 12), rand(-12, 12), rand(-12, 12)), bounces: 0, radius: 0.05 });
+  }
+
+  /** a heal grenade: bounces like a frag, then pops its cloud where it lies (game.healCloud; `level`: its MEDIC level) */
+  throwHeal(pos, vel, owner, def, level = 0) {
+    const mesh = (this.healProto ??= buildHealCanister()).clone(true);
+    mesh.getObjectByName('ring')?.removeFromParent(); // (the pin came out with the throw)
+    return this._add(mesh, { kind: 'heal', pos: pos.clone(), vel: vel.clone(), fuse: def.fuse, owner, def, level, spin: new THREE.Vector3(rand(-9, 9), rand(-9, 9), rand(-9, 9)), bounces: 0, radius: 0.035 });
   }
 
   _mineProto() {
@@ -85,7 +95,7 @@ export class Projectiles {
     led.material = led.material.clone();
     const glow = mesh.getObjectByName('glow');
     glow.material = glow.material.clone();
-    mesh.scale.setScalar(1.25);
+    mesh.scale.setScalar(PIPE_SCALE);
     return this._add(mesh, {
       kind: 'pipebomb',
       pos: pos.clone(),
@@ -208,44 +218,78 @@ export class Projectiles {
     return p;
   }
 
-  strikerShells(pos) {
+  /** A dead Striker bursts into three flesh pods (fx/fleshPod.js), thrown out round it. */
+  strikerPods(pos) {
     for (let i = 0; i < 3; i++) {
       const a = (i / 3) * Math.PI * 2 + rand(-0.4, 0.4);
       const v = new THREE.Vector3(Math.cos(a) * rand(2, 3.5), rand(2.5, 4), Math.sin(a) * rand(2, 3.5));
-      const mesh = this.chargeProto.clone(true);
-      // own LED / halo materials so the three timers blink independently
-      const led = mesh.getObjectByName('led');
-      led.material = led.material.clone();
+      const mesh = this.podProto.clone(true);
+      // own materials, so the three beat out of step
+      const sac = mesh.getObjectByName('sac');
+      sac.material = sac.material.clone();
       const glow = mesh.getObjectByName('glow');
       glow.material = glow.material.clone();
-      mesh.rotation.set(rand(0, 6.3), rand(0, 6.3), rand(0, 6.3));
-      mesh.scale.setScalar(CHARGE_SCALE);
+      sac.rotation.set(rand(0, 6.3), rand(0, 6.3), rand(0, 6.3)); // (the sac turns, the group stays level: see _pod)
       this._add(mesh, {
-        kind: 'shell',
+        kind: 'pod',
         pos: pos.clone().add(new THREE.Vector3(0, 1.1, 0)),
         vel: v,
         fuse: 1.4 + i * 0.25,
         owner: null,
         def: { damage: 55, radius: 3.6 },
         bounces: 0,
-        radius: 0.04 * CHARGE_SCALE,
-        spin: new THREE.Vector3(rand(-14, 14), rand(-6, 6), rand(-14, 14)),
-        led,
+        radius: POD_R * 0.9,
+        tumble: new THREE.Vector3(rand(-9, 9), rand(-5, 5), rand(-9, 9)),
+        sac,
         glow,
-        tip: mesh.getObjectByName('fuseTip'),
-        blink: 0,
+        beat: 0,
+        beatT: rand(0, 0.2),
+        squash: 0,
       });
     }
   }
 
-  /** Striker charge: roll when on the ground, timer LED + beep speeding up, fuse sparks. */
+  /** A flesh pod: it beats faster and faster (the sac throbs, the veins flare, a wet thump), swells at the end. */
+  _pod(p, dt) {
+    const game = this.game;
+    const period = Math.max(0.09, Math.min(0.42, p.fuse * 0.3));
+    p.beatT += dt;
+    if (p.beatT >= period && p.fuse > 0.12) {
+      p.beatT = 0;
+      p.beat = 1;
+      game.audio.play('pod_pulse', { position: p.pos, volume: 0.6, pitch: 1 + (1.6 - Math.min(1.6, p.fuse)) * 0.35 });
+    }
+    p.beat = Math.max(0, p.beat - dt * 7);
+    // it tumbles in the air (the sac: the group itself stays level, so the squash below flattens it onto the floor)
+    if (!p.grounded) {
+      const k = (p.bounces ? 0.5 : 1) * dt;
+      p.sac.rotation.x += p.tumble.x * k;
+      p.sac.rotation.y += p.tumble.y * k;
+      p.sac.rotation.z += p.tumble.z * k;
+    }
+    p.squash = Math.max(0, p.squash - dt * 6); // the slap when it lands
+    const swell = 1 - Math.min(1, p.fuse / 0.35); // the last moment: it bloats before it goes
+    const s = 1 + 0.16 * p.beat + 0.3 * swell * swell;
+    const sy = 1 - 0.35 * p.squash;
+    p.mesh.scale.set(s * (1 + 0.2 * p.squash), s * sy, s * (1 + 0.2 * p.squash));
+    p.sac.position.y = (-0.39 * POD_R * p.squash) / sy; // (flattened, its bottom stays on the floor)
+    p.sac.material.emissiveIntensity = 0.3 + 4.5 * p.beat + 7 * swell;
+    p.glow.material.opacity = Math.min(1, 0.15 + 0.7 * p.beat + swell);
+    p.glow.scale.setScalar(0.25 + 0.2 * p.beat + 0.35 * swell);
+    // it oozes
+    if (Math.random() < dt * 5) {
+      game.fx.blood.emit(p.pos.x, p.pos.y - POD_R * 0.6, p.pos.z, rand(-0.15, 0.15), rand(-0.4, 0), rand(-0.15, 0.15), { life: rand(0.3, 0.6), size: rand(0.015, 0.03), gravity: 9.8, drag: 1, color: [0.22, 0.015, 0.01], alpha: 1 });
+    }
+  }
+
+  /** The pipe bomb (the store's lure): roll when on the ground, timer LED + beep speeding up, fuse sparks. */
   _charge(p, dt) {
     const game = this.game;
     if (p.grounded) {
       // lying flat, axis across the roll direction, turning with the ground speed (cap radius 3.6 cm, scaled)
       const hs = Math.hypot(p.vel.x, p.vel.z);
       if (hs > 0.05) p.rollDir = Math.atan2(p.vel.x, p.vel.z);
-      p.roll = (p.roll ?? 0) + (hs * dt) / (0.036 * CHARGE_SCALE);
+      p.roll = (p.roll ?? 0) + (hs * dt) / (0.036 * PIPE_SCALE);
       _qa.setFromAxisAngle(_UP, p.rollDir ?? 0);
       _qb.setFromAxisAngle(_Z, Math.PI / 2);
       _qc.setFromAxisAngle(_UP, p.roll);
@@ -324,15 +368,25 @@ export class Projectiles {
                 // reflect
                 const n = new THREE.Vector3(hit.nx, hit.ny, hit.nz);
                 const vn = p.vel.dot(n);
-                p.vel.addScaledVector(n, -(1 + 0.38) * vn);
-                p.vel.multiplyScalar(n.y > 0.5 ? 0.62 : 0.8);
+                if (p.kind === 'pod') {
+                  // meat: hardly any bounce, and it sticks where it slaps down (a wall lets it slide down)
+                  p.vel.addScaledVector(n, -(1 + 0.12) * vn);
+                  p.vel.multiplyScalar(n.y > 0.5 ? 0.18 : 0.35);
+                  if (Math.abs(vn) > 1) p.squash = 1;
+                } else {
+                  p.vel.addScaledVector(n, -(1 + 0.38) * vn);
+                  p.vel.multiplyScalar(n.y > 0.5 ? 0.62 : 0.8);
+                }
                 if (p.spin) p.spin.multiplyScalar(0.7);
-                if ((p.kind === 'shell' || p.kind === 'pipebomb') && n.y > 0.5) {
-                  p.grounded = true; // from here on it lies flat and rolls (see _charge)
+                if ((p.kind === 'pod' || p.kind === 'pipebomb') && n.y > 0.5) {
+                  p.grounded = true; // from here on the pipe bomb lies flat and rolls (see _charge), a pod stays put
                   p.spin = null;
                 }
                 if (p.kind === 'mine' && p.state === 'flying' && n.y > 0.5) this._plant(p);
-                if (Math.abs(vn) > 1.5) game.audio.play(p.kind === 'shell' ? 'shell_casing' : 'grenade_bounce', { position: p.pos, volume: Math.min(1, Math.abs(vn) / 6) });
+                if (Math.abs(vn) > 1.5) {
+                  if (p.kind === 'pod') game.audio.play('impact_flesh', { position: p.pos, volume: Math.min(0.8, Math.abs(vn) / 7), pitch: rand(0.75, 0.95) });
+                  else game.audio.play('grenade_bounce', { position: p.pos, volume: Math.min(1, Math.abs(vn) / 6) });
+                }
                 p.bounces++;
               }
             } else {
@@ -347,7 +401,8 @@ export class Projectiles {
           p.mesh.rotation.z += p.spin.z * dt;
         }
         if (p.kind === 'round40' && sp > 1) p.mesh.lookAt(p.pos.x + p.vel.x, p.pos.y + p.vel.y, p.pos.z + p.vel.z);
-        if (p.kind === 'shell' || p.kind === 'pipebomb') this._charge(p, dt);
+        if (p.kind === 'pipebomb') this._charge(p, dt);
+        else if (p.kind === 'pod') this._pod(p, dt);
         if (p.kind === 'molotov' && Math.random() < 0.8) {
           const r = _rag.copy(p.mesh.userData.rag).applyQuaternion(p.mesh.quaternion).add(p.pos);
           game.fx.fire.emit(r.x, r.y, r.z, rand(-0.2, 0.2), rand(0.3, 0.8), rand(-0.2, 0.2), { life: rand(0.12, 0.25), size: rand(0.12, 0.22), grow: 0.6, drag: 2, gravity: -1, color: [5, 2.6, 1.0], endColor: [1.0, 0.25, 0.05], rotV: rand(-2, 2) });
@@ -363,7 +418,12 @@ export class Projectiles {
           continue;
         }
         if (p.kind === 'pipebomb') game.lureEnd?.(p.lure);
-        const scale = p.kind === 'shell' ? 0.55 : p.kind === 'round40' ? 0.9 : p.kind === 'pipebomb' ? 1.25 : 1;
+        if (p.kind === 'heal') {
+          game.healCloud(p.pos, p.def.levels[Math.min(p.level, p.def.levels.length - 1)], p.owner);
+          continue;
+        }
+        if (p.kind === 'pod') game.fx.podBurst(p.pos); // the meat goes everywhere, with the blast below
+        const scale = p.kind === 'pod' ? 0.55 : p.kind === 'round40' ? 0.9 : p.kind === 'pipebomb' ? 1.25 : 1;
         const weapon = p.kind === 'frag' ? 'm67' : p.kind === 'round40' ? 'm32' : p.kind === 'mine' ? 'mine' : p.kind === 'pipebomb' ? 'pipebomb' : 'striker';
         game.explode(p.pos, p.def.radius, p.def.damage, p.owner, { scale, weapon, friendly: p.kind === 'mine' ? 0 : 1 });
       }

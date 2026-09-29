@@ -1041,7 +1041,10 @@ function buildM4A1() {
 	B.add('park', loft([[-0.377, -0.0042, 0.0042, -0.027, -0.010, 0.001], [-0.3995, -0.0042, 0.0042, -0.027, -0.010, 0.001]]));
 	B.add('park', xf(torus(0.0068, 0.0012, 6, 18), [0, -0.0335, -0.3962], [0, PI / 2, 0]));
 	for (const s of [-1, 1]) for (const z of [-0.3775, -0.3955]) B.add('park', xf(screwHead(0.0014, 0.0003), [s * 0.0096, 0.009, z], [0, s > 0 ? 0 : PI, 0]), 0.8);
+	B.build(body, 'm4a1');
 	/* ---- flip-up rear sight (BUIS), deployed: rail clamp, protective ears, aperture leaf ---- */
+	// (its own group: folded out of the way, i.e. hidden, while an optic sits on the rail, player/optics.js)
+	const buis = grp('buis', body, [0, 0, 0]);
 	const RT = UP_T + RAIL_H; // rail top
 	const SY = M4_SIGHT_Y, AZ = M4_AP_Z;
 	// base: deck on the rail with a sloped nose, clamp jaws down the rail flanks, knurled cross-bolt nut
@@ -1062,7 +1065,7 @@ function buildM4A1() {
 	B.add('anod', xf(cyl(0.0022, 0.0132, 14, 0.0004), [0, RT + 0.0042, AZ], [0, PI / 2, 0]));
 	for (const s of [-1, 1]) B.add('steel', xf(screwHead(0.0014, 0.0004), [s * 0.0104, RT + 0.0042, AZ], [0, s > 0 ? 0 : PI, 0]), TINT.steelDark);
 	for (const g of knurledKnob(0.0040, 0.0036, 14)) B.add('park', xf(g, [0.0122, RT + 0.0125, AZ - 0.0045], [0, PI / 2, 0]));
-	B.build(body, 'm4a1');
+	B.build(buis, 'm4buis');
 
 	/* ---- moving parts ---- */
 	const parts = {};
@@ -1104,8 +1107,10 @@ function buildM4A1() {
 	const leftHand = handTarget('leftHand', body, [0, HC, -0.300], [0.32, 1, 0], [0, 0, -1], true, { rx: 0.031, rz: 0.030, curl: 0.8, thumb: 0.15 });
 	// aiming: the eye on the sight line behind the peep, so the aperture and the post meet at screen centre
 	const eye = new V3(0, M4_SIGHT_Y, M4_AP_Z + M4_EYE_BACK).add(body.position);
+	// the top rail for an optic (player/optics.js), in root space; the BUIS folds away under one
+	const rail = { z0: body.position.z - 0.001, z1: body.position.z - 0.175, sightY: M4_SIGHT_Y + body.position.y, irons: [buis] };
 	return finishWeapon({
-		root, muzzle, ejectPort, rightHand, leftHand, sight: { eye }, parts,
+		root, muzzle, ejectPort, rightHand, leftHand, sight: { eye }, parts, rail,
 		magazineModel: () => magProto.clone(true), shellType: 'rifle',
 	});
 }
@@ -1199,17 +1204,19 @@ function buildM4Super90() {
 	B.add('poly', extrude(foOut, 0.226, { plane: 'xy', bevel: 0.003, bevelSegs: 2, pos: [0, 0, -0.353] }));
 	B.add('poly', loft([[-0.465, -0.024, 0.024, -0.049, -0.006, 0.006], [-0.485, -0.019, 0.019, -0.045, -0.012, 0.007]]));
 	for (const s of [-1, 1]) for (let i = 0; i < 4; i++) B.add('poly', cbox(0.0012, 0.0026, 0.17, 0.0004, [s * 0.0243, -0.008 - i * 0.0085, -0.352]), 0.4);
-	/* ---- ghost ring sights ---- */
-	B.add('anod', loft([[-0.006, -0.0118, 0.0118, RAILT - 0.006, RAILT + 0.0045, 0.0012], [-0.047, -0.0118, 0.0118, RAILT - 0.006, RAILT + 0.0045, 0.0012]]));
-	for (const s of [-1, 1]) B.add('anod', prism([[-0.010, RAILT + 0.003], [-0.043, RAILT + 0.003], [-0.035, 0.0655], [-0.020, 0.0655]], s * 0.0082, s * 0.0122, 0.0007, 'zy'));
-	B.add('anod', loft([[-0.0245, -0.0045, 0.0045, RAILT + 0.003, 0.046, 0.0008], [-0.0315, -0.0045, 0.0045, RAILT + 0.003, 0.046, 0.0008]]));
-	B.add('anod', xf(lathe([[0.0032, 0.0028], [0.0068, 0.0028], [0.0072, 0.0015], [0.0072, -0.0015], [0.0068, -0.0028], [0.0032, -0.0028], [0.0032, 0.0028]], { segs: 24 }), [0, 0.052, -0.028]));
-	B.add('park', xf(cyl(0.0022, 0.03, 10, 0.0005), [0, RAILT + 0.0005, -0.028], [0, PI / 2, 0]));
+	/* ---- ghost ring sights (the rear one in its own group: it comes off for an optic, player/optics.js) ---- */
 	B.add('park', loft([[-0.652, -0.0082, 0.0082, 0.006, 0.0158, 0.0015], [-0.679, -0.0082, 0.0082, 0.006, 0.0158, 0.0015]]));
 	B.add('park', prism([[-0.656, 0.015], [-0.676, 0.015], [-0.6685, 0.0525], [-0.6635, 0.0525]], -0.0016, 0.0016, 0.0004, 'zy'));
 	for (const s of [-1, 1]) B.add('park', prism([[-0.654, 0.012], [-0.678, 0.012], [-0.6705, 0.0565], [-0.6615, 0.0565]], s * 0.0062, s * 0.0092, 0.0006, 'zy'));
 	B.add('tritium', xf(cyl(0.0011, 0.0006, 10), [0, 0.0488, -0.6632]));
 	B.build(body, 'm4super90');
+	const ghost = grp('ghostRing', body, [0, 0, 0]);
+	B.add('anod', loft([[-0.006, -0.0118, 0.0118, RAILT - 0.006, RAILT + 0.0045, 0.0012], [-0.047, -0.0118, 0.0118, RAILT - 0.006, RAILT + 0.0045, 0.0012]]));
+	for (const s of [-1, 1]) B.add('anod', prism([[-0.010, RAILT + 0.003], [-0.043, RAILT + 0.003], [-0.035, 0.0655], [-0.020, 0.0655]], s * 0.0082, s * 0.0122, 0.0007, 'zy'));
+	B.add('anod', loft([[-0.0245, -0.0045, 0.0045, RAILT + 0.003, 0.046, 0.0008], [-0.0315, -0.0045, 0.0045, RAILT + 0.003, 0.046, 0.0008]]));
+	B.add('anod', xf(lathe([[0.0032, 0.0028], [0.0068, 0.0028], [0.0072, 0.0015], [0.0072, -0.0015], [0.0068, -0.0028], [0.0032, -0.0028], [0.0032, 0.0028]], { segs: 24 }), [0, 0.052, -0.028]));
+	B.add('park', xf(cyl(0.0022, 0.03, 10, 0.0005), [0, RAILT + 0.0005, -0.028], [0, PI / 2, 0]));
+	B.build(ghost, 'm4s90ghost');
 
 	/* ---- moving parts ---- */
 	const parts = {};
@@ -1236,8 +1243,10 @@ function buildM4Super90() {
 	const leftHand = handTarget('leftHand', body, [0, -0.022, -0.372], [0.3, 1, 0], [0, 0, -1], true, { rx: 0.028, rz: 0.026, curl: 0.85, thumb: 0.2 });
 	const eye = new V3(0, 0.052, -0.028 + 0.10).add(body.position);
 	const shellProto = shotshellModel(true);
+	// the top rail for an optic (player/optics.js), root space; the rear ghost ring comes off for one
+	const rail = { z0: body.position.z - 0.06, z1: body.position.z - 0.205, sightY: 0.052 + body.position.y, irons: [ghost] };
 	return finishWeapon({
-		root, muzzle, ejectPort, rightHand, leftHand, sight: { eye }, parts,
+		root, muzzle, ejectPort, rightHand, leftHand, sight: { eye }, parts, rail,
 		magazineModel: () => shellProto.clone(true), shellType: 'shotgun',
 	});
 }

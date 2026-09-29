@@ -63,12 +63,14 @@ export class RandomEvents {
     const g = this.game;
     if (round >= g.maxRounds && !g.endless) return; // the story's final wave stays as it is
     const Q = EVENTS.squad;
-    if (round >= Q.from && this.squads < Q.max && round - this.squadRound >= Q.gap && !g.mercs?.active && Math.random() < Q.chance) {
+    // a map can keep events out (level.events: the names it allows; level.squad === false: no NOX drop, world/hive.js)
+    const allow = g.level?.events ?? null;
+    if (g.level?.squad !== false && round >= Q.from && this.squads < Q.max && round - this.squadRound >= Q.gap && !g.mercs?.active && Math.random() < Q.chance) {
       this.squads++;
       this.squadRound = round;
       this.squadT = rand(Q.delay[0], Q.delay[1]);
     }
-    const names = Object.keys(EVENTS.from).filter((n) => !this.done.has(n) && round >= EVENTS.from[n]);
+    const names = Object.keys(EVENTS.from).filter((n) => !this.done.has(n) && round >= EVENTS.from[n] && (!allow || allow.includes(n)));
     for (let i = names.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [names[i], names[j]] = [names[j], names[i]];

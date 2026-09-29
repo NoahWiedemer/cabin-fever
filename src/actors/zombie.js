@@ -35,9 +35,9 @@ export const ZOMBIE_TYPES = {
   charger: { name: 'Boomer', body: ['boomer'], hp: 110, walk: 1.35, run: 4.5, dmg: 0, reach: 1.9, attackTime: 0.9, radius: 0.32, scale: 1.0, score: 150, mass: 1, explodes: true },
   striker: { name: 'Striker', body: ['bomber'], hp: 170, walk: 1.53, run: 5.31, dmg: 13, reach: 1.25, attackTime: 0.7, radius: 0.3, scale: 0.97, score: 200, mass: 0.8, leap: { min: 2.5, max: 6.5, vy: 5.2, t: 0.6, cd: [3, 5], snd: 'striker_shriek', pitch: 1.1 } },
   // the boss (crusher.js: the Crusher class with its slam, charge and rage). partMult: its armoured skull takes
-  // headshots x1.5 instead of PART_MULT's x4; blast: share of explosion damage (game.explode); more hp per
-  // fireteam member (CRUSHER.team)
-  crusher: { name: 'Crusher', body: ['tank'], hp: 2800, walk: 1.35, run: 2.52, dmg: 34, reach: 1.9, attackTime: 1.5, radius: 0.55, scale: 1.4, score: 800, mass: 4, turn: 4, partMult: { head: 1.5 }, blast: 0.6 },
+  // headshots x1.5 instead of PART_MULT's x4; blast: share of explosion damage (game.explode); buckshot: of
+  // shotgun pellets (game.hitscan: up close they tear its hide); more hp per fireteam member (CRUSHER.team)
+  crusher: { name: 'Crusher', body: ['tank'], hp: 2800, walk: 1.35, run: 2.52, dmg: 34, reach: 1.9, attackTime: 1.5, radius: 0.55, scale: 1.4, score: 800, mass: 4, turn: 4, partMult: { head: 1.5 }, blast: 0.6, buckshot: 1.6 },
   dog: { name: 'Mutant Dog', body: ['dog'], hp: 90, walk: 1.375, run: 4.73, dmg: 8, reach: 1.1, attackTime: 0.55, radius: 0.36, scale: 1.0, score: 120, mass: 0.7, turn: 14, height: 1.0, eye: 0.75, pitch: 1.55, lunge: 0.6, hitAt: 0.5, leap: { min: 1.8, max: 4.5, vy: 3.4, t: 0.45, cd: [2.2, 3.8], snd: 'zombie_attack', pitch: 1.6 } },
   // small feral kid in packs: ~42 % of a Mauler's hp, 1.3x its run; pounces and latches on (biter.js: the
   // Biter class, its AI, pose and the latch). dmg / reach are its claw swipe when it can't pounce.
@@ -237,6 +237,9 @@ export class Zombie {
     this.level = levelOf(pos.y);
     this.hitSlow = 0;
     this.burnT = 0;
+    this.guardUntil = 0; // world/shaft.js: fresh out of the coal tunnel it takes a fraction of all damage until then
+    this.guardMul = 1;
+    this.knockT = 0; // knock(): shoved back, its feet barely grip for this long
     this.explodedOnDeath = false;
     if (this.glow) flushSkin(this.glow, 0, 0);
     if (this.quad) resetDog(this);
@@ -250,10 +253,20 @@ export class Zombie {
     return this.root.position;
   }
 
+  /** a shove along the ground (m/s, game.endVolley: a load of buckshot): it slides back for `t` s */
+  knock(vx, vz, t) {
+    this.body.vel.x += vx;
+    this.body.vel.z += vz;
+    this.knockT = Math.max(this.knockT, t);
+  }
+
   // ---------------------------------------------------------------- damage
   damage(amount, part, dir, source = null, opts = {}) {
     if (!this.alive) return { killed: false, dealt: 0 };
-    if ((part === 'dynamite' || part === 'belly') && this.type.explodes) {
+    // just up the coal tunnel (world/shaft.js): only a share gets through, and a Boomer's belly doesn't pop yet
+    const guarded = this.guardUntil > this.game.time;
+    if (guarded) amount *= this.guardMul;
+    if (!guarded && (part === 'dynamite' || part === 'belly') && this.type.explodes) {
       this.lastHitBy = source;
       this.hp = 0;
       this._die(dir, source, { ...opts, dynamiteShot: true });
@@ -276,10 +289,10 @@ export class Zombie {
     this.hitSlow = 0.25;
     if (this.hp <= 0) {
       this._die(dir, source, opts);
-      return { killed: true, dealt };
+      return { killed: true, dealt, guarded };
     }
     if (Math.random() < 0.35) this.game.audio.play(this.typeName === 'striker' ? 'striker_shriek' : 'zombie_hurt', { position: this.pos, volume: 0.6, pitch: this.typeName === 'crusher' ? 0.6 : this.type.pitch ?? 1 });
-    return { killed: false, dealt };
+    return { killed: false, dealt, guarded };
   }
 
   _die(dir, source, opts = {}) {
@@ -380,6 +393,7 @@ export class Zombie {
     let wantX = 0, wantZ = 0, speed = 0;
     this.stagger -= dt;
     this.hitSlow -= dt;
+    this.knockT -= dt;
     this.attackCooldown -= dt;
 
     if (this.attackT >= 0) {
@@ -453,7 +467,7 @@ export class Zombie {
     const moveMul = this.attackT >= 0 ? this.type.lunge ?? 0.15 : 1;
     const dvx = wantX * speed * moveMul, dvz = wantZ * speed * moveMul;
     const air = this.body.onGround ? 1 : 0.25;
-    const accel = (this.typeName === 'crusher' ? 6 : 12) * air;
+    const accel = (this.knockT > 0 ? 2.5 : this.typeName === 'crusher' ? 6 : 12) * air; // (knocked back: it slides)
     if (this.leapT > 0) {
       this.leapT -= dt;
       vel.x = damp(vel.x, dvx * 1.7, 4, dt);

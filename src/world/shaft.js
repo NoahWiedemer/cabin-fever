@@ -30,6 +30,9 @@ export const SHAFT = {
   hackShare: 0.3, // ... while the hacking module works on the vault door (the story)
   types: ['mauler', 'worker', 'survivor', 'charger', 'striker'], // no packs (dogs, Biters), no Crusher
   scrapeGap: 3.5, // s: at most one rubble scrape per this long
+  // no camping the mouth: in the tunnel and for `t` s after it steps out past the wall, one takes only `mul` of
+  // any damage (the tunnel is there to keep the fireteam away from that corner, not to feed it kills)
+  guard: { t: 3, mul: 0.15 },
 };
 
 // floor steps down into the dark: [x0, x1, height over the basement floor]
@@ -188,6 +191,20 @@ export class Shaft {
     this.warned = false; // the first one out gets a warning
     this.scrapeT = 0;
     this.forced = 0;
+    this.coming = []; // spawned in the tunnel, not out past the wall yet (their guard clock waits)
+  }
+
+  update() {
+    const t = this.game.time;
+    for (let i = this.coming.length - 1; i >= 0; i--) {
+      const z = this.coming[i];
+      // (a pooled zombie that died and came back elsewhere has its guard reset by Zombie.spawn)
+      if (!z.alive || z.guardUntil !== Infinity) this.coming.splice(i, 1);
+      else if (z.pos.x < SHAFT.x) {
+        z.guardUntil = t + SHAFT.guard.t;
+        this.coming.splice(i, 1);
+      }
+    }
   }
 
   /** open (spawns can come out of it): the basement is open */
@@ -213,6 +230,10 @@ export class Shaft {
   /** a zombie came out of the tunnel: rubble scrapes in the mouth; the first time, a warning */
   onSpawn(z) {
     const g = this.game;
+    // guarded while it's in the tunnel; update() starts the clock once it's out
+    z.guardUntil = Infinity;
+    z.guardMul = SHAFT.guard.mul;
+    this.coming.push(z);
     const mouth = g.level.shaft?.mouth;
     if (mouth && g.time > this.scrapeT) {
       this.scrapeT = g.time + SHAFT.scrapeGap;

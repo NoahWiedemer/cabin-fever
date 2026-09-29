@@ -203,6 +203,22 @@ ${dots}
 </svg>`;
 })();
 
+// the 3x prism scope's reticle (player/optics.js 'acog'): a fibre-lit red chevron, the bullet-drop post under it
+// with its stadia bars (100 m steps out to 600), in the same -1000..1000 lens space as the mil-dot one
+const ACOG_SVG = (() => {
+  let bdc = '';
+  const marks = [[150, 70], [245, 56], [335, 44], [420, 34], [500, 26]];
+  for (const [y, w] of marks) bdc += `<line x1="${-w}" y1="${y}" x2="${w}" y2="${y}"/>`;
+  return `<svg class="cf-scope-ret cf-acog-ret" viewBox="-1000 -1000 2000 2000" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+<g stroke="#111" fill="none">
+<line x1="0" y1="62" x2="0" y2="560"/>
+${bdc}
+<line x1="-1000" y1="0" x2="-560" y2="0"/><line x1="560" y1="0" x2="1000" y2="0"/>
+</g>
+<path class="cf-acog-chev" d="M0 -4L-58 58L-46 58L0 12L46 58L58 58Z"/>
+</svg>`;
+})();
+
 const DMG_ARC_SVG = `<svg class="cf-dmg-arc" viewBox="-160 -160 320 320" aria-hidden="true">
 <defs><linearGradient id="cf-dmg-grad" gradientUnits="userSpaceOnUse" x1="-72" y1="0" x2="72" y2="0">
 <stop offset="0" stop-color="#ff2a1a" stop-opacity="0"/><stop offset=".3" stop-color="#ff2a1a" stop-opacity=".85"/>
@@ -285,8 +301,9 @@ const HUD_HTML = `
 <div class="cf-vig cf-vig-low"><div class="cf-vig-beat"></div></div>
 <div class="cf-vig cf-vig-gas"></div>
 <div class="cf-vig cf-vig-dmg"></div>
+<div class="cf-vig cf-vig-heal"></div>
 <div class="cf-vig cf-vig-mask"></div>
-<div class="cf-scope"><div class="cf-scope-mask"></div><div class="cf-scope-lens"></div>${SCOPE_SVG}</div>
+<div class="cf-scope"><div class="cf-scope-mask"></div><div class="cf-scope-lens"></div>${SCOPE_SVG}${ACOG_SVG}</div>
 <div class="cf-dmg"></div>
 <div class="cf-plates"></div>
 <div class="cf-center">
@@ -382,6 +399,7 @@ export class HUD {
       vigLow: q('.cf-vig-low'),
       vigGas: q('.cf-vig-gas'),
       vigDmg: q('.cf-vig-dmg'),
+      vigHeal: q('.cf-vig-heal'),
       scope: q('.cf-scope'),
       dmg: q('.cf-dmg'),
       plates: q('.cf-plates'),
@@ -1123,10 +1141,20 @@ export class HUD {
     if (this._set('maskFx', o)) this.$.vigMask.style.opacity = String(o);
   }
 
-  setScope(on) {
-    on = !!on;
+  /** a heal grenade's cloud is healing you (game.js healCloud): the screen's edge glows green for a moment */
+  healFx() {
+    const now = performance.now();
+    if (now - (this._healT ?? 0) < 700) return;
+    this._healT = now;
+    this.$.vigHeal?.animate([{ opacity: 0 }, { opacity: 0.75, offset: 0.25 }, { opacity: 0 }], { duration: 700, easing: 'ease-out' });
+  }
+
+  /** kind: 'sniper' (mil-dots, the rifle scopes) / 'acog' (a 3x prism scope's chevron), falsy = off */
+  setScope(kind) {
+    const on = !!kind;
     this._scoped = on;
     this.$.scope.classList.toggle('on', on);
+    this.$.scope.classList.toggle('acog', kind === 'acog');
     this.root.classList.toggle('scoped', on);
     this._cls(this.$.xhair, 'off', 'xOff', on || (this._state?.crosshair?.visible === false));
   }

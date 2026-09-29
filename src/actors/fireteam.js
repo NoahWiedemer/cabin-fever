@@ -7,6 +7,7 @@ export const FIRETEAM = [
   { id: 'meshy', name: 'Scorpion', body: 'meshy', weapon: 'r201', gun: 'R-201', rank: 2 },
   { id: 'viper', name: 'Viper', body: 'viper', weapon: 'devotion', gun: 'DEVOTION', rank: 5 },
   { id: 'soldier', name: 'Soldier', body: 'soldier', weapon: 'm4a1', gun: 'M4A1', rank: 3 },
+  { id: 'raven', name: 'Raven', body: 'raven', weapon: 'p90', gun: 'P90', rank: 4 },
 ];
 
 // your own character: never a bot and never picked. The EmoSquad operator stands in for you wherever you're

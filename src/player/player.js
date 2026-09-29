@@ -172,17 +172,20 @@ export class Player {
 
     // ---- look
     const fovScale = this.game.fovScale ?? 1;
-    const sens = 0.0022 * (settings.sensitivity ?? 1) * fovScale;
+    // (settings: aiming has its own multiplier on top of the zoom's scaling, blended in with the aim; invert Y)
+    const aimK = 1 + ((settings.adsSens ?? 1) - 1) * (weapons?.ads ?? 0);
+    const sens = 0.0022 * (settings.sensitivity ?? 1) * fovScale * aimK;
+    const lookY = settings.invertY ? -input.dy : input.dy;
     if (input.locked) {
       this.yaw -= input.dx * sens;
-      this.pitch -= input.dy * sens;
+      this.pitch -= lookY * sens;
     }
     // recoil (CoD style): each shot kicks recoilPitch/Yaw on top of the aim and nothing recovers while
     // the gun keeps firing. Pulling down against the climb eats the offset first (so the recovery
     // never drags you under the target); once the gun rests it springs back fast and a quarter
     // stays as real climb. recoilRecover x2.5 = recovery rate (1/s), ~0.15 s for the rifles.
-    if (input.locked && input.dy > 0 && this.recoilPitch > 0) {
-      const c = Math.min(this.recoilPitch, input.dy * sens);
+    if (input.locked && lookY > 0 && this.recoilPitch > 0) {
+      const c = Math.min(this.recoilPitch, lookY * sens);
       this.recoilPitch -= c;
       this.pitch += c;
     }
@@ -307,9 +310,11 @@ export class Player {
   _applyCamera() {
     const cam = this.camera;
     const b = this.body;
-    const bobAmt = this.bobAmt;
-    const shakeX = this.game.shake.sample(1) * 0.04;
-    const shakeY = this.game.shake.sample(2) * 0.04;
+    const set = this.game.settings;
+    const bobAmt = set?.bob === false ? 0 : this.bobAmt; // (the settings: head bob off, screen shake strength)
+    const shk = 0.04 * (set?.shake ?? 1);
+    const shakeX = this.game.shake.sample(1) * shk;
+    const shakeY = this.game.shake.sample(2) * shk;
     cam.position.set(
       b.pos.x,
       b.pos.y + this.eye + this.eyeOffset + Math.abs(Math.sin(this.bob)) * 0.022 * bobAmt - 0.011 * bobAmt,

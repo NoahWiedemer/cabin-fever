@@ -38,7 +38,24 @@ export const MAPS = {
     shopWhere: 'in the garage',
   },
 };
-export const MAP_LIST = [MAPS.farm, MAPS.appenweier];
+// the Hive: NOX Biosystems' complex, sublevel 4, all underground (world/hive.js): the story's part two plays here
+// (for now its 15 waves; the story comes later)
+MAPS.hive = {
+  id: 'hive',
+  name: 'THE HIVE',
+  place: 'SUBLEVEL 4',
+  desc: 'NOX Biosystems, sublevel 4: the atrium, long corridors, labs, offices, the specimen hall. Nadja works behind glass in her clean room.',
+  image: 'maps/hive.webp', // the atrium's specimen column (1024 x 576)
+  fogRects: [[-60, -60, 60, 60]], // (all inside: only the distance haze)
+  labRect: null,
+  story: false,
+  loading: 'Descending into the Hive',
+  unlocks: [{ round: 4, name: 'NORTH WING' }, { round: 10, name: 'OUTER RING' }],
+  modeDesc: { cabinfever: 'Part two: Nadja’s lab in the Hive, NOX Biosystems’ complex deep underground. Hold the atrium through 15 waves; the safe zone with Nadja and the armory opens between them. The story comes later.' },
+  modeTagline: { cabinfever: 'Part two: hold the Hive for fifteen waves.' },
+  shopWhere: 'in the safe zone',
+};
+export const MAP_LIST = [MAPS.farm, MAPS.appenweier, MAPS.hive];
 
 const SS_MAP = 'cabinfever.map.next'; // (sessionStorage) the map the reload after a switching deploy loads
 const LS_OLD = 'cabinfever.map.v1'; // (localStorage, no longer used: the last pick used to stick, and the menu showed it)
@@ -92,6 +109,10 @@ export async function buildMap(map, progress) {
   if (map.id === 'appenweier') {
     const { buildAppenweier } = await import('./appenweier.js');
     return buildAppenweier(progress);
+  }
+  if (map.id === 'hive') {
+    const { buildHive } = await import('./hive.js');
+    return buildHive(progress);
   }
   return buildLevel();
 }
