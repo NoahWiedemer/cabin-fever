@@ -63,7 +63,7 @@ The upstairs opens with round 4 (Golden Punisher, balcony over the yard), the ba
 - Past round 20, zombie health keeps climbing, but wave size grows more slowly. Striker share, crusher count and speed are capped.
 - Every fifth round after 20 gets a "The horde grows stronger" banner. The HUD shows the round as `07/∞`.
 
-**The Gauntlet** (`src/game/rogue.js`, cards in `src/ui/draft.js`) is a roguelike run. It unlocks with a Cabin Fever win on Extreme; until then its card in the menu is locked. It plays 15 waves at Extreme strength, with no story, no time limit, no gun shop and no cash. You build the run from cards instead:
+**The Gauntlet** (`src/game/rogue.js`, cards in `src/ui/draft.js`) is a roguelike run, open from the start. It plays 15 waves at Extreme strength, with no story, no time limit, no gun shop and no cash. You build the run from cards instead:
 - **Before round 1** you pick one of three: a gun, a perk or supplies.
 - **After every cleared round** comes a **reward**: one **weapon**, one **perk** and one **supply** card, and you take one. Then comes a **curse**: three cards, and you have to take one of them.
 - **Weapons**: a random gun you don't carry. From round 5 it comes as MK II and from round 10 as MK III, with store upgrade levels on it. It replaces the gun in your hands, and your old one drops at your feet. A sidearm replaces the M9. The M32 waits on your back like a found launcher.
@@ -238,7 +238,9 @@ The upstairs opens with round 4 (Golden Punisher, balcony over the yard), the ba
 ## Controls
 
 WASD move · Shift sprint · Space jump · Ctrl/C crouch · Mouse1 fire · Mouse2 aim/scope (akimbo pistols: Mouse1 right gun, Mouse2 left gun) · R reload ·
-W / Space at a ladder climb (S down, C slide, Space jump off) · 1–6 / wheel switch (1 again: primary ↔ backpack gun, with the weapon backpack; 4 again: frag → Molotov → mine → pipe bomb; 5 = barricade kit, hold Mouse1 at a doorway to nail it up; 6 = gas can, hold Mouse1 at the generator to refuel it; empty slots are skipped) · Q last weapon · G quick throw · X shockwave emitter (store gear) · E pick up · V (mash) shake off a Biter · F flashlight (buy phase: tap F at the counter to open the gun shop, hold F to ready up; hold F at the broken generator to repair it, hold F at a downed teammate to revive them) · Tab scoreboard · Esc pause / close the shop (hold Esc: leave fullscreen)
+W / Space at a ladder climb (S down, C slide, Space jump off) · 1–6 / wheel switch (1 again: primary ↔ backpack gun, with the weapon backpack; 4 again: frag → Molotov → mine → pipe bomb; 5 = barricade kit, hold Mouse1 at a doorway to nail it up; 6 = gas can, hold Mouse1 at the generator to refuel it; empty slots are skipped) · Q last weapon · G quick throw · X shockwave emitter (store gear) · E pick up · V (mash) shake off a Biter · F flashlight (buy phase: tap F at the counter to open the gun shop, hold F to ready up; hold F at the broken generator to repair it, hold F at a downed teammate to revive them) · Tab scoreboard · Esc pause (Esc again: resume) / close the shop (hold Esc: leave fullscreen)
+
+After Esc, browsers give the mouse back to the game only on a click or a key press (never on Esc itself). So resuming or closing the shop with Esc puts you straight back into the game, and your next click or key press, usually the first step, takes the mouse again: there's no "click to continue" screen. In fullscreen with Chrome or Edge (Keyboard Lock) it comes back at once.
 
 ## Code map
 

@@ -14,6 +14,7 @@ import { Game } from './game/game.js';
 import { renderPortraits } from './actors/portraits.js';
 import { fullscreen } from './core/fullscreen.js';
 import { currentMap, storeMapId, MAPS } from './world/maps.js';
+import { WEAPONS } from './player/weaponDefs.js';
 
 // the map this page plays (world/maps.js): picking another one in the menu reloads the page
 const MAP = currentMap();
@@ -59,20 +60,8 @@ const menu = new Menu(document.getElementById('menu'), {
     started = true;
     input.lock();
     wantFullscreen();
-    setTimeout(() => {
-      if (started && !input.locked && !game.paused && !overlayOpen()) menu.showClickToPlay(true);
-    }, 1200);
   },
-  onResume: () => {
-    // paused from the store (or a Gauntlet draft): back to it, the pointer stays free
-    if (overlayOpen()) {
-      if (game) game.paused = false;
-      menu.showClickToPlay(false);
-      return;
-    }
-    input.lock();
-    wantFullscreen();
-  },
+  onResume: () => resumeGame(),
   onQuit: () => {
     closeStore();
     draft.close();
@@ -119,8 +108,9 @@ const menu = new Menu(document.getElementById('menu'), {
 // Gun shop overlay: opened with F at the cellar counter during the buy phase. The pointer is
 // released without pausing; CLOSE (Esc / F / Enter) re-locks it. Ready-up is hold-F in the world.
 const store = new Store(document.getElementById('menu'), {
-  onClose: () => closeShop(),
+  onClose: (key) => closeShop(key),
 });
+let shopClosedAt = -Infinity; // (performance.now) onLockChange: a lock lost right after the store closed is no pause
 
 // The Gauntlet's card drafts (game/rogue.js -> game.onDraft): like the store, the pointer is free while the
 // cards are on the table; the last pick puts you back in the game.
@@ -135,7 +125,6 @@ function openDraft(spec) {
   input.enabled = false;
   input.keys.clear();
   hud.setVisible(false);
-  menu.showClickToPlay(false);
   draft.open(spec);
   input.unlock();
 }
@@ -149,16 +138,12 @@ function closeDraft() {
   }, 0);
   input.lock();
   wantFullscreen();
-  setTimeout(() => {
-    if (started && !input.locked && !game?.paused && !overlayOpen()) menu.showClickToPlay(true);
-  }, 1200);
 }
 
 function openStore() {
   input.enabled = false; // no walking / firing while shopping
   input.keys.clear();
   hud.setVisible(false);
-  menu.showClickToPlay(false);
   store.open(game);
   input.unlock();
 }
@@ -173,16 +158,34 @@ function closeStore() {
   }, 0);
 }
 
-function closeShop() {
+function closeShop(key) {
   if (!store.isOpen) return;
   closeStore();
   hud.setVisible(true);
-  input.lock();
+  shopClosedAt = performance.now();
+  if (key === 'Escape') lockOnEscUp();
+  else input.lock();
   wantFullscreen();
   game?.onShopClosed(); // (very rarely the Stalker is waiting right there)
-  setTimeout(() => {
-    if (started && !input.locked && !game?.paused && !overlayOpen()) menu.showClickToPlay(true);
-  }, 1200);
+}
+
+// Esc is no user gesture, and it's the browser's own "leave the pointer lock" key: a lock asked for while it's
+// down can be refused or taken back at once (then the pause menu came up). So after Esc closed the store, the
+// pointer is asked for on its release (allowed without a gesture where the store let go of it by script); if
+// the browser still says no, the next click or key press takes it (grabPointer).
+function lockOnEscUp() {
+  let done = false;
+  const go = () => {
+    if (done) return;
+    done = true;
+    removeEventListener('keyup', up, true);
+    grabPointer();
+  };
+  const up = (e) => {
+    if (e.code === 'Escape') go();
+  };
+  addEventListener('keyup', up, true);
+  setTimeout(go, 500); // (a key-up that never comes: the page lost focus)
 }
 
 const settings = { ...menu.getSettings() };
@@ -205,8 +208,11 @@ document.addEventListener('fullscreenchange', () => {
   if (held && settings.fullscreen) menu.setSetting('fullscreen', false);
 });
 addEventListener('keydown', (e) => {
+  if (e.code !== 'Escape' || e.repeat || e.defaultPrevented) return; // (the store or the pause menu had it)
   // Esc no longer releases the pointer by itself while it's locked to the page: pause like it would
-  if (e.code === 'Escape' && fullscreen.escLocked && input.locked && !overlayOpen()) input.unlock();
+  if (fullscreen.escLocked && input.locked && !overlayOpen()) input.unlock();
+  // running without the pointer (it comes back with the next click / key): Esc pauses all the same
+  else if (started && !inMenu && !input.locked && !game?.paused && !overlayOpen() && game.state !== 'victory' && game.state !== 'defeat') pauseGame();
 });
 
 // Browsers keep audio locked until a user gesture: unlock the synth (menu sounds, thunder) on
@@ -223,25 +229,56 @@ const gr = new GameRenderer(container, settings.quality || 'high');
 const input = new Input(gr.renderer.domElement);
 input.enabled = true;
 
+let lockedAt = -Infinity; // (performance.now) when the pointer was last taken
 input.onLockChange = (locked) => {
   if (!started || !game) return;
+  const now = performance.now();
   if (locked) {
-    menu.showClickToPlay(false);
+    lockedAt = now;
     menu.hideAll();
     game.paused = false;
   } else if (overlayOpen()) {
     // released for the store or a draft: not a pause
+  } else if (now - shopClosedAt < 1500 && now - lockedAt < 400) {
+    // taken back at once right after the store closed (the browser's own Esc handling): no pause, the next click
+    // or key press takes it again (grabPointer)
   } else if (game.state !== 'victory' && game.state !== 'defeat' && !inMenu) {
-    game.paused = true;
-    menu.showPause();
+    pauseGame();
   }
 };
-// clicking the canvas during play re-locks the pointer
-gr.renderer.domElement.addEventListener('click', () => {
-  if (!started || input.locked || game?.paused || overlayOpen()) return;
+
+function pauseGame() {
+  game.paused = true;
+  menu.showPause();
+}
+
+// Back from the pause menu (RESUME, or Esc again): the game goes on at once, and the pointer comes back now where
+// the browser allows it, else with the next click or key press (grabPointer). (Resuming used to wait for the lock:
+// refused, as it is for a moment after the player pressed Esc, it left the game paused behind a hidden menu.)
+function resumeGame() {
+  if (game) game.paused = false;
+  if (overlayOpen()) return; // paused from the store / a draft: back to it, the pointer stays free
+  menu.hideAll();
+  grabPointer();
+}
+
+// The game wants the pointer whenever it runs with no menu or overlay up. Browsers hand it over only on a click or
+// a key press (never on Esc, and not right after the player pressed Esc to leave it), so a refused request is asked
+// again on the next click or key press anywhere: no "click to continue" screen in between. (A click that takes the
+// pointer doesn't fire: the weapons only listen while it's locked.)
+function grabPointer() {
+  if (!started || inMenu || !game || game.paused || input.locked || overlayOpen()) return;
   input.lock();
   wantFullscreen();
-});
+}
+addEventListener('pointerdown', grabPointer, true);
+addEventListener(
+  'keydown',
+  (e) => {
+    if (e.code !== 'Escape' && !e.repeat) grabPointer();
+  },
+  true
+);
 
 async function boot() {
   menu.setLoading(0, 'Preparing');
@@ -294,6 +331,15 @@ async function boot() {
   if (pending && pending.map === MAP.id) menu.deploy(pending);
   else menu.showMain();
   store.warmup(); // bakes the gun store's 3D item thumbnails in idle time
+  // every other gun's first-person model, built and compiled while the main menu shows (player/viewmodel.js):
+  // otherwise its first buy / equip / pick-up stalls the game for up to a second
+  game.viewmodel.prewarmIdle([...new Set(Object.values(WEAPONS).map((d) => d.model || d.id))], {
+    renderer: gr.renderer,
+    camera: gr.vmCamera,
+    scene: gr.scene,
+    rt: gr.composer.inputBuffer,
+    canRun: () => inMenu,
+  });
   // debug handles (used for automated testing when rAF is throttled)
   window.__game = game;
   window.__store = store;

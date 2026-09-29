@@ -213,6 +213,48 @@ export class Viewmodel {
     for (const id of ids) this._getModel(id);
   }
 
+  /**
+   * The loading screen builds only the standard kit (prewarm): any other gun was built on its first equip, and
+   * building a GLB gun, compiling its programs and uploading its textures stalled the game for about a second
+   * (buying the MG 42 in the store). This builds the rest one model per idle slice while `canRun()` (main.js: on
+   * the main menu), compiles it without blocking (KHR_parallel_shader_compile) and uploads its textures.
+   * `rt`: a render target like the composer's, so the programs are the variants the viewmodel pass asks for.
+   */
+  async prewarmIdle(ids, { renderer, camera, scene, rt, canRun = () => true }) {
+    const idle = () => new Promise((r) => (typeof requestIdleCallback === 'function' ? requestIdleCallback(r, { timeout: 1500 }) : setTimeout(r, 50)));
+    for (const id of ids) {
+      while (!this.models[id]) {
+        if (!canRun()) {
+          await new Promise((r) => setTimeout(r, 1000));
+          continue;
+        }
+        await idle();
+        if (this.models[id] || !canRun()) continue; // (equipped in the meantime / the menu closed: later)
+        await this._prewarmOne(id, renderer, camera, scene, rt, idle);
+      }
+    }
+  }
+
+  /** prewarmIdle's step: build one model, start its programs compiling, then upload its textures. */
+  async _prewarmOne(id, renderer, camera, scene, rt, idle) {
+    const m = this._getModel(id);
+    let job = null;
+    const prev = renderer.getRenderTarget();
+    try {
+      renderer.setRenderTarget(rt);
+      job = renderer.compileAsync(m.root, camera, scene);
+    } catch (e) {
+      console.warn('viewmodel prewarm', id, e);
+    } finally {
+      renderer.setRenderTarget(prev);
+    }
+    await idle();
+    m.root.traverse((o) => {
+      for (const mat of [].concat(o.material || [])) for (const v of Object.values(mat)) if (v?.isTexture) renderer.initTexture(v);
+    });
+    await job?.catch(() => {});
+  }
+
   equip(def, state) {
     const m = this._getModel(def.model);
     if (this.cur && this.cur !== m) this.cur.root.visible = false;

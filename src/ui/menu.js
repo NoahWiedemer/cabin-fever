@@ -110,9 +110,6 @@ const SKULL =
 const HELMET =
   '<svg viewBox="0 0 20 20" aria-hidden="true"><path fill="currentColor" d="M3 11C3 6 6.2 3 10 3s7 3 7 8l1.4 1.6-2.6.3-.5 3.2C15 17.2 13 18.4 10 18.4S5 17.2 4.7 15.1l-.5-3.2-2.6-.3Z"/></svg>';
 
-const MOUSE_SVG =
-  '<svg viewBox="0 0 24 36" aria-hidden="true"><rect x="1.5" y="1.5" width="21" height="33" rx="10.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 1.5v12M1.5 13.5h21" stroke="currentColor" stroke-width="2"/><path class="cf-mouse-lmb" d="M2.6 12.4V12A9.4 9.4 0 0 1 11 2.6v9.8Z" fill="currentColor"/></svg>';
-
 // mode emblems (64x64)
 const EMBLEMS = {
   cabinfever:
@@ -227,6 +224,7 @@ export class Menu {
     saveJSON(LS_LOADOUT, this.config);
     this._panels = [];
     this._current = null;
+    this._shownAt = 0; // (performance.now) when the current screen came up
     this._view = 'home';
     this._portraits = {}; // character id -> rendered portrait (data URL), set once the game has loaded
     this._lb = { mode: this.config.mode, difficulty: this.config.difficulty }; // leaderboard filter
@@ -243,7 +241,11 @@ export class Menu {
     this._buildPause();
     this._buildEnd();
     this._buildLoading();
-    this._buildClick();
+    this.$screens = {
+      main: this.$main.root,
+      pause: this.$pause.root,
+      end: this.$end.root,
+    };
     this.$curtain = this._el('<div class="cf-curtain"></div>');
     root.appendChild(this.$curtain);
     this._bindSfx();
@@ -264,7 +266,7 @@ export class Menu {
   showMain(view = 'home') {
     if (view === 'leaderboard') this._renderBoard();
     if (view === 'career') this._renderCareer();
-    this._renderProfile(); // (a run may have promoted you, unlocked the Gauntlet or a skin)
+    this._renderProfile(); // (a run may have promoted you or unlocked a skin)
     this._syncConfig();
     this._setView(view, { instant: true });
     this._show('main');
@@ -278,7 +280,6 @@ export class Menu {
   hideAll() {
     this._show(null);
     this.hideLoading();
-    this.showClickToPlay(false);
   }
 
   /** Character portraits ({ id: image URL }, actors/portraits.js) for the fireteam cards and the leaderboard. */
@@ -453,7 +454,7 @@ export class Menu {
         .join('');
       E.unlocks.innerHTML = c.unlocks
         .map((u) => {
-          const what = u.kind === 'camo' ? `CAMO · ${esc(WEAPONS[u.weapon]?.name ?? '')}` : u.kind === 'mode' ? 'NEW MODE' : 'OPERATOR';
+          const what = u.kind === 'camo' ? `CAMO · ${esc(WEAPONS[u.weapon]?.name ?? '')}` : 'OPERATOR';
           const sw = u.kind === 'camo' ? this._swatch(u.id) : null;
           return `<span class="cf-ec-un">${sw ? `<i style="background-image:url(${sw})"></i>` : ''}<small>UNLOCKED</small><b>${esc(u.name)}</b><em>${what}</em></span>`;
         })
@@ -470,20 +471,14 @@ export class Menu {
     return this._current === 'main';
   }
 
-  showClickToPlay(on) {
-    this.$click.classList.toggle('on', !!on);
-  }
-
   /* ------------------------------------------------------------ internals */
 
   _show(name) {
     const was = this._current;
     for (const [k, el] of Object.entries(this.$screens)) el.classList.toggle('on', k === name);
     this._current = name;
-    if (name) {
-      this.$click.classList.remove('on');
-      this.hideLoading();
-    }
+    if (name !== was) this._shownAt = performance.now();
+    if (name) this.hideLoading();
     if (name !== 'end') cancelAnimationFrame(this._countRaf);
     if ((was === 'main') !== (name === 'main')) this._call('onMainMenu', name === 'main');
     if (name === 'main') this._call('onShot', VIEWS[this._view]);
@@ -547,7 +542,6 @@ export class Menu {
           <span class="cf-mm-mode-k">${m.kicker}</span>
           <span class="cf-mm-mode-n">${m.name}</span>
           <span class="cf-mm-mode-d">${esc(m.tagline)}</span>
-          ${m.locked ? `<span class="cf-mm-mode-lock">${LOCK}LOCKED · ${esc(m.locked.toUpperCase())}</span>` : ''}
         </span>
       </button>`
     ).join('');
@@ -782,7 +776,7 @@ export class Menu {
       const mp = t.closest('[data-map]');
       if (mp) return this._setConfig('map', mp.dataset.map);
       const m = t.closest('[data-mode]');
-      if (m) return m.classList.contains('locked') ? this._nope(m) : this._setConfig('mode', m.dataset.mode);
+      if (m) return this._setConfig('mode', m.dataset.mode);
       const d = t.closest('[data-diff]');
       if (d) return d.classList.contains('na') ? this._nope(d) : this._setConfig('difficulty', d.dataset.diff);
       const camo = t.closest('[data-camo]');
@@ -1082,6 +1076,7 @@ export class Menu {
   }
 
   _onKey(e) {
+    if (this._current === 'pause') return this._pauseKey(e);
     if (this._current !== 'main') return;
     if (e.key === 'Escape' || (e.key === 'Backspace' && !/INPUT|TEXTAREA/.test(document.activeElement?.tagName))) {
       if (this._view !== 'home') {
@@ -1143,7 +1138,6 @@ export class Menu {
   }
 
   _deploy() {
-    if (MODES[this.config.mode]?.locked && !Progress.gauntletUnlocked()) this.config.mode = 'cabinfever';
     const cfg = { ...this.config, primary: STANDARD_PRIMARY };
     saveJSON(LS_LOADOUT, this.config);
     // cut to black, then fade into the game
@@ -1168,9 +1162,6 @@ export class Menu {
   _syncConfig() {
     const M = this.$main;
     const c = this.config;
-    // the Gauntlet opens with a Cabin Fever win on Extreme (game/progress.js); until then it's locked
-    const open = Progress.gauntletUnlocked();
-    if (MODES[c.mode]?.locked && !open) c.mode = 'cabinfever';
     const mode = MODES[c.mode] || MODES.cabinfever;
     const dId = mode.difficulty ?? c.difficulty; // (the Gauntlet: always Extreme)
     const diff = DIFFICULTIES.find((x) => x.id === dId) || DIFFICULTIES[1];
@@ -1181,7 +1172,6 @@ export class Menu {
       const tag = b.querySelector('.cf-mm-mode-d');
       if (tag) tag.textContent = map.modeTagline?.[b.dataset.mode] ?? MODES[b.dataset.mode]?.tagline ?? tag.textContent; // (a map without the story)
       b.classList.toggle('sel', b.dataset.mode === c.mode);
-      b.classList.toggle('locked', !!MODES[b.dataset.mode]?.locked && !open);
     }
     for (const b of M.diffs) {
       b.classList.toggle('sel', b.dataset.diff === dId);
@@ -1380,6 +1370,20 @@ export class Menu {
     });
   }
 
+  /** Esc again closes the pause menu: its settings panel first, then the menu itself (back into the game). */
+  _pauseKey(e) {
+    // (not the Esc that paused, where a browser hands that one to the page too)
+    if (e.key !== 'Escape' || e.repeat || performance.now() - this._shownAt < 250) return;
+    e.preventDefault();
+    this._sfx('ui_click');
+    if (this.$pause.root.classList.contains('show-settings')) {
+      this._togglePauseSettings(false);
+      return;
+    }
+    this._call('onResume');
+    if (this._current === 'pause') this._show(null);
+  }
+
   _togglePauseSettings(force) {
     const P = this.$pause;
     if (!P) return;
@@ -1517,33 +1521,6 @@ export class Menu {
       i = (i + 1) % TIPS.length;
       tip.textContent = text(TIPS[i]);
     }, 4200);
-  }
-
-  /* ---------------- click to continue ---------------- */
-
-  _buildClick() {
-    const el = this._el(`
-      <div class="cf-screen cf-click" data-sfx>
-        <div class="cf-click-box">
-          <div class="cf-click-ico">${MOUSE_SVG}</div>
-          <div class="cf-click-title">CLICK TO CONTINUE</div>
-          <div class="cf-click-sub">Mouse control released</div>
-        </div>
-      </div>`);
-    this.root.appendChild(el);
-    this.$click = el;
-    el.addEventListener('click', () => {
-      this._call('onResume');
-    });
-    // safety net: once the pointer is locked again the overlay is never needed
-    document.addEventListener('pointerlockchange', () => {
-      if (document.pointerLockElement) this.showClickToPlay(false);
-    });
-    this.$screens = {
-      main: this.$main.root,
-      pause: this.$pause.root,
-      end: this.$end.root,
-    };
   }
 }
 

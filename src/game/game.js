@@ -42,6 +42,7 @@ import { buildGunShop } from '../world/gunshop.js';
 import { createLabTech } from '../actors/labTech.js';
 import { Barricades } from '../world/barricades.js';
 import { Breach } from '../world/breach.js';
+import { installShadowProxies } from '../world/shadowProxy.js';
 import { Shaft } from '../world/shaft.js';
 import { MercSquad } from '../actors/merc.js';
 import * as Progress from './progress.js';
@@ -130,6 +131,8 @@ export class Game {
     this.level = await buildMap(this.map, (f, label) => progress?.(0.55 + f * 0.09, label ?? this.map.loading));
     this.world = this.level.world;
     scene.add(this.level.group);
+    // the static level casts through a few merged depth meshes: far fewer shadow-map draws (world/shadowProxy.js)
+    this.shadowProxies = installShadowProxies(this.gr.renderer, this.level.group);
     this.breach = new Breach(this, scene); // the rare wall breach (world/breach.js): its wall patches collide from the start
     this.shaft = new Shaft(this); // the coal tunnel the infected come up once the basement is open (world/shaft.js)
 

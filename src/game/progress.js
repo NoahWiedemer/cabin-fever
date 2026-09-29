@@ -1,7 +1,7 @@
 // The career, kept across runs (localStorage): experience and a rank on Combat Arms' ladder (Trainee up to General
 // of the Army), weapon mastery (every weapon levels up with the kills made with it), the skins those unlock (weapon
-// camos by mastery level, the player characters by rank and wins) and the wins per mode and difficulty (a Cabin
-// Fever win on Extreme opens the Gauntlet). None of it changes the fight: it shows what you've done.
+// camos by mastery level, the player characters by rank and wins) and the wins per mode and difficulty. None of
+// it changes the fight: it shows what you've done.
 //   xp        kills (by type), headshots, rounds survived and the win, times the difficulty (XP_RULES)
 //   rank      RANKS[i] by total xp
 //   mastery   per weapon id: xp -> level 0..10 (MASTERY)
@@ -164,12 +164,6 @@ export function setCharacter(id) {
 /** the character skin a promotion to rank `index` unlocks (or null) */
 export const characterForRank = (index) => CHARACTER_SKINS.find((c) => c.unlock?.rank === index) ?? null;
 
-/** the Gauntlet opens with a Cabin Fever win on Extreme */
-export function gauntletUnlocked() {
-  const p = prof();
-  return p.unlockAll || (p.wins['cabinfever:extreme'] ?? 0) > 0;
-}
-
 export const career = () => prof();
 
 // ------------------------------------------------------------------ a run
@@ -236,7 +230,7 @@ export function win() {
 
 /**
  * the run is over: the after-action report { xp, parts, rank, rankBefore, promoted, progress (0..1 to the next),
- * mastery: [{ weapon, kills, level, before, into, span }], unlocks: [{ kind: 'character' | 'mode' | 'camo', name,
+ * mastery: [{ weapon, kills, level, before, into, span }], unlocks: [{ kind: 'character' | 'camo', name,
  * weapon? }] } (null without a run)
  */
 export function runEnd() {
@@ -249,7 +243,6 @@ export function runEnd() {
     if (c.unlock?.rank != null && r.index >= c.unlock.rank && RUN.rank0 < c.unlock.rank) unlocks.push({ kind: 'character', name: c.name });
     if (c.unlock?.win && RUN.won && RUN.mode === 'cabinfever' && c.unlock.win.includes(RUN.difficulty) && c.unlock.win.reduce((n, d) => n + (p.wins['cabinfever:' + d] ?? 0), 0) === 1) unlocks.push({ kind: 'character', name: c.name });
   }
-  if (RUN.won && RUN.mode === 'cabinfever' && RUN.difficulty === 'extreme' && p.wins['cabinfever:extreme'] === 1) unlocks.push({ kind: 'mode', name: 'THE GAUNTLET' });
   const mastery = Object.entries(RUN.weapons)
     .sort((a, b) => b[1] - a[1])
     .map(([weapon, kills]) => {

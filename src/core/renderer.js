@@ -135,6 +135,11 @@ export class GameRenderer {
     c.halfRes = this.q.aoHalf;
     c.depthAwareUpsampling = true;
     c.gammaCorrection = false;
+    // set explicitly, which also stops N8AO's per-frame hunt for transparent materials: left on its own it walks
+    // the whole scene every frame, finds the rain / particles and then draws the scene twice more (with five more
+    // walks over every object). Measured: the same picture (AO sits in the corners, not under the effects),
+    // several ms of CPU less per frame
+    c.transparencyAware = false;
     this.aoPass.enabled = this.q.ao;
     this.composer.addPass(this.aoPass);
 
@@ -199,6 +204,14 @@ export class GameRenderer {
   render(dt) {
     this.renderer.info.reset();
     this.syncViewmodelCamera();
-    this.composer.render(dt);
+    // world matrices once per frame: three.js would redo them for every scene pass (the world, N8AO, the
+    // viewmodel), each a walk over ~6000 objects (the characters' bones included)
+    this.scene.updateMatrixWorld();
+    this.scene.matrixWorldAutoUpdate = false;
+    try {
+      this.composer.render(dt);
+    } finally {
+      this.scene.matrixWorldAutoUpdate = true;
+    }
   }
 }

@@ -859,10 +859,11 @@ export class Store {
     grp?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }
 
-  _close() {
+  /** `key`: the key that closed it ('Escape', 'KeyF', 'Enter'), none for the CLOSE button. */
+  _close(key) {
     if (!this.isOpen) return;
     this._sfx('ui_click', 0.7);
-    this.cb.onClose?.();
+    this.cb.onClose?.(key);
   }
 
   _buy() {
@@ -1036,10 +1037,10 @@ export class Store {
           this._feedback(res);
           this.render();
         }
-      } else if (k !== 'Space') this._close();
+      } else if (k !== 'Space') this._close(k);
     } else if (k === 'KeyF' || k === 'Escape') {
       e.preventDefault();
-      this._close();
+      this._close(k);
     } else if (/^(Digit|Numpad)[1-9]$/.test(k)) {
       this._setTab(CATS[Number(k.slice(-1)) - 1]); // 1 / 2 / 3: WEAPONS / EQUIPMENT / GEAR
     } else if (k === 'KeyQ' || k === 'KeyE') {

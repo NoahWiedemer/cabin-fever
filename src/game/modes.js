@@ -18,7 +18,7 @@ export const MODES = {
     desc: 'The waves never stop: every round brings more, tougher and faster Infected. No time limit, no victory, only the round you reach.',
     endless: true,
   },
-  // the roguelike run (game/rogue.js): unlocked by a Cabin Fever win on Extreme (game/progress.js)
+  // the roguelike run (game/rogue.js), open from the start
   gauntlet: {
     id: 'gauntlet',
     name: 'THE GAUNTLET',
@@ -30,7 +30,6 @@ export const MODES = {
     story: false, // no cutscenes, no hack: survive round 15 and it's won
     timer: false, // no time limit
     difficulty: 'extreme', // always
-    locked: 'Win Cabin Fever on Extreme',
   },
 };
 

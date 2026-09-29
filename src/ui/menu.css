@@ -1691,35 +1691,14 @@
 .cf-mm-mode[data-mode='gauntlet'].sel::after {
   border-color: transparent #ff4a36 transparent transparent;
 }
-.cf-mm-mode-lock {
-  display: none;
-  align-items: center;
-  gap: calc(var(--u) * 6);
-  font-weight: 700;
-  font-size: calc(var(--u) * 11);
-  letter-spacing: 0.24em;
-  color: #ff7a5c;
-}
-.cf-mm-mode-lock svg {
-  width: calc(var(--u) * 12);
-  height: calc(var(--u) * 12);
-}
-.cf-mm-mode.locked .cf-mm-mode-lock {
-  display: inline-flex;
-}
-.cf-mm-mode.locked,
 .cf-mm-diff.na {
   cursor: not-allowed;
   filter: saturate(0.2);
   opacity: 0.55;
 }
-.cf-mm-mode.locked:hover,
 .cf-mm-diff.na:hover {
   transform: none;
   border-color: rgba(255, 255, 255, 0.14);
-}
-.cf-mm-mode.locked .cf-mm-mode-d {
-  display: none;
 }
 .nope {
   animation: cf-nope 0.34s cubic-bezier(0.36, 0.07, 0.19, 0.97) both !important;
