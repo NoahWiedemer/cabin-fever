@@ -290,6 +290,8 @@ export class Lighting {
     this.flashlight = new THREE.SpotLight(0xe8f0ff, 0, 30, 0.42, 0.55, 1.6);
     scene.add(this.flashlight, this.flashlight.target);
     this.flashlightOn = false;
+    this.flashScale = 1; // (the menu's squad shot dims the beam, the sky light and the moon: ui/lobbyStage.js)
+    this.hemiScale = 1;
     this.flashNear = 1; // auto-dim factor for close surfaces (needs .world, set by the game)
     this.world = null;
 
@@ -352,7 +354,7 @@ export class Lighting {
     const pw = this.mains;
     this.hemi.color.copy(this.hemiOutSky).lerp(this._c.copy(this.hemiDarkSky).lerp(this.hemiInSky, pw), ind);
     this.hemi.groundColor.copy(this.hemiOutGround).lerp(this._c.copy(this.hemiDarkGround).lerp(this.hemiInGround, pw), ind);
-    this.hemi.intensity = 0.8 + ind * (0.06 + 0.86 * pw) + this.lightning * 2.2;
+    this.hemi.intensity = (0.8 + ind * (0.06 + 0.86 * pw)) * this.hemiScale + this.lightning * 2.2;
 
     // lamp flicker + weights; a close lightning strike makes the mains stutter for a moment (dipT)
     const dip = this.dipT > 0 ? 0.5 + 0.5 * Math.min(1, (0.6 - this.dipT) / 0.6) : 1;
@@ -495,7 +497,7 @@ export class Lighting {
         if (hit) near = Math.max(0.2, Math.pow(hit.t / 3.5, 1.4));
       }
       this.flashNear += (near - this.flashNear) * Math.min(1, dt * 10);
-      this.flashlight.intensity = this.flashlightOn ? 55 * this.flashNear : 0;
+      this.flashlight.intensity = this.flashlightOn ? 55 * this.flashNear * this.flashScale : 0;
     }
     // a helicopter's searchlight borrows the flashlight's spot (world/helicopter.js via the cutscenes and the
     // drop): the same light, so the scene's light count and with it every shader stay as they are

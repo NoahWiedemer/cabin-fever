@@ -201,6 +201,9 @@ export async function buildAppenweier(progress) {
   // the corn field across the road (dry, ready for the harvest): soil under the stalks
   const CORN = [[-25.5, 29.5], [28, 31.8], [29, 88], [-25.5, 88]];
   polygon(T, 'mud', CORN, yA - 0.006);
+  // and the dirt track along its edge, between the road's grass verge and the first stalks (the PLAY screen's
+  // squad stands on it; the asphalt is drawn over its road side)
+  polygon(T, 'mud', [[-25.5, 23], [28, 24.5], [28, 31.8], [-25.5, 29.5]], yA - 0.005);
 
   // ------------------------------------------------------------ LoD2 buildings
   progress?.(0.45, 'Raising the houses');
@@ -375,6 +378,21 @@ export async function buildAppenweier(progress) {
       title: { fov: 56, period: 90, a: [-6.5, 1.75, -17.5, -22.6, 3.4, -24.2], b: [-8.2, 1.9, -27.5, -22.6, 3.5, -24.6] }, // the painted gable
       porch: { fov: 58, period: 70, a: [-27, 1.7, 14.5, -49, 3.2, 44], b: [-33, 1.8, 13.4, -50, 3.4, 44] }, // across the road: the fire station
       interior: { fov: 60, period: 80, a: [8, 1.6, 17.2, 10, 1.4, 44], b: [-4, 1.7, 18.2, 2, 1.5, 46] }, // the corn field in the fog
+      // the PLAY screen (ui/lobbyStage.js): from the road over the dirt track at the corn field's edge, where the
+      // squad stands in the dark and the mist and faces the camera (looking toward +z, screen left is +x, so the
+      // first seat has the largest x). fog / hemi / moon / torch: how dark it is (the mist's density; the sky
+      // light, the moon and the torch beam as shares of the game's own)
+      lobby: {
+        fov: 40,
+        period: 60,
+        fog: 0.12,
+        hemi: 0.9,
+        moon: 0.5,
+        torch: 1.15,
+        a: [0, 1.5, 19.2, 0, 1.25, 29.4],
+        b: [0.3, 1.55, 18.8, 0, 1.25, 29.4],
+        cast: { spots: [[1.35, 25.4, Math.PI + 0.22], [0.45, 25.4, Math.PI + 0.08], [-0.45, 25.4, Math.PI - 0.08], [-1.35, 25.4, Math.PI - 0.22]] },
+      },
     },
     unlock,
     update,

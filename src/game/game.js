@@ -87,6 +87,22 @@ const MENU_SHOTS = {
   title: { fov: 58, period: 90, a: [-0.5, 1.8, 23, -5.5, 2.6, 8], b: [4, 2.3, 21.5, -4.2, 2.7, 8] }, // the yard: trees left, lit porch right
   porch: { fov: 58, period: 70, a: [-4.6, 1.25, 14.2, -7.0, 1.7, 6.5], b: [-5.6, 1.35, 12.4, -6.8, 1.6, 6.0] }, // pushing in on the front door
   interior: { fov: 62, period: 80, a: [-2.4, 1.55, -0.2, -7.4, 1.25, 8.5], b: [-4.6, 1.6, 1.4, -6.2, 1.25, 8.5] }, // lamp-lit living room
+  // the PLAY screen (ui/lobbyStage.js): out in the yard, south of the sandbags, the camera looks over the squad
+  // into the dark and the rain. cast.spots = [x, z, yaw] of the four seats (yaw 0 faces +z, PI faces -z, toward
+  // the camera; looking toward +z screen left is +x, so the first seat has the largest x); the stage pans and
+  // zooms the shot to fit them. fog / hemi / moon / torch: how dark it is (the mist's density; the sky light,
+  // the moon and the torch beam as shares of the game's own)
+  lobby: {
+    fov: 40,
+    period: 60,
+    fog: 0.06,
+    hemi: 2.4,
+    moon: 1.4,
+    torch: 1.4,
+    a: [-6.6, 1.5, 17.6, -6.6, 1.25, 25.6],
+    b: [-6.9, 1.55, 17.1, -6.6, 1.25, 25.6],
+    cast: { spots: [[-5.25, 21.6, Math.PI + 0.22], [-6.15, 21.6, Math.PI + 0.08], [-7.05, 21.6, Math.PI - 0.08], [-7.95, 21.6, Math.PI - 0.22]] },
+  },
 };
 
 export class Game {
@@ -318,7 +334,12 @@ export class Game {
     }
   }
 
-  /** Main-menu camera shot ('title' | 'porch' | 'interior'); the menu dips to black on a cut. */
+  /** the main-menu shot `name` of the loaded map (its camera and, for 'lobby', where the squad stands) */
+  menuShotSpec(name) {
+    return (this.level?.menuShots ?? MENU_SHOTS)[name];
+  }
+
+  /** Main-menu camera shot ('title' | 'porch' | 'interior' | 'lobby'); the menu dips to black on a cut. */
   setMenuShot(name) {
     if (!(this.level?.menuShots ?? MENU_SHOTS)[name] || name === this.menuShot) return;
     this.menuShot = name;
@@ -1419,7 +1440,7 @@ export class Game {
       this.lighting.update(dt, this.camera.position, this.camera.quaternion, 1);
       this.weather.update(dt, this.camera.position, this.lighting.lightning, this.fog.color);
       this.fog.near = this.time;
-      this.fog.far = 0.05;
+      this.fog.far = this.menuShotSpec(this.menuShot)?.fog ?? 0.05;
       this.lighting.indoor = 1;
       this.audio.setIndoor?.(1);
       this.viewmodel.setVisible(false);

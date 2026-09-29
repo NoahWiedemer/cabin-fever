@@ -10,7 +10,7 @@ npm run dev      # http://localhost:5173 (the game), /viewer.html (weapon + arms
 
 ## Main menu
 
-The title sits over the live scene of the loaded map (the farmhouse, or 13a's painted gable in Appenweier). A slow camera moves between shots, cutting through black when you change screens, and the lightning brightens the title. **Play** sets up a run in four steps: map (see [Maps](#maps)), game mode, difficulty and fireteam. A briefing panel shows the rounds, time limit, floors that open, the threat timeline and the standard kit. Everyone deploys with the same kit: M4A1, M9, knife and 2 frags. Better guns are bought in the store between rounds. The menu also has **Career** (your rank, weapon mastery, camos and operators; see [Career](#career)), **Settings** (with a separate music volume), **Controls** and **Credits**. A badge in the top right corner of the title screen shows your rank and the bar to the next one. You can use the mouse, or the arrow keys, Enter and Esc.
+The title sits over the live scene of the loaded map (the farmhouse, or 13a's painted gable in Appenweier). A slow camera moves between shots, cutting through black when you change screens, and the lightning brightens the title. **Play** is a lobby. On the left your squad stands out in the map itself, at night in the rain and the mist, in the beam of a torch (the farm's yard, or the dirt track at Appenweier's corn field), live in 3D: you, and up to three bots. They breathe, shift their weight, look round and raise their rifles. An empty seat is a pool of light with a plus over it to bring a bot (pick one of the characters that aren't seated); click a bot to swap it, or its cross to clear the seat. **Loadout** under your own figure opens a short version of the career panels as a window over the lobby: your rank, the operators, and for every weapon its mastery and a select with the camo it wears (a locked camo shows the mastery level it needs). A new operator or camo shows in the line-up at once. The rank ladder, the stats and every camo at a glance stay in Career. On the right the mission briefing shows a picture of the map (`public/maps/farm.webp`, `appenweier.webp`), the game mode's name and text, and the selects for map (see [Maps](#maps)) and game mode, then the difficulty and DEPLOY. Everyone deploys with the same kit: M4A1, M9, knife and 2 frags. Better guns are bought in the store between rounds. The menu also has **Career** (your rank, weapon mastery, camos and operators; see [Career](#career)), **Settings** (with a separate music volume), **Controls** and **Credits**. A badge in the top right corner of the title screen shows your rank and the bar to the next one. You can use the mouse, or the arrow keys, Enter and Esc.
 
 **Fullscreen**: the FULLSCREEN switch in the settings (main menu and pause menu) puts the whole page in fullscreen. It is saved with the other settings. Browsers only go fullscreen on a click or key press, so after a reload it comes back on your first click, and again when you deploy, resume or click back into the game. In Chrome and Edge, Esc stays with the game while fullscreen (Keyboard Lock): a tap pauses as usual, and holding Esc leaves fullscreen and switches the setting off. In other browsers Esc leaves fullscreen along with the mouse, and resuming brings it back. `src/core/fullscreen.js` wraps the Fullscreen and Keyboard Lock APIs.
 
@@ -18,7 +18,7 @@ The title sits over the live scene of the loaded map (the farmhouse, or 13a's pa
 
 ## Maps
 
-The PLAY screen's first step picks the map. A map is built once per page load (the fog shader, the nav grid and the lights are made for it), so picking the other one saves the choice and reloads the page, and DEPLOY then goes straight on with the same setup (`src/world/maps.js`; `?map=farm` or `?map=appenweier` forces one).
+The PLAY screen's first step picks the map. A map is built once per page load (the fog shader, the nav grid and the lights are made for it), so picking the other one reloads the page, and DEPLOY then goes straight on with the same setup. The main menu always shows the farm, Cabin Fever's home: a plain visit loads it, the pick is remembered only for that one reload, and quitting to the menu from Appenweier loads the farm again (`src/world/maps.js`; `?map=farm` or `?map=appenweier` forces one).
 
 - **The Farm**: the farmhouse, its ranch and Nadja's lab, with the story (below).
 - **Appenweier** (`src/world/appenweier.js`): Sander Straße in Appenweier (Ortenau, Baden-Württemberg) at night, about 200 × 160 m.
@@ -250,7 +250,7 @@ After Esc, browsers give the mouse back to the game only on a click or a key pre
   - `audio.js`: synthesized, spatialized sound.
 - `src/world`
   - `level.js`: the farmhouse layout.
-  - `maps.js`: the map list (the farm, Appenweier), which one this page plays (localStorage, `?map=`) and `buildMap`.
+  - `maps.js`: the map list (the farm, Appenweier), which one this page plays (the farm, unless a switching deploy or `?map=` says otherwise) and `buildMap`.
   - `appenweier.js` with `appenweierLayout.js`, `appenweierGeo.js`, `appenweierBuildings.js`, `appenweierProps.js` and `appenweierTextures.js`: the Appenweier map.
     - `appenweier.js` builds it from `public/maps/appenweier.json`: streets and markings as ribbons, the LoD2 buildings (walls and roofs as measured, colliders along their footprints), the yards, the spawn points and the level interface (unlocks, the gun shop, rain roofs, bot posts).
     - `appenweierBuildings.js` holds the hand-built places: 13a's painted gable, 13c, 13, the garage gun shop, the fire station's hall and tower, and the drugstore.
@@ -305,7 +305,7 @@ After Esc, browsers give the mouse back to the game only on a click or a key pre
   - `events.js`: the rare random events (see Game modes).
   - `progress.js`: the career (XP, ranks, weapon mastery, camos, operators, wins). `rogue.js`: the Gauntlet's cards, perks and curses, and `rogueDef()`, which puts the perks onto the held weapon's def.
 - `src/ui/insignia.js` draws the rank insignia and mastery badges as SVG. `draft.js` / `draft.css` are the Gauntlet's card drafts, and `cardIcons.js` holds their line icons.
-- `src/ui`: the Combat Arms-style HUD, the menus (`menu.js`, and `menu.css` for the cinematic main menu), the menu music (`music.js`) and the between-round store (`store.js`, `store.css`). `story.js` adds the cinema overlay (letterbox, subtitles, fades, the skip hint; outside the HUD so it stays up while the HUD is hidden), the objective panel and the radio messages.
+- `src/ui`: the Combat Arms-style HUD, the menus (`menu.js`, and `menu.css` for the cinematic main menu; `lobbyStage.js` runs the PLAY screen's 3D line-up: it borrows the game's own `Teammate` bodies onto a small stage of its own and gives them back on DEPLOY), the menu music (`music.js`) and the between-round store (`store.js`, `store.css`). `story.js` adds the cinema overlay (letterbox, subtitles, fades, the skip hint; outside the HUD so it stays up while the HUD is hidden), the objective panel and the radio messages.
 
 ## Assets
 

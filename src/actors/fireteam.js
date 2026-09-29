@@ -19,9 +19,14 @@ export const FIRETEAM_BY_ID = Object.fromEntries(FIRETEAM.map((c) => [c.id, c]))
 // the pre-picker "fireteam size" (0-3) mapped to the bodies those team sizes used to get
 export const LEGACY_LINEUPS = { 0: [], 1: ['viper'], 2: ['viper', 'meshy'], 3: ['coach', 'ellis', 'viper'] };
 
-/** Valid, de-duplicated character ids in roster order. */
+// a run has four seats: you and up to three of the roster
+export const MAX_BOTS = 3;
+// the team a fresh save starts with (the old "3 teammates")
+export const DEFAULT_TEAM = LEGACY_LINEUPS[3];
+
+/** Valid, de-duplicated character ids in roster order, at most MAX_BOTS of them. */
 export function normalizeFireteam(ids) {
   if (!Array.isArray(ids)) return null;
   const set = new Set(ids.map(String));
-  return FIRETEAM_IDS.filter((id) => set.has(id));
+  return FIRETEAM_IDS.filter((id) => set.has(id)).slice(0, MAX_BOTS);
 }

@@ -74,6 +74,12 @@ const menu = new Menu(document.getElementById('menu'), {
     inMenu = true;
     hud.setVisible(false);
     input.unlock();
+    // the main menu shows the farm: back from another map, load it again (the map is fixed for a page)
+    if (MAP.id !== 'farm') {
+      const url = new URL(location.href);
+      url.searchParams.delete('map');
+      location.replace(url.href);
+    }
   },
   onPlayAgain: () => {
     if (!game || !game.config) return;
@@ -103,6 +109,8 @@ const menu = new Menu(document.getElementById('menu'), {
   // menu music is for the main menu only (the in-game soundtrack comes later): quick fade out
   onMainMenu: (on) => (on ? music.play(1.5) : music.stop(0.5)),
   onShot: (name) => game?.setMenuShot(name),
+  // the PLAY screen's squad: the game's own bodies stand out in the map (ui/lobbyStage.js)
+  getLobbyCast: () => (game?.playerBody ? { game, bots: game.bots, player: game.playerBody } : null),
 });
 
 // Gun shop overlay: opened with F at the cellar counter during the buy phase. The pointer is

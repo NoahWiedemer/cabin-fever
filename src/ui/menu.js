@@ -7,8 +7,8 @@
 
 import './menu.css';
 import { ensureUiFonts, esc, weaponSvg, weaponKind } from './hud.js';
-import { MODE_LIST, MODES, DIFFICULTIES, THREATS, unlocksFor } from '../game/modes.js';
-import { FIRETEAM, FIRETEAM_IDS, FIRETEAM_BY_ID, LEGACY_LINEUPS, normalizeFireteam } from '../actors/fireteam.js';
+import { MODE_LIST, MODES, DIFFICULTIES } from '../game/modes.js';
+import { FIRETEAM, FIRETEAM_BY_ID, LEGACY_LINEUPS, MAX_BOTS, DEFAULT_TEAM, normalizeFireteam } from '../actors/fireteam.js';
 import * as LB from './leaderboard.js';
 import * as Progress from '../game/progress.js';
 import { insigniaSvg, masterySvg } from './insignia.js';
@@ -16,6 +16,7 @@ import { skinSwatch } from '../player/skins.js';
 import { WEAPONS } from '../player/weaponDefs.js';
 import { cardIcon } from './cardIcons.js';
 import { MAP_LIST, MAPS } from '../world/maps.js';
+import { LobbyStage } from './lobbyStage.js';
 
 // the MAP step's emblems (world/maps.js ids)
 const MAP_EMBLEMS = {
@@ -41,7 +42,7 @@ const DEFAULT_SETTINGS = Object.freeze({
 const QUALITIES = ['low', 'medium', 'high', 'ultra'];
 
 // main-menu views → camera shot behind them (game.js MENU_SHOTS)
-const VIEWS = { home: 'title', play: 'porch', career: 'interior', leaderboard: 'interior', settings: 'interior', controls: 'interior', credits: 'interior' };
+const VIEWS = { home: 'title', play: 'lobby', career: 'interior', leaderboard: 'interior', settings: 'interior', controls: 'interior', credits: 'interior' };
 
 const NAV = [
   ['play', 'PLAY', 'Map · mode · difficulty · fireteam'],
@@ -50,13 +51,6 @@ const NAV = [
   ['settings', 'SETTINGS', 'Mouse · video · audio'],
   ['controls', 'CONTROLS', 'Keyboard & mouse'],
   ['credits', 'CREDITS', 'The people and tools behind it'],
-];
-
-const KIT = [
-  ['rifle', 'M4A1', 'RIFLE'],
-  ['pistol', 'M9', 'PISTOL'],
-  ['knife', 'KNIFE', 'MELEE'],
-  ['grenade', '2× M67', 'FRAG'],
 ];
 
 const CONTROLS = [
@@ -127,6 +121,7 @@ const MASTERY_IDS = Object.values(WEAPONS)
   .map((d) => d.id);
 const CAMO_OK = (id) => WEAPONS[id]?.slot >= 0 && WEAPONS[id].slot <= 2;
 const fmtNum = (n) => Math.round(Number(n) || 0).toLocaleString('en-US');
+const GEAR = '<svg viewBox="0 0 20 20" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M8.2 1h3.6l.5 2.4 1.5.8 2.3-.9 1.8 3.1-1.8 1.6v1.8l1.8 1.6-1.8 3.1-2.3-.9-1.5.8-.5 2.4H8.2l-.5-2.4-1.5-.8-2.3.9-1.8-3.1 1.8-1.6V8l-1.8-1.6 1.8-3.1 2.3.9 1.5-.8ZM10 7a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z"/></svg>';
 const LOCK = '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M4 7V5a4 4 0 0 1 8 0v2h1v8H3V7Zm2 0h4V5a2 2 0 0 0-4 0Z"/></svg>';
 
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -167,20 +162,42 @@ function sanitizeSettings(s) {
 
 /**
  * Last setup. Older saves also carry `primary`; it's dropped (everyone gets the standard kit). The
- * fireteam is a list of character ids; saves from the 0-3 size picker keep the characters that size
- * used to field (1 = Viper, 2 = Viper + Scorpion, 3 = Coach, Ellis, Viper).
+ * fireteam is a list of character ids (at most MAX_BOTS: a run has four seats) and `slots` says where each
+ * one stands in the lobby; saves from the 0-3 size picker keep the characters that size used to field
+ * (1 = Viper, 2 = Viper + Scorpion, 3 = Coach, Ellis, Viper).
  */
 function sanitizeLoadout(c) {
-  const o = { mode: 'cabinfever', difficulty: 'hard', fireteam: FIRETEAM_IDS.slice() };
+  const o = { mode: 'cabinfever', difficulty: 'hard', fireteam: DEFAULT_TEAM.slice() };
+  let slots = null;
   if (c && typeof c === 'object') {
     if (MODES[c.mode]) o.mode = c.mode;
     if (DIFFICULTIES.some((d) => d.id === c.difficulty)) o.difficulty = c.difficulty;
     const team = normalizeFireteam(c.fireteam);
     if (team) o.fireteam = team;
     else if (Number.isInteger(c.teammates)) o.fireteam = LEGACY_LINEUPS[clamp(c.teammates, 0, 3)].slice();
+    if (Array.isArray(c.slots)) slots = c.slots;
   }
+  o.slots = cleanSlots(slots, o.fireteam);
+  o.fireteam = normalizeFireteam(o.slots.filter(Boolean)) ?? [];
   return o;
 }
+
+/** The three bot seats (you take the fourth): saved seats as they were, else the team in roster order. */
+function cleanSlots(slots, team) {
+  const out = Array(MAX_BOTS).fill(null);
+  if (Array.isArray(slots)) {
+    const seen = new Set();
+    slots.slice(0, MAX_BOTS).forEach((id, i) => {
+      if (FIRETEAM_BY_ID[id] && !seen.has(id)) {
+        out[i] = id;
+        seen.add(id);
+      }
+    });
+  } else team.slice(0, MAX_BOTS).forEach((id, i) => (out[i] = id));
+  return out;
+}
+
+const mapImageUrl = (m) => `${import.meta.env.BASE_URL}${m.image}`;
 
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 const fmtDate = (ms) => {
@@ -285,13 +302,8 @@ export class Menu {
   /** Character portraits ({ id: image URL }, actors/portraits.js) for the fireteam cards and the leaderboard. */
   setPortraits(map) {
     this._portraits = map && typeof map === 'object' ? { ...map } : {};
-    for (const card of this.$main.mates) {
-      const url = this._portraits[card.dataset.mate];
-      const img = card.querySelector('img');
-      if (!url || !img) continue;
-      img.src = url;
-      card.classList.add('has-pic');
-    }
+    this._renderLobby();
+    if (this._layer === this.$main.layers.pick) this._renderPick();
     if (this._view === 'leaderboard') this._renderBoard();
   }
 
@@ -482,6 +494,8 @@ export class Menu {
     if (name !== 'end') cancelAnimationFrame(this._countRaf);
     if ((was === 'main') !== (name === 'main')) this._call('onMainMenu', name === 'main');
     if (name === 'main') this._call('onShot', VIEWS[this._view]);
+    if (name === 'main' && this._view === 'play') this._lobbyShow();
+    else if (name !== 'main') this._lobbyHide();
   }
 
   _sfx(name) {
@@ -534,57 +548,60 @@ export class Menu {
       </button>`
     ).join('');
 
-    const modeHtml = MODE_LIST.map(
-      (m) => `
-      <button class="cf-mm-mode" data-sfx data-mode="${m.id}">
-        <span class="cf-mm-mode-emb">${EMBLEMS[m.id] || ''}</span>
-        <span class="cf-mm-mode-txt">
-          <span class="cf-mm-mode-k">${m.kicker}</span>
-          <span class="cf-mm-mode-n">${m.name}</span>
-          <span class="cf-mm-mode-d">${esc(m.tagline)}</span>
-        </span>
-      </button>`
-    ).join('');
-
-    const mapHtml = MAP_LIST.map(
-      (m) => `
-      <button class="cf-mm-diff cf-mm-map" data-sfx data-map="${m.id}">
-        <span class="cf-mm-map-emb">${MAP_EMBLEMS[m.id] || ''}</span>
-        <span class="cf-mm-map-txt">
-          <span class="cf-mm-diff-s">${esc(m.place)}</span>
-          <span class="cf-mm-diff-n">${esc(m.name)}</span>
-        </span>
-      </button>`
-    ).join('');
+    // the map and mode selects: one button showing the pick (icon, bold name); the list opens under it
+    const selItems = {
+      map: MAP_LIST.map((m) => ({ id: m.id, icon: MAP_EMBLEMS[m.id] || '', name: m.name })),
+      mode: MODE_LIST.map((m) => ({ id: m.id, icon: EMBLEMS[m.id] || '', name: m.name })),
+    };
+    const selectHtml = (key, label) => `
+      <div class="cf-sel" data-sel="${key}">
+        <div class="cf-sel-l">${label}</div>
+        <button class="cf-sel-btn" data-sfx data-row data-sel-toggle="${key}" aria-haspopup="listbox" aria-expanded="false">
+          <span class="cf-sel-ico" data-sel-ico></span><span class="cf-sel-n" data-sel-name></span><i class="cf-sel-chev"></i>
+        </button>
+      </div>`;
+    // (the lists sit in the briefing panel itself, not in its scrolling body, so nothing clips them)
+    const listHtml = (key) => `
+      <div class="cf-sel-list" role="listbox" data-sel-list="${key}" hidden>
+        ${selItems[key]
+          .map(
+            (it) => `<button class="cf-sel-opt" role="option" data-sfx data-opt="${it.id}" data-of="${key}">
+              <span class="cf-sel-ico">${it.icon}</span><span class="cf-sel-n">${esc(it.name)}</span>
+            </button>`
+          )
+          .join('')}
+      </div>`;
 
     const diffHtml = DIFFICULTIES.map(
       (d) => `
-      <button class="cf-mm-diff" data-sfx data-diff="${d.id}">
+      <button class="cf-mm-diff" data-sfx data-diff="${d.id}" title="${esc(d.desc)}">
         <span class="cf-mm-skulls">${SKULL.repeat(d.skulls)}</span>
         <span class="cf-mm-diff-n">${d.name}</span>
         <span class="cf-mm-diff-s" data-diff-sub></span>
       </button>`
     ).join('');
 
-    // fireteam picker: one toggle card per character, portrait filled in by setPortraits()
-    const mateHtml = FIRETEAM.map(
-      (c, i) => `<button class="cf-mm-mate" data-sfx data-mate="${c.id}" aria-pressed="false" style="--i:${i}">
-          <span class="cf-mm-mate-pic"><span class="cf-mm-mate-ph">${HELMET}</span><img alt="" draggable="false"></span>
-          <span class="cf-mm-mate-chk" aria-hidden="true"></span>
-          <span class="cf-mm-mate-txt">
-            <span class="cf-mm-mate-n">${esc(c.name)}</span>
-            <span class="cf-mm-mate-w"><i>${weaponSvg(weaponKind(c.gun))}</i>${esc(c.gun)}</span>
-          </span>
-        </button>`
-    ).join('');
+    // the career panels: the rank, the operators, every weapon's mastery and camos (the CAREER view and the
+    // LOADOUT window of the play screen show the same thing)
+    const carHtml = () => `
+      <div class="cf-car">
+        <div class="cf-car-side">
+          <div class="cf-panel cf-car-rank"></div>
+          <div class="cf-panel cf-car-ops">
+            <div class="cf-car-h">OPERATOR</div>
+            <div class="cf-car-oprow" data-row data-group></div>
+            <div class="cf-car-ophint"></div>
+          </div>
+        </div>
+        <div class="cf-panel cf-car-wpns">
+          <div class="cf-car-h">WEAPON MASTERY <small>Kills level a weapon up · camos at levels 2 · 4 · 6 · 8 · 10</small></div>
+          <div class="cf-car-list"></div>
+        </div>
+      </div>`;
 
     const lbModeHtml = MODE_LIST.map((m) => `<button data-sfx data-lb-mode="${m.id}"><i>${EMBLEMS[m.id] || ''}</i>${m.name}</button>`).join('');
     const lbDiffHtml = DIFFICULTIES.map(
       (d) => `<button data-sfx data-lb-diff="${d.id}"><span class="cf-mm-skulls">${SKULL.repeat(d.skulls)}</span>${d.name}<em data-lb-count></em></button>`
-    ).join('');
-
-    const kitHtml = KIT.map(
-      ([icon, name, kind]) => `<span class="cf-mm-kit-i"><span class="cf-mm-kit-ico ${icon}">${weaponSvg(icon)}</span><b>${name}</b><small>${kind}</small></span>`
     ).join('');
 
     const ctrlHtml = CONTROLS.map(
@@ -617,45 +634,30 @@ export class Menu {
           </section>
 
           <section class="cf-mm-view cf-mm-play" data-view="play">
-            ${head('OPERATION SETUP', 'PLAY')}
-            <div class="cf-mm-setup">
-              <div class="cf-mm-steps">
-                <div class="cf-mm-step">
-                  <div class="cf-mm-step-h"><b>01</b>MAP</div>
-                  <div class="cf-mm-maps" data-row data-group>${mapHtml}</div>
-                </div>
-                <div class="cf-mm-step">
-                  <div class="cf-mm-step-h"><b>02</b>GAME MODE</div>
-                  <div class="cf-mm-modes" data-row data-group>${modeHtml}</div>
-                </div>
-                <div class="cf-mm-step">
-                  <div class="cf-mm-step-h"><b>03</b>DIFFICULTY</div>
-                  <div class="cf-mm-diffs" data-row data-group>${diffHtml}</div>
-                </div>
-                <div class="cf-mm-step">
-                  <div class="cf-mm-step-h"><b>04</b>FIRETEAM</div>
-                  <div class="cf-mm-mates" data-row data-group data-multi>${mateHtml}</div>
-                  <div class="cf-mm-team-bar">
-                    <span class="cf-mm-team-qs" data-row data-group data-multi>
-                      <button class="cf-mm-team-q" data-sfx data-team-set="all">ALL</button>
-                      <button class="cf-mm-team-q" data-sfx data-team-set="none">SOLO</button>
-                    </span>
-                  </div>
-                </div>
+            <div class="cf-mm-head">
+              <button class="cf-mm-back cf-mm-back-lg" data-sfx data-go="home" data-row><i></i>BACK<span class="cf-kc">ESC</span></button>
+            </div>
+            <div class="cf-lob">
+              <div class="cf-lob-stage">
+                <div class="cf-lob-slots"></div>
               </div>
               <aside class="cf-mm-brief">
                 <div class="cf-mm-brief-body">
-                <div class="cf-mm-brief-k">MISSION BRIEFING</div>
-                <h3 class="cf-mm-brief-t"></h3>
-                <p class="cf-mm-brief-d"></p>
-                <div class="cf-mm-facts"></div>
-                <div class="cf-mm-threats"></div>
-                <div class="cf-mm-kit">
-                  <div class="cf-mm-kit-h">STANDARD ISSUE</div>
-                  <div class="cf-mm-kit-row">${kitHtml}</div>
-                  <div class="cf-mm-kit-note">Earn cash for every fireteam kill. Between rounds the <b>gun shop</b> in the cellar sells weapons, upgrades and gear.</div>
+                  <div class="cf-brief-pic">
+                    <img data-brief-img alt="" draggable="false">
+                    <span class="cf-brief-cap"><b data-brief-map></b></span>
+                  </div>
+                  <h3 class="cf-mm-brief-t"></h3>
+                  <p class="cf-mm-brief-d"></p>
+                  <div class="cf-sels">
+                    ${selectHtml('map', 'MAP')}
+                    ${selectHtml('mode', 'GAME MODE')}
+                  </div>
+                  <div class="cf-sel-l">DIFFICULTY</div>
+                  <div class="cf-mm-diffs" data-row data-group>${diffHtml}</div>
                 </div>
-                </div>
+                ${listHtml('map')}
+                ${listHtml('mode')}
               </aside>
               <button class="cf-mm-deploy" data-sfx data-row><span>DEPLOY</span><i class="cf-mm-arrows"><b></b><b></b><b></b></i></button>
             </div>
@@ -663,20 +665,7 @@ export class Menu {
 
           <section class="cf-mm-view cf-mm-career" data-view="career">
             ${head('CAREER', 'SERVICE RECORD')}
-            <div class="cf-car">
-              <div class="cf-car-side">
-                <div class="cf-panel cf-car-rank"></div>
-                <div class="cf-panel cf-car-ops">
-                  <div class="cf-car-h">OPERATOR</div>
-                  <div class="cf-car-oprow" data-row data-group></div>
-                  <div class="cf-car-ophint"></div>
-                </div>
-              </div>
-              <div class="cf-panel cf-car-wpns">
-                <div class="cf-car-h">WEAPON MASTERY <small>Kills level a weapon up · camos at levels 2 · 4 · 6 · 8 · 10</small></div>
-                <div class="cf-car-list"></div>
-              </div>
-            </div>
+            ${carHtml()}
           </section>
 
           <section class="cf-mm-view cf-mm-lb" data-view="leaderboard">
@@ -732,6 +721,29 @@ export class Menu {
           </section>
         </div>
 
+        <div class="cf-lo" data-layer="loadout" hidden>
+          <div class="cf-lo-back" data-close></div>
+          <div class="cf-lo-panel cf-panel">
+            <div class="cf-lo-head">
+              <div class="cf-lo-t"><h2>LOADOUT</h2></div>
+              <button class="cf-lo-close" data-sfx data-row data-close><i></i>CLOSE<span class="cf-kc">ESC</span></button>
+            </div>
+            <div class="cf-lo-body">${carHtml()}</div>
+            <div class="cf-sel-list cf-camo-list" role="listbox" data-camo-list hidden></div>
+          </div>
+        </div>
+
+        <div class="cf-pk" data-layer="pick" hidden>
+          <div class="cf-lo-back" data-close></div>
+          <div class="cf-pk-panel cf-panel">
+            <div class="cf-lo-head">
+              <div class="cf-lo-t"><small data-pk-k>SLOT 2</small><h2>CHOOSE A BOT</h2></div>
+              <button class="cf-lo-close" data-sfx data-row data-close><i></i>CLOSE<span class="cf-kc">ESC</span></button>
+            </div>
+            <div class="cf-pk-grid" data-row data-group data-multi></div>
+          </div>
+        </div>
+
         <div class="cf-mm-dip"></div>
       </div>`);
     this.root.appendChild(el);
@@ -740,18 +752,24 @@ export class Menu {
     this.$main = {
       root: el,
       views: Object.fromEntries([...el.querySelectorAll('[data-view]')].map((v) => [v.dataset.view, v])),
-      maps: [...el.querySelectorAll('[data-map]')],
-      modes: [...el.querySelectorAll('[data-mode]')],
-      diffs: [...el.querySelectorAll('[data-diff]')],
-      mates: [...el.querySelectorAll('[data-mate]')],
-      teamSets: [...el.querySelectorAll('[data-team-set]')],
+      stage: q('.cf-lob-stage'),
+      slots: q('.cf-lob-slots'),
+      brief: q('.cf-mm-brief'),
+      picBox: q('.cf-brief-pic'),
+      pic: q('[data-brief-img]'),
+      picMap: q('[data-brief-map]'),
       briefT: q('.cf-mm-brief-t'),
       briefD: q('.cf-mm-brief-d'),
-      facts: q('.cf-mm-facts'),
-      threats: q('.cf-mm-threats'),
-      kitNote: q('.cf-mm-kit-note'),
+      sels: Object.fromEntries(
+        ['map', 'mode'].map((k) => [k, { btn: q(`[data-sel-toggle="${k}"]`), ico: q(`[data-sel="${k}"] [data-sel-ico]`), name: q(`[data-sel="${k}"] [data-sel-name]`), list: q(`[data-sel-list="${k}"]`) }])
+      ),
+      diffs: [...el.querySelectorAll('[data-diff]')],
+      layers: { loadout: q('[data-layer="loadout"]'), pick: q('[data-layer="pick"]') },
+      pickGrid: q('.cf-pk-grid'),
+      pickK: q('[data-pk-k]'),
       profile: q('.cf-mm-profile'),
-      car: { rank: q('.cf-car-rank'), ops: q('.cf-car-oprow'), opHint: q('.cf-car-ophint'), list: q('.cf-car-list') },
+      cars: [...el.querySelectorAll('.cf-car')].map((c) => ({ compact: !!c.closest('.cf-lo'), rank: c.querySelector('.cf-car-rank'), ops: c.querySelector('.cf-car-oprow'), opHint: c.querySelector('.cf-car-ophint'), list: c.querySelector('.cf-car-list') })),
+      camoList: q('[data-camo-list]'),
       lb: {
         modes: [...el.querySelectorAll('[data-lb-mode]')],
         diffs: [...el.querySelectorAll('[data-lb-diff]')],
@@ -773,20 +791,36 @@ export class Menu {
         if (go.dataset.go === 'career') this._renderCareer();
         return this._setView(go.dataset.go, { kbd: e.detail === 0 });
       }
-      const mp = t.closest('[data-map]');
-      if (mp) return this._setConfig('map', mp.dataset.map);
-      const m = t.closest('[data-mode]');
-      if (m) return this._setConfig('mode', m.dataset.mode);
+      if (this._sel && !t.closest('.cf-sel-list') && !t.closest('[data-sel-toggle]') && !t.closest('[data-camo-toggle]')) this._closeSel(this._sel);
+      const ctog = t.closest('[data-camo-toggle]');
+      if (ctog) return this._openCamo(ctog);
+      const copt = t.closest('[data-copt]');
+      if (copt) return this._pickCamo(copt);
+      const tog = t.closest('[data-sel-toggle]');
+      if (tog) return this._toggleSel(tog.dataset.selToggle);
+      const opt = t.closest('[data-opt]');
+      if (opt) {
+        this._setConfig(opt.dataset.of, opt.dataset.opt);
+        return this._closeSel(opt.dataset.of, true);
+      }
       const d = t.closest('[data-diff]');
       if (d) return d.classList.contains('na') ? this._nope(d) : this._setConfig('difficulty', d.dataset.diff);
       const camo = t.closest('[data-camo]');
       if (camo) return this._setCamo(camo);
       const op = t.closest('[data-op]');
       if (op) return this._setOperator(op);
-      const mate = t.closest('[data-mate]');
-      if (mate) return this._toggleMate(mate.dataset.mate);
-      const set = t.closest('[data-team-set]');
-      if (set) return this._setConfig('fireteam', set.dataset.teamSet === 'all' ? FIRETEAM_IDS.slice() : []);
+      const seat = t.closest('[data-seat]');
+      if (seat) return this._openPick(Number(seat.dataset.seat));
+      const clr = t.closest('[data-seat-clear]');
+      if (clr) return this._setBot(Number(clr.dataset.seatClear), null);
+      const pick = t.closest('[data-pick]');
+      if (pick) {
+        const seat = this._pickSeat;
+        this._closeLayer();
+        return this._setBot(seat, pick.dataset.pick || null); // (and focus goes to that seat)
+      }
+      if (t.closest('[data-loadout]')) return this._openLoadout();
+      if (t.closest('[data-close]')) return this._closeLayer();
       const lm = t.closest('[data-lb-mode]');
       if (lm) return this._renderBoard(lm.dataset.lbMode, this._lb.difficulty);
       const ld = t.closest('[data-lb-diff]');
@@ -820,6 +854,8 @@ export class Menu {
   _renderProfile() {
     const P = this.$main?.profile;
     if (!P) return;
+    const you = this.$main.slots?.querySelector('.cf-lob-slot.you .cf-lob-name');
+    if (you) you.textContent = this._name();
     const r = Progress.rankOf();
     const pct = r.next ? r.into / r.span : 1;
     P.innerHTML = `<span class="cf-mm-prof-ins">${insigniaSvg(r.index)}</span><span class="cf-mm-prof-t"><small>${esc(this._name())}</small><b>${esc(r.rank.name)}</b><span class="cf-mm-prof-bar"><i style="transform:scaleX(${pct.toFixed(4)})"></i></span><em>${fmtNum(Progress.career().xp)} XP${r.next ? ` · NEXT ${esc(r.next.short)}` : ''}</em></span>`;
@@ -827,22 +863,29 @@ export class Menu {
 
   /** the career view: the rank and its ladder, the operator skins, every weapon's mastery and camos */
   _renderCareer() {
-    const C = this.$main.car;
+    for (const C of this.$main.cars) this._renderCareerInto(C);
+  }
+
+  _renderCareerInto(C) {
+    const compact = C.compact; // the loadout window: your rank, the operators, one camo per weapon (a select); the CAREER view has it all
     const p = Progress.career();
     const r = Progress.rankOf();
     const pct = r.next ? r.into / r.span : 1;
-    const wins = DIFFICULTIES.map((d) => `<span><small>${d.name}</small><b>${p.wins['cabinfever:' + d.id] ?? 0}</b></span>`).join('');
-    const ladder = Progress.RANKS.map((k, i) => `<i class="${i < r.index ? 'got' : i === r.index ? 'cur' : ''}" title="${esc(k.name)} · ${fmtNum(k.xp)} XP">${insigniaSvg(i)}</i>`).join('');
-    C.rank.innerHTML = `
+    const me = `
       <div class="cf-car-me">
         <div class="cf-car-ins">${insigniaSvg(r.index)}</div>
         <div class="cf-car-id">
-          <small>${esc(r.rank.short)} · GRADE ${r.index + 1} / ${Progress.RANKS.length}</small>
+          ${compact ? '' : `<small>${esc(r.rank.short)} · GRADE ${r.index + 1} / ${Progress.RANKS.length}</small>`}
           <b>${esc(r.rank.name)}</b>
           <div class="cf-car-bar"><i style="transform:scaleX(${pct.toFixed(4)})"></i></div>
           <span class="cf-car-xp"><b>${fmtNum(p.xp)}</b> XP${r.next ? ` · ${fmtNum(r.span - r.into)} TO ${esc(r.next.name.toUpperCase())}` : ' · TOP OF THE LADDER'}</span>
         </div>
-      </div>
+      </div>`;
+    if (compact) C.rank.innerHTML = me;
+    else {
+      const wins = DIFFICULTIES.map((d) => `<span><small>${d.name}</small><b>${p.wins['cabinfever:' + d.id] ?? 0}</b></span>`).join('');
+      const ladder = Progress.RANKS.map((k, i) => `<i class="${i < r.index ? 'got' : i === r.index ? 'cur' : ''}" title="${esc(k.name)} · ${fmtNum(k.xp)} XP">${insigniaSvg(i)}</i>`).join('');
+      C.rank.innerHTML = `${me}
       <div class="cf-car-stats">
         <span><small>RUNS</small><b>${fmtNum(p.runs)}</b></span>
         <span><small>KILLS</small><b>${fmtNum(p.kills)}</b></span>
@@ -851,49 +894,102 @@ export class Menu {
       </div>
       <div class="cf-car-wins"><small>CABIN FEVER WINS</small>${wins}</div>
       <div class="cf-car-ladder">${ladder}</div>`;
-    // the operators
-    const me = Progress.character();
+    }
+    // the operators (the window names only what is locked: how to earn it)
+    const you = Progress.character();
     C.ops.innerHTML = Progress.CHARACTER_SKINS.map((c) => {
       const ok = Progress.characterUnlocked(c.id);
       const pic = this._portraits[c.bot ?? 'player'];
-      return `<button class="cf-car-op${c.id === me.id ? ' sel' : ''}${ok ? '' : ' locked'}" data-sfx data-op="${c.id}" title="${esc(ok ? c.name : c.how)}">
+      const note = ok ? (compact ? '' : c.id === you.id ? 'ACTIVE' : 'READY') : esc(c.how.toUpperCase());
+      return `<button class="cf-car-op${c.id === you.id ? ' sel' : ''}${ok ? '' : ' locked'}" data-sfx data-op="${c.id}" title="${esc(ok ? c.name : c.how)}">
           <span class="cf-car-op-pic">${pic ? `<img src="${pic}" alt="" draggable="false">` : HELMET}${ok ? '' : `<span class="cf-car-op-lock">${LOCK}</span>`}</span>
-          <b>${esc(c.name)}</b><small>${ok ? (c.id === me.id ? 'ACTIVE' : 'READY') : esc(c.how.toUpperCase())}</small>
+          <b>${esc(c.name)}</b>${note ? `<small>${note}</small>` : ''}
         </button>`;
     }).join('');
-    this._opHint();
+    this._opHint(C);
     // weapon mastery, the most used first
     const rows = MASTERY_IDS.map((id) => ({ id, m: Progress.masteryOf(id) })).sort((a, b) => b.m.xp - a.m.xp || MASTERY_IDS.indexOf(a.id) - MASTERY_IDS.indexOf(b.id));
     C.list.innerHTML = rows
       .map(({ id, m }) => {
         const d = WEAPONS[id];
         const cur = Progress.skinOf(id);
-        const camos = CAMO_OK(id)
-          ? Progress.WEAPON_SKINS.map((k) => {
-              const ok = Progress.skinUnlocked(id, k.id);
-              const sw = this._swatch(k.id);
-              return `<button class="cf-car-camo c-${k.id}${cur === k.id ? ' sel' : ''}${ok ? '' : ' locked'}" data-sfx data-camo="${k.id}" data-wpn="${id}" title="${esc(k.name)}${ok ? '' : ` · mastery level ${k.level}`}"${sw ? ` style="background-image:url(${sw})"` : ''}>${ok ? '' : `<i>${k.level}</i>`}</button>`;
-            }).join('')
-          : '<small class="cf-car-nocamo">NO CAMOS</small>';
+        let camos;
+        if (!CAMO_OK(id)) camos = '<small class="cf-car-nocamo">NO CAMOS</small>';
+        else if (compact) camos = this._camoBtn(id);
+        else
+          camos = Progress.WEAPON_SKINS.map((k) => {
+            const ok = Progress.skinUnlocked(id, k.id);
+            const sw = this._swatch(k.id);
+            return `<button class="cf-car-camo c-${k.id}${cur === k.id ? ' sel' : ''}${ok ? '' : ' locked'}" data-sfx data-camo="${k.id}" data-wpn="${id}" title="${esc(k.name)}${ok ? '' : ` · mastery level ${k.level}`}"${sw ? ` style="background-image:url(${sw})"` : ''}>${ok ? '' : `<i>${k.level}</i>`}</button>`;
+          }).join('');
         const pct = m.span ? m.into / m.span : 1;
-        return `<div class="cf-car-w${m.xp > 0 ? '' : ' fresh'}">
+        return `<div class="cf-car-w${m.xp > 0 ? '' : ' fresh'}${compact ? ' compact' : ''}">
             <span class="cf-car-w-ico">${weaponSvg(weaponKind(d.name))}</span>
             <span class="cf-car-w-n"><b>${esc(d.name)}</b><small>${m.span ? `${fmtNum(m.into)} / ${fmtNum(m.span)} XP` : 'MASTERED'}</small><span class="cf-car-w-bar"><i style="transform:scaleX(${pct.toFixed(4)})"></i></span></span>
             <span class="cf-car-w-lv" title="Mastery level ${m.level}">${masterySvg(m.level)}</span>
-            <span class="cf-car-camos"${CAMO_OK(id) ? ' data-row data-group' : ''}>${camos}</span>
+            <span class="cf-car-camos"${CAMO_OK(id) && !compact ? ' data-row data-group' : ''}>${camos}</span>
           </div>`;
       })
       .join('');
   }
 
-  _opHint() {
+  /** a weapon's camo select (the loadout window): the camo it wears; the list of all of them opens under it */
+  _camoBtn(id) {
+    const cur = Progress.WEAPON_SKINS.find((k) => k.id === Progress.skinOf(id)) ?? Progress.WEAPON_SKINS[0];
+    const sw = this._swatch(cur.id);
+    return `<button class="cf-camo-btn" data-sfx data-row data-camo-toggle="${id}" aria-haspopup="listbox" aria-expanded="false"><i class="cf-camo-sw"${sw ? ` style="background-image:url(${sw})"` : ''}></i><span>${esc(cur.name)}</span><i class="cf-sel-chev"></i></button>`;
+  }
+
+  _openCamo(btn) {
+    const wpn = btn.dataset.camoToggle;
+    if (this._sel === 'camo' && this._camoBtnEl === btn) return this._closeSel('camo', true);
+    this._closeSel(this._sel);
+    this._camoBtnEl = btn;
+    this._camoWpn = wpn;
+    const list = this.$main.camoList;
+    const cur = Progress.skinOf(wpn);
+    list.innerHTML = Progress.WEAPON_SKINS.map((k) => {
+      const ok = Progress.skinUnlocked(wpn, k.id);
+      const sw = this._swatch(k.id);
+      return `<button class="cf-sel-opt cf-camo-opt${k.id === cur ? ' sel' : ''}${ok ? '' : ' locked'}" role="option" data-sfx data-copt="${k.id}" aria-selected="${k.id === cur}">
+          <i class="cf-camo-sw"${sw ? ` style="background-image:url(${sw})"` : ''}></i><span class="cf-sel-n">${esc(k.name)}</span>${ok ? '' : `<small>${LOCK}LEVEL ${k.level}</small>`}
+        </button>`;
+    }).join('');
+    const panel = this.$main.layers.loadout.querySelector('.cf-lo-panel');
+    const b = btn.getBoundingClientRect();
+    const a = panel.getBoundingClientRect();
+    list.style.width = `${Math.max(b.width, 230)}px`;
+    list.style.left = `${Math.min(b.left, a.right - Math.max(b.width, 230) - 12) - a.left}px`;
+    list.hidden = false;
+    // under the button, or over it when the panel's bottom is in the way
+    const h = list.offsetHeight;
+    list.style.top = `${(b.bottom + 6 + h > a.bottom - 8 ? b.top - h - 6 : b.bottom + 6) - a.top}px`;
+    btn.setAttribute('aria-expanded', 'true');
+    this._sel = 'camo';
+    (list.querySelector('.sel') || list.querySelector('[data-copt]'))?.focus();
+  }
+
+  /** a camo picked from the list: worn at once (a locked one shakes); the button shows it */
+  _pickCamo(opt) {
+    const wpn = this._camoWpn;
+    if (opt.classList.contains('locked') || !Progress.setSkin(wpn, opt.dataset.copt)) return this._nope(opt);
+    const btn = this._camoBtnEl;
+    if (btn) btn.outerHTML = this._camoBtn(wpn);
+    this._camoBtnEl = this.$main.layers.loadout.querySelector(`[data-camo-toggle="${wpn}"]`);
+    this._closeSel('camo', true);
+    if (wpn === 'm4a1') this._lobbyCast(); // (the rifle in your hands in the line-up)
+  }
+
+  _opHint(C) {
     const me = Progress.character();
-    this.$main.car.opHint.textContent = me.bot ? `You are ${FIRETEAM_BY_ID[me.bot]?.name ?? me.name} now: the bot sits out your fireteam.` : 'Your own operator. Scorpion and Viper can be earned.';
+    const text = me.bot ? `You are ${FIRETEAM_BY_ID[me.bot]?.name ?? me.name} now: the bot sits out your fireteam.` : 'Your own operator. Scorpion and Viper can be earned.';
+    for (const c of C ? [C] : this.$main.cars) c.opHint.textContent = text;
   }
 
   _setCamo(btn) {
     if (btn.classList.contains('locked') || !Progress.setSkin(btn.dataset.wpn, btn.dataset.camo)) return this._nope(btn);
     for (const b of btn.parentElement.children) b.classList.toggle('sel', b === btn);
+    if (btn.dataset.wpn === 'm4a1') this._lobbyCast(); // (the rifle in your hands in the line-up)
     this._sfx('ui_click');
   }
 
@@ -903,22 +999,227 @@ export class Menu {
     for (const b of btn.parentElement.children) {
       b.classList.toggle('sel', b === btn);
       const ok = !b.classList.contains('locked');
-      if (ok) b.querySelector('small').textContent = b === btn ? 'ACTIVE' : 'READY';
+      const note = b.querySelector('small');
+      if (ok && note) note.textContent = b === btn ? 'ACTIVE' : 'READY';
     }
     this._opHint();
-    this._syncConfig(); // the fireteam card of the one you now wear
+    this._renderLobby(); // the body in the line-up (and the bot seat of the one you now wear)
     this._sfx('ui_click');
     return me;
   }
 
-  /* ---------------- fireteam picker ---------------- */
+  /* ---------------- lobby: the four seats ---------------- */
 
-  _toggleMate(id) {
-    if (id === Progress.character().bot) return this._nope(this.$main.mates.find((b) => b.dataset.mate === id));
-    const on = new Set(this.config.fireteam);
-    if (on.has(id)) on.delete(id);
-    else on.add(id);
-    this._setConfig('fireteam', normalizeFireteam([...on]));
+  /**
+   * The four seats: you, then the bots you brought (or an empty seat to add one to). Each is an anchor that
+   * ui/lobbyStage.js moves over that body's feet in the map: its name under it, the click target over it, the
+   * plus on an empty seat, LOADOUT under your own name.
+   */
+  _renderLobby() {
+    const M = this.$main;
+    if (!M.slots) return;
+    const me = Progress.character();
+    const seat = (i, cls, inner) => `<div class="cf-lob-seat ${cls}" data-slot="${i}" style="--i:${i}" hidden>${inner}</div>`;
+    const seats = [
+      seat(
+        0,
+        'you',
+        `<button class="cf-lob-hit" data-sfx data-loadout tabindex="-1" aria-hidden="true"></button>
+        <div class="cf-lob-label"><b class="cf-lob-name">${esc(this._name())}</b><button class="cf-lob-loadout" data-sfx data-row data-loadout>${GEAR}<span>LOADOUT</span></button></div>`
+      ),
+    ];
+    this.config.slots.forEach((id, i) => {
+      const bot = id && id !== me.bot ? FIRETEAM_BY_ID[id] : null; // (the one whose body you wear sits out)
+      seats.push(
+        bot
+          ? seat(
+              i + 1,
+              'bot',
+              `<button class="cf-lob-hit" data-sfx data-row data-seat="${i}" aria-label="Change ${esc(bot.name)}"></button>
+              <div class="cf-lob-label"><b class="cf-lob-name">${esc(bot.name)}</b><span class="cf-lob-x" data-sfx data-seat-clear="${i}" title="Remove ${esc(bot.name)}"><i></i></span></div>`
+            )
+          : seat(
+              i + 1,
+              'empty',
+              `<button class="cf-lob-hit" data-sfx data-seat="${i}" tabindex="-1" aria-hidden="true"></button>
+              <button class="cf-lob-add" data-sfx data-row data-seat="${i}" aria-label="Add a bot"><span class="cf-lob-plus"></span></button>
+              <div class="cf-lob-label"><b class="cf-lob-name">ADD BOT</b></div>`
+            )
+      );
+    });
+    M.slots.innerHTML = seats.join('');
+    this._lobbyCast();
+  }
+
+  /** bots into the seats (and your own operator, with the camo on its rifle), for the live line-up */
+  _lobbyCast() {
+    const st = this._stage;
+    if (!st?.running) return;
+    const cast = this.cb.getLobbyCast?.();
+    if (!cast) return;
+    const me = Progress.character();
+    const you = cast.player;
+    you._wear(me.body); // (an operator switch: the new body takes the old one's place in the scene)
+    const list = [{ slot: 0, body: you, skin: Progress.skinOf('m4a1') }];
+    this.config.slots.forEach((id, i) => {
+      const bot = id && id !== me.bot ? cast.bots.find((b) => b.id === id) : null;
+      if (bot) list.push({ slot: i + 1, body: bot });
+    });
+    st.setCast(list);
+  }
+
+  _lobbyShow() {
+    if (this._view !== 'play' || this._current !== 'main') return;
+    const M = this.$main;
+    const cast = this.cb.getLobbyCast?.();
+    if (!cast) return; // (the game is still loading)
+    this._stage ??= new LobbyStage(cast.game, M.stage, () => [...M.slots.querySelectorAll('.cf-lob-seat')]);
+    window.__lobbyStage = this._stage; // (debug handle, like __game: re-aim a map's 'lobby' shot live)
+    if (this._stage.start()) this._lobbyCast();
+  }
+
+  /** the bodies are hidden again (before DEPLOY, and whenever the play view goes away) */
+  _lobbyHide() {
+    this._stage?.stop();
+  }
+
+  /** put a bot on seat `i` (0-2), or clear it; a bot only sits once */
+  _setBot(i, id) {
+    const slots = this.config.slots.slice();
+    if (id) for (let k = 0; k < slots.length; k++) if (slots[k] === id) slots[k] = null;
+    slots[i] = id || null;
+    this.config.slots = slots;
+    this.config.fireteam = normalizeFireteam(slots.filter(Boolean)) ?? [];
+    saveJSON(LS_LOADOUT, this.config);
+    this._renderLobby();
+    this._focusSeat(i);
+  }
+
+  _focusSeat(i) {
+    this.$main.slots.querySelector(`[data-seat="${i}"]`)?.focus();
+  }
+
+  /** the picker: the characters that aren't seated yet (and not the one whose body you wear) */
+  _openPick(i) {
+    this._pickSeat = i;
+    this.$main.pickK.textContent = `SEAT ${i + 2}`;
+    this._renderPick();
+    this._openLayer('pick');
+  }
+
+  _renderPick() {
+    const i = this._pickSeat;
+    const me = Progress.character();
+    const cur = this.config.slots[i];
+    const taken = new Set(this.config.slots.filter((id, k) => id && k !== i));
+    const cards = FIRETEAM.filter((c) => c.id !== me.bot && !taken.has(c.id)).map((c) => {
+      const url = this._portraits[c.id];
+      return `<button class="cf-pk-card${c.id === cur ? ' sel' : ''}" data-sfx data-pick="${c.id}">
+          <span class="cf-pk-pic">${url ? `<img src="${url}" alt="" draggable="false">` : HELMET}</span>
+          <span class="cf-pk-txt"><b>${esc(c.name)}</b><span><i>${weaponSvg(weaponKind(c.gun))}</i>${esc(c.gun)}</span></span>
+        </button>`;
+    });
+    if (cur && cur !== me.bot) cards.push(`<button class="cf-pk-card rm" data-sfx data-pick=""><span class="cf-pk-pic"><i class="cf-pk-rm"></i></span><span class="cf-pk-txt"><b>REMOVE</b><span>EMPTY SEAT</span></span></button>`);
+    this.$main.pickGrid.innerHTML = cards.join('') || '<div class="cf-pk-none">EVERYONE IS ALREADY ON THE TEAM</div>';
+  }
+
+  /* ---------------- windows over the play view: the picker and the loadout ---------------- */
+
+  _openLoadout() {
+    this._renderCareer();
+    this._openLayer('loadout');
+  }
+
+  _openLayer(name) {
+    this._closeSel(this._sel);
+    const L = this.$main.layers[name];
+    if (this._layer && this._layer !== L) this._layer.hidden = true;
+    this._from = this._layer ? this._from : document.activeElement;
+    L.hidden = false;
+    this._layer = L;
+    L.classList.remove('in');
+    void L.offsetWidth;
+    L.classList.add('in');
+    (L.querySelector('.cf-pk-card.sel, .cf-car-op.sel') || L.querySelector('.cf-pk-card') || L.querySelector('.cf-lo-close'))?.focus();
+  }
+
+  _closeLayer() {
+    const L = this._layer;
+    if (!L) return;
+    this._closeSel(this._sel);
+    L.hidden = true;
+    this._layer = null;
+    const from = this._from;
+    this._from = null;
+    if (from && document.contains(from) && from.getClientRects().length) from.focus();
+    else this._focusView();
+  }
+
+  /* ---------------- the map and mode selects ---------------- */
+
+  _fillSelect(key, id, icon, name) {
+    const S = this.$main.sels[key];
+    S.btn.dataset.val = id; // (the CSS colours the Endless and Gauntlet emblems red)
+    S.ico.innerHTML = icon || '';
+    S.name.textContent = name;
+    for (const o of S.list.querySelectorAll('[data-opt]')) {
+      const on = o.dataset.opt === id;
+      o.classList.toggle('sel', on);
+      o.setAttribute('aria-selected', on ? 'true' : 'false');
+    }
+  }
+
+  _toggleSel(key) {
+    const S = this.$main.sels[key];
+    if (!S.list.hidden) return this._closeSel(key);
+    this._closeSel(this._sel);
+    const M = this.$main;
+    const b = S.btn.getBoundingClientRect();
+    const a = M.brief.getBoundingClientRect();
+    S.list.style.left = `${b.left - a.left}px`;
+    S.list.style.top = `${b.bottom - a.top + 6}px`;
+    S.list.style.width = `${b.width}px`;
+    S.list.hidden = false;
+    S.btn.setAttribute('aria-expanded', 'true');
+    this._sel = key;
+    (S.list.querySelector('.sel') || S.list.querySelector('[data-opt]'))?.focus();
+  }
+
+  /** close a select's list; refocus: back on its button (a pick, Esc) */
+  _closeSel(key, refocus = false) {
+    if (!key) return;
+    const S = key === 'camo' ? { list: this.$main.camoList, btn: this._camoBtnEl } : this.$main.sels[key];
+    S.list.hidden = true;
+    S.btn?.setAttribute('aria-expanded', 'false');
+    if (this._sel === key) this._sel = null;
+    if (refocus) S.btn?.focus();
+  }
+
+  /** keys while a select's list is open: arrows move, Enter / Space pick (the button's own click), Esc closes */
+  _selKey(e) {
+    const S = this._sel === 'camo' ? { list: this.$main.camoList } : this.$main.sels[this._sel];
+    const opts = [...S.list.querySelectorAll('[data-opt], [data-copt]')];
+    const a = document.activeElement;
+    const i = opts.indexOf(a);
+    const k = e.key;
+    if (k === 'Escape' || k === 'Backspace' || k === 'Tab') {
+      e.preventDefault();
+      this._sfx('ui_click');
+      return this._closeSel(this._sel, true);
+    }
+    if (k === 'ArrowDown' || k === 'ArrowUp' || k === 'ArrowRight' || k === 'ArrowLeft') {
+      e.preventDefault();
+      const next = opts[clamp(i + (k === 'ArrowDown' || k === 'ArrowRight' ? 1 : -1), 0, opts.length - 1)];
+      if (next && next !== a) {
+        next.focus();
+        this._sfx('ui_hover');
+      }
+      return;
+    }
+    if (k === ' ' && a?.tagName === 'BUTTON') {
+      e.preventDefault();
+      if (!e.repeat) a.click();
+    }
   }
 
   /** small round portrait of a character (initial when the portraits aren't rendered) */
@@ -945,6 +1246,7 @@ export class Menu {
       const n = LB.setPlayerName(input.value);
       const changed = n !== this._playerName;
       this._playerName = n;
+      if (changed) this._renderProfile();
       if (flash && changed) {
         L.saved.classList.remove('on');
         void L.saved.offsetWidth;
@@ -1037,8 +1339,14 @@ export class Menu {
     const prev = this._view;
     const apply = () => {
       this._view = view;
+      this._closeSel(this._sel);
+      if (this._layer) this._closeLayer();
       for (const [k, v] of Object.entries(M.views)) v.classList.toggle('on', k === view);
       M.root.dataset.view = view;
+      if (view === 'play') {
+        this._renderLobby();
+        this._lobbyShow();
+      } else this._lobbyHide();
       if (kbd) this._focusView();
     };
     const cut = !instant && prev !== view && VIEWS[prev] !== VIEWS[view];
@@ -1059,7 +1367,7 @@ export class Menu {
 
   /** keyboard rows of the current view that are actually shown (the leaderboard hides its table or empty state) */
   _rows() {
-    const v = this.$main.views[this._view];
+    const v = this._layer ?? this.$main.views[this._view];
     return [...v.querySelectorAll('[data-row]')].filter((r) => r.getClientRects().length > 0);
   }
 
@@ -1078,7 +1386,14 @@ export class Menu {
   _onKey(e) {
     if (this._current === 'pause') return this._pauseKey(e);
     if (this._current !== 'main') return;
+    if (this._sel) return this._selKey(e);
     if (e.key === 'Escape' || (e.key === 'Backspace' && !/INPUT|TEXTAREA/.test(document.activeElement?.tagName))) {
+      if (this._layer) {
+        e.preventDefault();
+        this._sfx('ui_click');
+        this._closeLayer();
+        return;
+      }
       if (this._view !== 'home') {
         e.preventDefault();
         this._sfx('ui_click');
@@ -1138,7 +1453,9 @@ export class Menu {
   }
 
   _deploy() {
-    const cfg = { ...this.config, primary: STANDARD_PRIMARY };
+    this._lobbyHide(); // (game.start() spawns the bots itself: they must be back in the game scene)
+    const me = Progress.character();
+    const cfg = { ...this.config, primary: STANDARD_PRIMARY, fireteam: (this.config.fireteam ?? []).filter((id) => id !== me.bot) };
     saveJSON(LS_LOADOUT, this.config);
     // cut to black, then fade into the game
     const c = this.$curtain;
@@ -1164,56 +1481,27 @@ export class Menu {
     const c = this.config;
     const mode = MODES[c.mode] || MODES.cabinfever;
     const dId = mode.difficulty ?? c.difficulty; // (the Gauntlet: always Extreme)
-    const diff = DIFFICULTIES.find((x) => x.id === dId) || DIFFICULTIES[1];
     if (!MAPS[c.map]) c.map = this.loadedMap.id;
     const map = MAPS[c.map];
-    for (const b of M.maps) b.classList.toggle('sel', b.dataset.map === c.map);
-    for (const b of M.modes) {
-      const tag = b.querySelector('.cf-mm-mode-d');
-      if (tag) tag.textContent = map.modeTagline?.[b.dataset.mode] ?? MODES[b.dataset.mode]?.tagline ?? tag.textContent; // (a map without the story)
-      b.classList.toggle('sel', b.dataset.mode === c.mode);
-    }
+    this._fillSelect('map', map.id, MAP_EMBLEMS[map.id], map.name);
+    this._fillSelect('mode', mode.id, EMBLEMS[mode.id], mode.name);
     for (const b of M.diffs) {
       b.classList.toggle('sel', b.dataset.diff === dId);
       b.classList.toggle('na', !!mode.difficulty && b.dataset.diff !== mode.difficulty);
-      const d = DIFFICULTIES.find((x) => x.id === b.dataset.diff);
-      b.querySelector('[data-diff-sub]').textContent = mode.difficulty ? (d.id === mode.difficulty ? 'ALWAYS' : '') : mode.endless ? '' : `${d.rounds} ROUNDS`;
+      b.querySelector('[data-diff-sub]').textContent = mode.difficulty && b.dataset.diff === mode.difficulty ? 'ALWAYS' : '';
     }
-    // fireteam cards (the one whose skin you wear is you: it sits the run out)
-    const me = Progress.character();
-    const team = (normalizeFireteam(c.fireteam) ?? []).filter((id) => id !== me.bot);
-    for (const b of M.mates) {
-      const on = team.includes(b.dataset.mate);
-      b.classList.toggle('sel', on);
-      b.classList.toggle('you', b.dataset.mate === me.bot);
-      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    // the briefing: the map's picture, the mode's name and its text
+    if (M.pic.dataset.map !== map.id) {
+      M.pic.dataset.map = map.id;
+      M.picBox.classList.remove('nopic', 'swap');
+      void M.picBox.offsetWidth;
+      M.picBox.classList.add('swap');
+      M.pic.onerror = () => M.picBox.classList.add('nopic');
+      M.pic.src = mapImageUrl(map);
     }
-    for (const b of M.teamSets) b.classList.toggle('sel', b.dataset.teamSet === 'all' ? team.length === FIRETEAM.length : !team.length);
-
-    // briefing
-    M.briefT.innerHTML = `${mode.name} <em>·</em> ${diff.name}`;
-    const desc = map.modeDesc?.[mode.id] ?? mode.desc;
-    M.briefD.textContent = mode.rogue ? desc : `${desc} ${mode.endless ? diff.edesc : diff.desc}`;
-    const unlocks = unlocksFor(mode.id, diff.id, map);
-    const names = team.map((id) => FIRETEAM_BY_ID[id].name.toUpperCase());
-    const facts = [
-      ['MAP', `${map.name} · ${map.place}${map.id !== this.loadedMap.id ? ' · LOADS ON DEPLOY' : ''}`, 'wide'],
-      ['ROUNDS', mode.endless ? '∞' : String(diff.rounds)],
-      ['TIME LIMIT', mode.endless || mode.timer === false ? 'NONE' : `${diff.minutes}:00`],
-      ...(mode.rogue ? [['GUN SHOP', 'NONE · CARDS AND CURSES INSTEAD', 'wide']] : []),
-      [map.id === 'farm' ? 'FLOORS' : 'UNLOCKS', unlocks.length ? unlocks.map((u) => `${u.name} R${u.round}`).join(' · ') : 'GROUND FLOOR ONLY', 'wide'],
-      [team.length ? `FIRETEAM · YOU + ${team.length}` : 'FIRETEAM', team.length ? names.join(' · ') : 'SOLO · NO BACKUP', 'wide'],
-    ];
-    M.facts.innerHTML = facts.map(([k, v, cls]) => `<span class="${cls || ''}"><small>${k}</small><b>${esc(v)}</b></span>`).join('');
-    M.kitNote.innerHTML = mode.rogue
-      ? 'No gun shop, no cash. After every round <b>draw a card</b>: a weapon, a perk or supplies. Then <b>take a curse</b>.'
-      : `Earn cash for every fireteam kill. Between rounds the <b>gun shop</b> ${esc(map.shopWhere)} sells weapons, upgrades and gear.`;
-    const last = mode.endless ? Infinity : diff.rounds;
-    M.threats.innerHTML =
-      '<div class="cf-mm-threats-h">THREAT TIMELINE</div>' +
-      THREATS.filter((t) => t.round <= last)
-        .map((t) => `<div class="cf-mm-threat"><em>R${pad(t.round, 2)}</em><b>${t.name}</b><span>${t.text}</span></div>`)
-        .join('');
+    M.picMap.textContent = map.name;
+    M.briefT.textContent = mode.name;
+    M.briefD.textContent = map.modeDesc?.[mode.id] ?? mode.desc;
   }
 
   /* ---------------- settings (shared by main + pause) ---------------- */
