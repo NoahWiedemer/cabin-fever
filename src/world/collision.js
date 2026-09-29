@@ -115,10 +115,11 @@ export class CollisionWorld {
     }
   }
 
-  // Highest walkable top at (x,z) within radius r that is <= maxY. Returns -Infinity if none.
-  groundHeight(x, z, r, maxY) {
+  // Highest walkable top at (x,z) within radius r that is <= maxY. Returns -Infinity if none. `filter(box)` may reject boxes.
+  groundHeight(x, z, r, maxY, filter = null) {
     let best = -Infinity;
     this.query(x - r, z - r, x + r, z + r, (b) => {
+      if (filter && !filter(b)) return;
       if (b.maxY <= maxY && b.maxY > best) {
         // circle vs rect overlap
         if (b.obb) {

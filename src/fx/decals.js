@@ -19,6 +19,7 @@ class DecalPool {
     this.index = 0;
     this.count = 0;
     const geo = new THREE.PlaneGeometry(1, 1);
+    this.boxes = new Array(max).fill(null); // the collider each one lies on (prune: gone when it's switched off)
     this.frames = new Float32Array(max);
     this.aFrame = new THREE.InstancedBufferAttribute(this.frames, 1);
     geo.setAttribute('aFrame', this.aFrame);
@@ -71,8 +72,9 @@ class DecalPool {
     scene.add(this.mesh);
   }
 
-  add(pos, normal, size, rot = Math.random() * Math.PI * 2, frame = null, stretch = 1) {
+  add(pos, normal, size, rot = Math.random() * Math.PI * 2, frame = null, stretch = 1, box = null) {
     const i = this.index;
+    this.boxes[i] = box;
     this.index = this.index + 1;
     if (this.index >= this.max) this.index = this.reserved || 0; // never overwrite reserved (pre-seeded) decals
     this.count = Math.min(this.max, this.count + 1);
@@ -93,10 +95,24 @@ class DecalPool {
     this.mesh.count = this.count;
   }
 
+  /** Hide the ones whose collider was switched off (a door opened, a wall broke): they'd hang in the air. */
+  prune() {
+    let dirty = false;
+    for (let i = 0; i < this.count; i++) {
+      const b = this.boxes[i];
+      if (!b || b.enabled) continue;
+      this.boxes[i] = null;
+      this.mesh.setMatrixAt(i, _m.makeScale(0, 0, 0));
+      dirty = true;
+    }
+    if (dirty) this.mesh.instanceMatrix.needsUpdate = true;
+  }
+
   clear() {
     this.count = 0;
     this.index = 0;
     this.mesh.count = 0;
+    this.boxes.fill(null);
   }
 }
 
@@ -132,20 +148,25 @@ export class Decals {
     this.permanentBlood = 0;
   }
 
-  bloodSplat(pos, normal, size = 0.8, stretch = 1) {
-    this.blood?.add(pos, normal, size, undefined, null, stretch);
+  // `box`: the collider it lies on, if it can go away (see prune)
+  bloodSplat(pos, normal, size = 0.8, stretch = 1, box = null) {
+    this.blood?.add(pos, normal, size, undefined, null, stretch, box);
   }
-  bloodPool(pos, size = 1.3) {
-    this.pools?.add(pos, _up, size);
+  bloodPool(pos, size = 1.3, box = null) {
+    this.pools?.add(pos, _up, size, undefined, null, 1, box);
   }
-  bulletHole(pos, normal, size = 0.09) {
-    this.holes?.add(pos, normal, size);
+  bulletHole(pos, normal, size = 0.09, box = null) {
+    this.holes?.add(pos, normal, size, undefined, null, 1, box);
   }
-  scorchMark(pos, normal = _up, size = 3.5) {
-    this.scorch?.add(pos, normal, size);
+  scorchMark(pos, normal = _up, size = 3.5, box = null) {
+    this.scorch?.add(pos, normal, size, undefined, null, 1, box);
   }
   glassChip(pos, normal, size = 0.09) {
     this.chips.add(pos, normal, size);
+  }
+
+  prune() {
+    for (const p of [this.blood, this.pools, this.holes, this.scorch]) p?.prune();
   }
 }
 

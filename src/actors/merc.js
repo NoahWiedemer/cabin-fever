@@ -19,11 +19,14 @@ import { levelOf } from '../world/level.js';
 import { WEAPONS } from '../player/weaponDefs.js';
 
 export const MERC = {
-  hp: { rifle: 170, shield: 220 }, // x difficulty
+  hp: { rifle: 260, shield: 320 }, // x difficulty
   part: { head: 2.5, torso: 1, leg: 0.75 },
   run: 3.4, // m/s closing in
   walk: 1.5, // m/s pushing in / sidestepping while shooting
   shieldRun: 2.4,
+  // rad/s: the riot shield is heavy, so its bearer turns no faster than this (about 57 deg/s). Circle him (a sprint
+  // round him within ~7 m outruns it) or shoot from his flank while he faces someone else.
+  shieldTurn: 1.0,
   range: { rifle: 28, shield: 17 }, // they shoot within this, with a line of sight
   stop: { rifle: [9, 17], shield: [3.5, 6] }, // m: they hold between these while they shoot
   // x difficulty damage. spread: aim error (deg) + 0.08 a metre; acquire: s before it fires at someone it just saw
@@ -401,13 +404,19 @@ export class Merc extends Teammate {
     game.world.moveBody(b, dt);
     this.moveSpeed = damp(this.moveSpeed, Math.hypot(pos.x - bx, pos.z - bz) / Math.max(dt, 1e-4), 10, dt);
 
-    // ---- aim: at whom it shoots (the shield always turned to them), else the way it goes
+    // ---- aim: at whom it shoots when it sees them, else the way it goes. The shield turns slowly (M.shieldTurn) and
+    // only toward someone in sight (it used to track its target through walls, at once): it can be flanked
     let faceYaw = this.yaw, wantPitch = 0;
-    if (tgt && (this.los || shield)) {
+    if (tgt && this.los) {
       faceYaw = Math.atan2(tgt.pos.x - pos.x, tgt.pos.z - pos.z);
       wantPitch = Math.atan2(tgt.pos.y + 1.25 - (pos.y + 1.5), Math.max(0.5, dist));
     } else if (Math.hypot(wantX, wantZ) > 0.1) faceYaw = Math.atan2(wantX, wantZ);
-    this.yaw = dampAngle(this.yaw, faceYaw, shield ? 9 : 7, dt);
+    if (shield) {
+      // the old smooth approach when close to it, but never faster than the heavy shield turns
+      const step = wrapAngle(faceYaw - this.yaw) * (1 - Math.exp(-9 * dt));
+      const turn = M.shieldTurn * dt;
+      this.yaw = wrapAngle(this.yaw + clamp(step, -turn, turn));
+    } else this.yaw = dampAngle(this.yaw, faceYaw, 7, dt);
     this.aimPitch = damp(this.aimPitch, wantPitch, 8, dt);
     this.root.rotation.y = this.yaw;
 
@@ -720,7 +729,7 @@ export class MercSquad {
       victim.takeDamage(dmg, m.pos, m);
       if (!victim.isPlayer) g.fx.bloodHit(end, dir, { amount: 0.5, decals: false });
     } else if (wall) {
-      g.fx.impact(end, _n.set(wall.nx, wall.ny, wall.nz), wall.box.surface, { silent: Math.random() < 0.5 });
+      g.fx.impact(end, _n.set(wall.nx, wall.ny, wall.nz), wall.box.surface, { silent: Math.random() < 0.5, box: wall.box });
     }
     g.fx.tracer(muzzle, end, { speed: 300, length: 3, width: 0.02, color: [4.5, 0.55, 0.35] });
   }

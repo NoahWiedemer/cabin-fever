@@ -304,13 +304,15 @@ export class Game {
       [-11.5, 11.5, -7.5, 7.5, 3.45],
     ];
     const up = new THREE.Vector3(0, 1, 0);
+    // (fx.splat / fx.decalRay: only on solid level geometry, and only where the whole splat fits: splats over a
+    // floor's edge or on the rough boxes round props and in open windows used to hang in the air)
     for (const [x0, x1, z0, z1, y] of rooms) {
       const n = y === 3.45 ? 28 : Math.round((x1 - x0) * (z1 - z0) * 0.55);
       for (let i = 0; i < n; i++) {
         const x = rand(x0, x1), z = rand(z0, z1);
-        const g = this.world.groundHeight(x, z, 0.05, y + 0.3);
-        if (Math.abs(g - y) > 0.05) continue;
-        decals.bloodSplat(_p.set(x, g, z), up, rand(0.3, 0.75));
+        const down = this.fx.decalRay(x, y + 0.3, z, 0, -1, 0, 0.4);
+        if (!down || Math.abs(down.t - 0.3) > 0.05) continue; // (the room's own floor, not a step or a table)
+        this.fx.splat(_p.set(x, y + 0.3 - down.t, z), up, rand(0.3, 0.75), 1, down.box);
       }
     }
     // wall smears & bullet holes via random horizontal rays from room centers
@@ -318,12 +320,12 @@ export class Game {
       for (let i = 0; i < 26; i++) {
         const o = _p.set(rand(x0, x1), y + rand(0.25, 1.9), rand(z0, z1));
         const a = Math.random() * Math.PI * 2;
-        const hit = this.world.raycast(o.x, o.y, o.z, Math.cos(a), 0, Math.sin(a), 8, bulletFilter, _hit);
+        const hit = this.fx.decalRay(o.x, o.y, o.z, Math.cos(a), 0, Math.sin(a), 8);
         if (!hit || hit.box.tag?.startsWith('lab') || hit.box.tag === 'generator' || hit.box.tag === 'clean') continue; // ('clean': walls kept free of it, e.g. Appenweier's murals) // the lab's door, window frame and glass stay clean; the generator's bounding box would float smears in mid-air
         const pt = new THREE.Vector3(o.x + Math.cos(a) * hit.t, o.y, o.z + Math.sin(a) * hit.t);
         _n.set(hit.nx, hit.ny, hit.nz);
-        if (Math.random() < 0.45) decals.bloodSplat(pt, _n, rand(0.4, 1.0), rand(1, 2.2));
-        else for (let k = 0; k < 4; k++) decals.bulletHole(pt.clone().add(new THREE.Vector3(rand(-0.3, 0.3), rand(-0.3, 0.3), rand(-0.3, 0.3)).projectOnPlane(_n)), _n);
+        if (Math.random() < 0.45) this.fx.splat(pt, _n, rand(0.4, 1.0), rand(1, 2.2), hit.box);
+        else if (this.fx.fitDecal(pt, _n, 0.7) > 0) for (let k = 0; k < 4; k++) decals.bulletHole(pt.clone().add(new THREE.Vector3(rand(-0.3, 0.3), rand(-0.3, 0.3), rand(-0.3, 0.3)).projectOnPlane(_n)), _n, 0.09, hit.box);
       }
     }
     for (const [x0, x1, z0, z1, y, n] of this.level.decor?.pools ?? [[-11, 11, -7, 7, 0.2, 8]]) for (let i = 0; i < n; i++) this.fx.bloodPoolAt(new THREE.Vector3(rand(x0, x1), y, rand(z0, z1)));
@@ -901,7 +903,7 @@ export class Game {
       this.fx.bloodHit(end, dir, { amount: 0.3, decals: false });
       this.audio.play('impact_flesh', { position: end, volume: 0.55 });
     } else if (!stoppedByZombie && wall) {
-      this.fx.impact(end, wn, wallBox.surface, { silent: opts.pellet > 1 || opts.bot && Math.random() < 0.6 });
+      this.fx.impact(end, wn, wallBox.surface, { silent: opts.pellet > 1 || opts.bot && Math.random() < 0.6, box: wallBox });
       if (wallBox.tag === 'labGlass') this.lab?.onGlassHit(end);
     }
     if (opts.tracerFrom) {

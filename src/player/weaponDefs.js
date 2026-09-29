@@ -94,6 +94,8 @@ export const WEAPONS = {
     mag: 24, reserve: 0, maxReserve: 0, noReload: true, fixedAmmo: true,
     adsZoom: 1.25, adsTime: 0.19, sound: 'm32_fire', shell: 'grenade40', tracerEvery: 0, moveMul: 0.92,
     hip: [0.18, -0.19, -0.23], hipRot: [0.02, 0.07, 0.04], ammoKind: 'explosive', drawTime: 0.48, noEject: true, special: true,
+    // aiming, the support arm comes up from below to the vertical foregrip (viewmodel.js), not across the view
+    adsLeft: { shoulder: [-0.08, -0.56, 0.0], pole: [-0.45, -1, 0.1] },
   },
   mozambique: {
     id: 'mozambique', name: 'SA-3 MOZAMBIQUE', slot: 1, model: 'mozambique', mode: 'semi', rpm: 280,
@@ -196,6 +198,7 @@ export const WEAPONS = {
     mag: 30, reserve: 0, maxReserve: 0, noReload: true, fixedAmmo: true,
     adsZoom: 1.3, adsTime: 0.2, sound: 'm32_fire', shell: 'grenade40', tracerEvery: 0, moveMul: 0.9,
     hip: [0.19, -0.22, -0.15], hipRot: [0.02, 0.07, 0.04], ammoKind: 'explosive', drawTime: 0.5, special: true, noEject: true,
+    adsLeft: { shoulder: [-0.08, -0.56, 0.0], pole: [-0.45, -1, 0.1] }, // (see softball)
   },
   goldenPunisher: {
     id: 'goldenPunisher', name: 'GOLDEN PUNISHER', slot: 0, model: 'goldenPunisher', mode: 'auto', rpm: 340,
@@ -205,6 +208,7 @@ export const WEAPONS = {
     mag: 12, reserve: 48, maxReserve: 72, reloadType: 'shell', reloadStart: 0.35, shellTime: 0.36, reloadEnd: 0.4,
     adsZoom: 1.15, adsTime: 0.19, sound: 'shotgun_fire', shell: 'shotgun', tracerEvery: 0, moveMul: 0.96,
     hip: [0.19, -0.2, -0.26], hipRot: [0.02, 0.08, 0.04], ammoKind: 'shotgun', drawTime: 0.44, special: true,
+    adsLeft: { shoulder: [-0.08, -0.56, 0.0], pole: [-0.45, -1, 0.1] }, // (see softball)
   },
   chaingun: {
     id: 'chaingun', name: 'CHAIN GUN', slot: 0, model: 'chaingun', mode: 'auto', rpm: 1500, spinup: 0.5,

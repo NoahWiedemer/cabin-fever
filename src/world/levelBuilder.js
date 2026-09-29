@@ -328,19 +328,19 @@ export class LevelBuilder {
         ].map(([px, pz]) => [px * cos + pz * sin, -px * sin + pz * cos]);
         const xs = pts.map((p) => p[0] * s + x);
         const zs = pts.map((p) => p[1] * s + z);
-        added.push(
-          this.world.add(
-            Math.min(...xs),
-            c.min[1] * s + y,
-            Math.min(...zs),
-            Math.max(...xs),
-            c.max[1] * s + y,
-            Math.max(...zs),
-            opts.surface ?? SURF.wood,
-            opts.flags ?? 0,
-            opts.tag ?? null
-          )
+        const b = this.world.add(
+          Math.min(...xs),
+          c.min[1] * s + y,
+          Math.min(...zs),
+          Math.max(...xs),
+          c.max[1] * s + y,
+          Math.max(...zs),
+          opts.surface ?? SURF.wood,
+          opts.flags ?? 0,
+          opts.tag ?? null
         );
+        b.prop = true; // a prop's rough bounding box: much of its faces is air, so no blood or bullet holes on it (fx/effects.js)
+        added.push(b);
       }
     }
     return added;

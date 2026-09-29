@@ -592,15 +592,19 @@ export class Viewmodel {
       const f = clamp(a.t / a.dur, 0, 1);
       const tilt = pulse(f, 0.0, 0.15, 0.82, 1.0);
       if (m.magTop) {
-        rz += tilt * 0.3; // roll left: the magazine on top turns toward the support hand
-        rx += tilt * 0.12;
+        // (the P90) a short roll left, the magazine on top turned toward the support hand, and the gun kept low and
+        // right: it's held so far forward that a bigger roll or lift swung the firing arm up across the view
+        rz += tilt * 0.15;
+        rx += tilt * 0.06;
+        ry += tilt * 0.05;
+        pos.y -= tilt * 0.03;
       } else {
         rz -= tilt * 0.38; // roll right: magwell turns toward the support hand
         rx += tilt * 0.22; // muzzle up
+        ry += tilt * 0.12;
+        pos.x -= tilt * 0.05;
+        pos.y += tilt * 0.03;
       }
-      ry += tilt * 0.12;
-      pos.x -= tilt * 0.05;
-      pos.y += tilt * 0.03;
       const isPistol = def.id === 'm9';
       if (P.mag && m.rest.mag && m.magTop) {
         // top-loaded (P90): slide the magazine back out from under the rail, swing it away down to the
@@ -925,14 +929,16 @@ export class Viewmodel {
 
     this.root.updateMatrixWorld(true);
     m.animate?.(dt); // model extras that need the posed world matrices (the gas can's fuel stream)
-    // a gun aimed with its grip right under the eye (the P90): the support arm comes up from below while aiming
+    // a gun aimed with its support grip close under the eye (the P90; the launchers' and the Punisher's foregrips,
+    // weaponDefs adsLeft): the support arm comes up from below while aiming instead of across the view
     const ac = this.arms?.config;
+    const adsLeft = m.adsLeft ?? def.adsLeft;
     if (ac?.shoulders && this.armBase) {
       ac.shoulders.left.copy(this.armBase.shoulder);
       ac.poles.left.copy(this.armBase.pole);
-      if (m.adsLeft && adsE > 0) {
-        ac.shoulders.left.lerp(_adsArm.fromArray(m.adsLeft.shoulder), adsE);
-        ac.poles.left.lerp(_adsArm.fromArray(m.adsLeft.pole), adsE);
+      if (adsLeft && adsE > 0) {
+        ac.shoulders.left.lerp(_adsArm.fromArray(adsLeft.shoulder), adsE);
+        ac.poles.left.lerp(_adsArm.fromArray(adsLeft.pole), adsE);
       }
     }
     if (this.arms) {

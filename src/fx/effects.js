@@ -7,11 +7,20 @@ import { Decals } from './decals.js';
 import { tex } from '../world/textures.js';
 import { buildShellCasing } from '../player/gunSafe.js';
 import { MagDrops } from './magDrops.js';
-import { SURF } from '../world/collision.js';
+import { SURF, FLAG_NOBULLET } from '../world/collision.js';
 import { rand } from '../core/utils.js';
+
+// what blood and bullet holes may lie on: solid level geometry. Not colliders bullets pass through (the open
+// windows' and the railings' blocking boxes, invisible stops: mostly air), nor a prop's rough bounding box
+// (levelBuilder placeProp: a table's box is air between its legs)
+const DECAL_ON = (b) => (b.flags & FLAG_NOBULLET) === 0 && !b.prop;
 
 const _v = new THREE.Vector3();
 const _n = new THREE.Vector3();
+const _t1 = new THREE.Vector3();
+const _t2 = new THREE.Vector3();
+const _fp = new THREE.Vector3();
+const _fitHit = {};
 const _q = new THREE.Quaternion();
 const _m = new THREE.Matrix4();
 const _s = new THREE.Vector3(1, 1, 1);
@@ -158,11 +167,13 @@ export class Effects {
         const sp = it.v.length();
         if (sp > 2) {
           _n.copy(it.v).divideScalar(sp);
-          const hit = this.world.raycast(it.p.x, it.p.y, it.p.z, _n.x, _n.y, _n.z, sp * dt + 0.05, null, {});
+          // (through what bullets pass and props' rough boxes: those are mostly air)
+          const hit = this.decalRay(it.p.x, it.p.y, it.p.z, _n.x, _n.y, _n.z, sp * dt + 0.05);
           if (hit && hit.ny < 0.5) {
-            // a wall (or the ceiling): it sticks for a splat, then drops
+            // a wall (or the ceiling): it sticks for a splat (on the wall, not where the chunk's centre is), then drops
+            _v.copy(it.p).addScaledVector(_n, hit.t);
             it.p.addScaledVector(_n, Math.max(0, hit.t - 0.04));
-            this.decals.bloodSplat(_v.copy(it.p), _n.set(hit.nx, hit.ny, hit.nz), rand(0.3, 0.6) * (it.s.x / 0.1), hit.ny < -0.5 ? 1 : rand(1.2, 2.2));
+            this.splat(_v, _n.set(hit.nx, hit.ny, hit.nz), rand(0.3, 0.6) * (it.s.x / 0.1), hit.ny < -0.5 ? 1 : rand(1.2, 2.2), hit.box);
             it.v.set(hit.nx * 0.4, Math.min(0, it.v.y) * 0.2 - (hit.ny < -0.5 ? 0.5 : 0), hit.nz * 0.4);
             it.av.multiplyScalar(0.2);
           }
@@ -177,12 +188,12 @@ export class Effects {
           it.dripT = 0.035;
           this.blood.emit(it.p.x, it.p.y, it.p.z, it.v.x * 0.15 + rand(-0.3, 0.3), it.v.y * 0.15, it.v.z * 0.15 + rand(-0.3, 0.3), { life: rand(0.3, 0.6), size: rand(0.02, 0.04), gravity: 9.8, drag: 1, color: [0.16, 0.012, 0.01], alpha: 1 });
         }
-        const floor = this.world.groundHeight(it.p.x, it.p.z, 0.02, it.p.y + 0.05);
+        const floor = this.world.groundHeight(it.p.x, it.p.z, 0.02, it.p.y + 0.05, DECAL_ON);
         const r = it.s.y * 0.6;
         if (it.p.y < floor + r) {
           it.p.y = floor + r;
           if (it.bounces === 0) {
-            this.decals.bloodSplat(_v.set(it.p.x, floor, it.p.z), UP, rand(0.3, 0.55) * (it.s.x / 0.1));
+            this.splat(_v.set(it.p.x, floor, it.p.z), UP, rand(0.3, 0.55) * (it.s.x / 0.1));
             if (g.sounds < 4) {
               g.sounds++;
               this.audio.play('impact_flesh', { position: it.p, volume: 0.45, pitch: rand(0.7, 0.95) });
@@ -270,7 +281,47 @@ export class Effects {
         this.audio.play(snd, { position: p, volume: 0.5 });
       }
     }
-    if (surface !== SURF.mud && !opts.noDecal) this.decals.bulletHole(p, n, surface === SURF.metal ? 0.06 : 0.085);
+    // opts.box: the collider hit (no hole in a prop's rough box; one in a door goes when it opens)
+    if (surface !== SURF.mud && !opts.noDecal && (!opts.box || DECAL_ON(opts.box))) this.decals.bulletHole(p, n, surface === SURF.metal ? 0.06 : 0.085, opts.box ?? null);
+  }
+
+  // ------------------------------------------------------------------ decals on the level
+
+  /** The first decal surface on a ray (DECAL_ON), or null. */
+  decalRay(ox, oy, oz, dx, dy, dz, maxT) {
+    return this.world.raycast(ox, oy, oz, dx, dy, dz, maxT, DECAL_ON, {});
+  }
+
+  /**
+   * How big a decal centred at pos may be on the surface with normal n: its rim is sampled a few cm off the surface
+   * and each sample looks back for that same plane. One hanging over an edge (a stair nose, a doorway, a floor's
+   * end) would float in the air there, so it shrinks, and if even a small one doesn't fit it isn't placed (0).
+   */
+  fitDecal(pos, n, size, stretch = 1) {
+    if (Math.abs(n.y) > 0.7) _t1.set(1, 0, 0);
+    else _t1.set(-n.z, 0, n.x).normalize(); // along the wall
+    _t2.crossVectors(n, _t1).normalize();
+    let r = 0.5 * size * Math.max(1, stretch) * 0.8; // (the splats are round-ish: their corners are empty)
+    for (let k = 0; k < 3; k++) {
+      let ok = true;
+      for (let j = 0; j < 6 && ok; j++) {
+        const a = (j / 6) * Math.PI * 2 + 0.3;
+        _fp.copy(pos).addScaledVector(_t1, Math.cos(a) * r).addScaledVector(_t2, Math.sin(a) * r).addScaledVector(n, 0.04);
+        const h = this.world.raycast(_fp.x, _fp.y, _fp.z, -n.x, -n.y, -n.z, 0.09, DECAL_ON, _fitHit);
+        ok = !!h && Math.abs(h.t - 0.04) < 0.025 && h.nx * n.x + h.ny * n.y + h.nz * n.z > 0.9;
+      }
+      if (ok) return size;
+      size *= 0.6;
+      r *= 0.6;
+      if (size < 0.1) break;
+    }
+    return 0;
+  }
+
+  /** A blood splat that fits where it lands (fitDecal), on the collider `box` (it goes when that does). */
+  splat(pos, n, size, stretch = 1, box = null) {
+    const s = this.fitDecal(pos, n, size, stretch);
+    if (s > 0) this.decals.bloodSplat(pos, n, s, stretch, box);
   }
 
   // ------------------------------------------------------------------ blood
@@ -289,35 +340,35 @@ export class Effects {
     }
     if (!decals) return;
     // decal: behind the target (wall) or on the floor below
-    const hit = this.world.raycast(p.x, p.y, p.z, dir.x, dir.y, dir.z, 3.0, null, {});
+    const hit = this.decalRay(p.x, p.y, p.z, dir.x, dir.y, dir.z, 3.0);
     if (hit) {
       _n.set(hit.nx, hit.ny, hit.nz);
       _v.set(p.x + dir.x * hit.t, p.y + dir.y * hit.t, p.z + dir.z * hit.t);
-      this.decals.bloodSplat(_v, _n, rand(0.4, 0.9) * (headshot ? 1.4 : 1), _n.y > 0.5 ? 1 : rand(1, 1.8));
+      this.splat(_v, _n, rand(0.4, 0.9) * (headshot ? 1.4 : 1), _n.y > 0.5 ? 1 : rand(1, 1.8), hit.box);
     }
     if (Math.random() < 0.7) {
-      const down = this.world.raycast(p.x + rand(-0.4, 0.4) + dir.x * 0.5, p.y, p.z + rand(-0.4, 0.4) + dir.z * 0.5, 0, -1, 0, 3, null, {});
-      if (down) {
-        _v.set(p.x + dir.x * 0.5, p.y - down.t, p.z + dir.z * 0.5);
-        this.decals.bloodSplat(_v, UP, rand(0.35, 0.8));
-      }
+      // (the splat goes where the ray went down: it used to drop the ray's random offset, so its height came from
+      // up to 40 cm away, a table top or a stair, and it hung in the air)
+      const x = p.x + rand(-0.4, 0.4) + dir.x * 0.5, z = p.z + rand(-0.4, 0.4) + dir.z * 0.5;
+      const down = this.decalRay(x, p.y, z, 0, -1, 0, 3);
+      if (down) this.splat(_v.set(x, p.y - down.t, z), UP, rand(0.35, 0.8), 1, down.box);
     }
     // the spray comes down too: a trail of small drops on the floor, thrown out along the shot
     const drops = Math.round((headshot ? 4 : 2) * amount + Math.random());
     for (let i = 0; i < drops; i++) {
       const d = rand(0.3, headshot ? 2.2 : 1.5);
       const x = p.x + dir.x * d + rand(-0.35, 0.35), z = p.z + dir.z * d + rand(-0.35, 0.35);
-      const down = this.world.raycast(x, p.y, z, 0, -1, 0, 3, null, {});
-      if (down) this.decals.bloodSplat(_v.set(x, p.y - down.t, z), UP, rand(0.1, 0.26));
+      const down = this.decalRay(x, p.y, z, 0, -1, 0, 3);
+      if (down) this.splat(_v.set(x, p.y - down.t, z), UP, rand(0.1, 0.26), 1, down.box);
     }
   }
 
   bloodPoolAt(pos) {
-    const down = this.world.raycast(pos.x, pos.y + 0.5, pos.z, 0, -1, 0, 2, null, {});
-    if (down) {
-      _v.set(pos.x, pos.y + 0.5 - down.t, pos.z);
-      this.decals.bloodPool(_v, rand(1.0, 1.7));
-    }
+    const down = this.decalRay(pos.x, pos.y + 0.5, pos.z, 0, -1, 0, 2);
+    if (!down) return;
+    _v.set(pos.x, pos.y + 0.5 - down.t, pos.z);
+    const size = this.fitDecal(_v, UP, rand(1.0, 1.7));
+    if (size > 0) this.decals.bloodPool(_v, size, down.box);
   }
 
   gore(p, scale = 1, color = null) {
@@ -333,8 +384,8 @@ export class Effects {
     for (let i = 0; i < 7; i++) {
       const a = Math.random() * Math.PI * 2, r = rand(0.3, 2.4);
       const x = p.x + Math.cos(a) * r, z = p.z + Math.sin(a) * r;
-      const down = this.world.raycast(x, p.y + 0.5, z, 0, -1, 0, 3, null, {});
-      if (down) this.decals.bloodSplat(_v.set(x, p.y + 0.5 - down.t, z), UP, rand(0.5, 1.1));
+      const down = this.decalRay(x, p.y + 0.5, z, 0, -1, 0, 3);
+      if (down) this.splat(_v.set(x, p.y + 0.5 - down.t, z), UP, rand(0.5, 1.1), 1, down.box);
     }
     this.audio.play('gore_explode', { position: p, volume: 0.9 });
   }
@@ -365,8 +416,12 @@ export class Effects {
       this.blood.emit(p.x, p.y + 0.2, p.z, _v.x, _v.y, _v.z, { life: rand(0.6, 1.4), size: rand(0.03, 0.07), gravity: 9.8, drag: 0.4, color: [0.05, 0.04, 0.035], alpha: 1 });
     }
     this.lighting.flashAt(_v.set(p.x, p.y + 0.8, p.z), 0xff9a40, 260 * scale, 0.6, 18 * scale);
-    const down = this.world.raycast(p.x, p.y + 0.4, p.z, 0, -1, 0, 3, null, {});
-    if (down) this.decals.scorchMark(_v.set(p.x, p.y + 0.4 - down.t, p.z), UP, rand(2.8, 3.8) * scale);
+    const down = this.decalRay(p.x, p.y + 0.4, p.z, 0, -1, 0, 3);
+    if (down) {
+      _v.set(p.x, p.y + 0.4 - down.t, p.z);
+      const size = this.fitDecal(_v, UP, rand(2.8, 3.8) * scale);
+      if (size > 0) this.decals.scorchMark(_v, UP, size, down.box);
+    }
     this.audio.play('explosion', { position: p, volume: 1 });
     this.audio.duck?.(0.5, 1.2);
   }
@@ -403,16 +458,16 @@ export class Effects {
     for (let i = 0; i < 18; i++) {
       const a = Math.random() * Math.PI * 2, r = rand(0.3, 3.6) * scale;
       const x = p.x + Math.cos(a) * r, z = p.z + Math.sin(a) * r;
-      const down = this.world.raycast(x, p.y + 0.8, z, 0, -1, 0, 3, null, {});
-      if (down) this.decals.bloodSplat(_v.set(x, p.y + 0.8 - down.t, z), UP, rand(0.6, 1.4));
+      const down = this.decalRay(x, p.y + 0.8, z, 0, -1, 0, 3);
+      if (down) this.splat(_v.set(x, p.y + 0.8 - down.t, z), UP, rand(0.6, 1.4), 1, down.box);
     }
     for (let i = 0; i < 10; i++) {
       const a = Math.random() * Math.PI * 2;
       _n.set(Math.cos(a), rand(-0.15, 0.35), Math.sin(a)).normalize();
-      const hit = this.world.raycast(p.x, y, p.z, _n.x, _n.y, _n.z, 4 * scale, null, {});
+      const hit = this.decalRay(p.x, y, p.z, _n.x, _n.y, _n.z, 4 * scale);
       if (!hit) continue;
       _v.set(p.x + _n.x * hit.t, y + _n.y * hit.t, p.z + _n.z * hit.t);
-      this.decals.bloodSplat(_v, _n.set(hit.nx, hit.ny, hit.nz), rand(0.5, 1.2), rand(1, 2));
+      this.splat(_v, _n.set(hit.nx, hit.ny, hit.nz), rand(0.5, 1.2), rand(1, 2), hit.box);
     }
     this.bloodPoolAt(p);
     this.audio.play('boomer_burst', { position: p, volume: 1 });
@@ -426,7 +481,12 @@ export class Effects {
       this.fire.emit(p.x, p.y + 0.2, p.z, _v.x, _v.y, _v.z, { life: rand(0.3, 0.6), size: rand(0.6, 1.3), grow: 1.8, drag: 4, gravity: -1.5, color: [5, 2.6, 1.0], endColor: [1.2, 0.3, 0.06], rotV: rand(-2, 2) });
     }
     this.lighting?.flashAt(_v.set(p.x, p.y + 0.6, p.z), 0xff7a2a, 160, 0.6, 14);
-    this.decals.scorchMark(_v.set(p.x, p.y + 0.02, p.z), UP, radius * 1.5);
+    const down = this.decalRay(p.x, p.y + 0.3, p.z, 0, -1, 0, 1);
+    if (down) {
+      _v.set(p.x, p.y + 0.3 - down.t, p.z);
+      const size = this.fitDecal(_v, UP, radius * 1.5);
+      if (size > 0) this.decals.scorchMark(_v, UP, size, down.box);
+    }
   }
 
   /** A few licks of flame on a burning body. */
@@ -488,6 +548,11 @@ export class Effects {
   // ------------------------------------------------------------------ update
   update(dt, damageAcid) {
     this.time += dt;
+    // decals on colliders switched off since (doors opened, walls broken) go with them
+    if ((this._pruneT = (this._pruneT ?? 0) - dt) <= 0) {
+      this._pruneT = 0.25;
+      this.decals.prune();
+    }
     for (const s of this.systems) s.update(dt);
     this.sparks.update(dt);
     this.mags.update(dt);
