@@ -18,6 +18,7 @@ import { buildLab, LAB, LAB_OPENINGS } from './lab.js';
 import { buildShaft, SHAFT } from './shaft.js';
 import { buildRanch, ranchClear, adjustSpawns } from './ranch.js';
 import { BARN, inBarn } from './ranchLayout.js';
+import { UPSTAIRS_ROUND, BASEMENT_ROUND } from '../game/modes.js';
 
 export const FLOOR = { basement: -3.2, ground: 0, upper: 3.45, outside: -0.5 };
 // ruined chapel on the horizon (src/world/landmarks.js); the porch keeps a clear view of it
@@ -790,6 +791,18 @@ export function buildLevel() {
     defensePosts,
     lab,
     shaft, // the coal tunnel's mouth (world/shaft.js)
+    // floors that open during a run (game.js _endRound): unlockables to open, portals to enable, the
+    // generator starts burning fuel (world/power.js), banners [title, sub, kind, ms, s]
+    unlocks: [
+      {
+        id: 'basement', round: BASEMENT_ROUND, open: ['basementDoor', 'cellarBarricade'], portals: ['basementInterior', 'cellar'], power: true, sound: 'wood_creak', news: 'THE BASEMENT IS OPEN',
+        banners: [['THE BASEMENT IS OPEN', 'The infected can now come through the cellar', 'danger', 3300], ['THE GENERATOR BURNS FUEL', 'Keep it running · gas cans are upstairs', 'normal', 6800]],
+      },
+      {
+        id: 'upstairs', round: UPSTAIRS_ROUND, open: ['upstairsBarricade'], portals: ['upstairs'], news: 'THE UPSTAIRS IS OPEN',
+        banners: [['THE UPSTAIRS IS OPEN', 'A special weapon waits upstairs · the balcony overlooks the yard · watch the stairs', 'danger', 3300, 3.5]],
+      },
+    ],
     playerSpawn: new THREE.Vector3(0.2, 0, -0.8),
     shop: {
       bounds: [2.55, 11.85, -7.85, 0.85], // x0, x1, z0, z1 of the cellar

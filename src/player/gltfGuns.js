@@ -71,6 +71,16 @@ const BAKED = {
     // left of the view, so it comes up steeply from below instead (viewmodel space, blended in with ADS)
     adsLeft: { shoulder: [-0.08, -0.56, 0.0], pole: [-0.45, -1, 0.1] },
   },
+  mg42: {
+    prefix: 'mg42',
+    parts: ['mag', 'cover', 'chargingHandle'], // mag: the ammo box on the left of the feed
+    beltFeed: true, // viewmodel.js: the belt reload (cover, box, belt, cocking handle)
+    shellType: 'rifle',
+    // raked wooden grip; the support hand holds the folded bipod legs under the barrel jacket
+    right: { palm: [-1, 0, 0], index: [0, Math.cos(18 * DEG), -Math.sin(18 * DEG)], data: { rx: 0.0165, rz: 0.023, curl: 1, trigger: true, thumb: 0.75 } },
+    left: { palm: [0.25, 1, 0], index: [0, 0, -1], data: { rx: 0.024, rz: 0.03, curl: 0.85, thumb: 0.2 } },
+    eyeBack: 0.09, // behind the (lowered) rear sight leaf, level with the front post
+  },
   mozambique: {
     prefix: 'mozambique',
     parts: [],

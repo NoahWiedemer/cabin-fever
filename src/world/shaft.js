@@ -192,7 +192,7 @@ export class Shaft {
 
   /** open (spawns can come out of it): the basement is open */
   get open() {
-    return !!this.game.unlocked?.basement;
+    return !!this.game.unlocked?.basement && !!this.game.level?.shaft; // (the farm only)
   }
 
   /** game._spawnOne: where this one comes from, if it comes out of the tunnel (else null) */

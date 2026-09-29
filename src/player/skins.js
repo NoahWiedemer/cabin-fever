@@ -14,7 +14,7 @@ const PALETTES = {
 };
 
 // materials a camo never touches (by name), besides transparent / unlit / glowing ones
-const KEEP = /glass|lens|scope|sight|optic|reticle|holo|tritium|dot|laser|light|lamp|brass|shell|hole|edge|blade|steel|sleeve|glove|skin|arm|hand|white|yellow|gold|flame|fire/i;
+const KEEP = /glass|lens|scope|sight|optic|reticle|holo|tritium|dot|laser|light|lamp|brass|shell|hole|edge|blade|steel|sleeve|glove|skin|arm|hand|white|yellow|gold|flame|fire|ammobox/i;
 
 function rng(seed) {
   let a = seed >>> 0;

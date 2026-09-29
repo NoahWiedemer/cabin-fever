@@ -24,6 +24,10 @@ export const GLOVES = { handling: 0.7, tint: { gloveFabric: 0x7d6848 } }; // ADS
 export const BOOTS = { sprint: 1.15 }; // sprint speed x
 export const DEFIB = { channel: 0.6, hp: 40 }; // revive channel time x, HP after the revive (default 20)
 export const MACHETE = { id: 'machete' }; // the melee slot's weapon def while it's worn (weaponDefs.js)
+// the pocket's shockwave emitter (game.js shockwave(), key X, once a round): every infected within radius m is
+// thrown back (push m/s, lift m/s at the centre, less by mass), staggered for up to stun s and takes a little damage;
+// a Biter on your back is torn off, the NOX squad is shoved and thrown off its aim
+export const SHOCKWAVE = { radius: 7, push: 14, lift: 5.5, stun: 1.6, damage: 24 };
 export const PACK_SLOT = 6; // WeaponSystem slot of the weapon backpack's second primary (key 1 again)
 
 /** Item key -> body slot. */
@@ -36,6 +40,7 @@ export const GEAR_SLOT = {
   gloves: 'hands',
   boots: 'feet',
   machete: 'belt',
+  shockwave: 'pocket',
 };
 
 export class Gear {

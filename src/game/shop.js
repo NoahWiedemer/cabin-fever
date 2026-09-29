@@ -17,6 +17,7 @@ export const SHOP_WEAPONS = [
   { id: 'r201', slot: 0, price: 2400, type: 'ASSAULT RIFLE', icon: 'rifle', upg: 1.15 },
   { id: 'devotion', slot: 0, price: 3800, type: 'LIGHT MACHINE GUN', icon: 'lmg', upg: 1.3 },
   { id: 'sigma', slot: 0, price: 4500, type: 'HEAVY MACHINE GUN', icon: 'lmg', upg: 1.4 },
+  { id: 'mg42', slot: 0, price: 4800, type: 'BELT-FED MACHINE GUN', icon: 'lmg', upg: 1.4 },
   { id: 'm9', slot: 1, price: 0, type: 'PISTOL', icon: 'pistol', upg: 0.6, akimbo: 2500 },
   { id: 'mozambique', slot: 1, price: 700, type: 'SHOTGUN PISTOL', icon: 'pistol', upg: 0.7, akimbo: 3200 },
 ];
@@ -52,6 +53,17 @@ export const SHOP_EQUIPMENT = [
     key: 'molotov', name: 'MOLOTOV', type: 'INCENDIARY', icon: 'molotov', price: 350, max: 3, carry: true, requires: 'molotov',
     count: (g) => g.weapons.molotovs ?? 0,
     give: (g) => { g.weapons.molotovs = (g.weapons.molotovs ?? 0) + 1; },
+  },
+  {
+    key: 'mine', name: 'M16A1 MINE', type: 'BOUNDING MINE · INFECTED SET IT OFF', icon: 'mine', price: 400, max: 3, carry: true, requires: 'mine',
+    count: (g) => g.weapons.mines ?? 0,
+    give: (g) => { g.weapons.mines = (g.weapons.mines ?? 0) + 1; },
+  },
+  {
+    // the lure: strong, so it's dear
+    key: 'pipebomb', name: 'PIPE BOMB', type: 'LURES THE HORDE · THEN BLOWS', icon: 'pipebomb', price: 1200, max: 1, carry: true, requires: 'pipebomb',
+    count: (g) => g.weapons.pipebombs ?? 0,
+    give: (g) => { g.weapons.pipebombs = (g.weapons.pipebombs ?? 0) + 1; },
   },
   {
     key: 'barricade', name: 'BARRICADE KIT', type: 'PLANKS + NAILS · BOARD UP A DOOR', icon: 'barricade',
@@ -114,6 +126,12 @@ export const SHOP_EQUIPMENT = [
     `Draw weapons ${Math.round((1 - GLOVES.handling) * 100)}% faster`,
   ]),
   gearItem('boots', 'feet', 'COMBAT BOOTS', 'FASTER SPRINT', 'boots', 600, [`Sprint ${Math.round((BOOTS.sprint - 1) * 100)}% faster`, 'Stairs included']),
+  gearItem('shockwave', 'pocket', 'SHOCKWAVE EMITTER', 'KNOCKS THE HORDE BACK · KEY X', 'shockwave', 1800, [
+    'Press X: a blast of force throws every',
+    'infected within 7 m back and stuns it',
+    'Tears a Biter off your back',
+    'Recharges every round',
+  ]),
   gearItem('machete', 'belt', 'MACHETE', 'REPLACES THE KNIFE · SLOT 3', 'machete', 500, ['Double melee damage, faster swing', 'Cuts a Biter down in one hit']),
 ];
 

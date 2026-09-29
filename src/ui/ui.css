@@ -1575,6 +1575,75 @@
 .cf-barr .cf-gren-ico {
   color: #e2bb86;
 }
+.cf-gren.cf-mine {
+  margin-left: calc(var(--u) * -12);
+  border-color: rgba(190, 200, 120, 0.4);
+}
+.cf-mine .cf-gren-ico {
+  color: #c9d08a;
+}
+.cf-gren.cf-pipe {
+  margin-left: calc(var(--u) * -12);
+  border-color: rgba(255, 70, 50, 0.45);
+}
+.cf-pipe .cf-gren-ico {
+  color: #ff8a6c;
+}
+/* the shockwave emitter (pocket gear, key X): beside the vitals */
+.cf-gadget {
+  position: absolute;
+  left: calc(var(--u) * 20);
+  bottom: calc(var(--u) * 122);
+  display: flex;
+  align-items: center;
+  gap: calc(var(--u) * 8);
+  padding: calc(var(--u) * 4) calc(var(--u) * 10) calc(var(--u) * 4) calc(var(--u) * 6);
+  border: 1px solid rgba(127, 216, 255, 0.45);
+  background: linear-gradient(90deg, rgba(20, 60, 80, 0.55), rgba(0, 0, 0, 0.25));
+  z-index: 5;
+  transition: opacity 0.3s, border-color 0.3s;
+}
+.cf-gd-ico {
+  width: calc(var(--u) * 26);
+  height: calc(var(--u) * 26);
+  color: #7fd8ff;
+  filter: drop-shadow(0 0 calc(var(--u) * 6) rgba(127, 216, 255, 0.8));
+}
+.cf-gd-t {
+  display: flex;
+  flex-direction: column;
+  line-height: 1;
+}
+.cf-gd-t small {
+  font-family: var(--f-ui);
+  font-weight: 700;
+  font-size: calc(var(--u) * 10);
+  letter-spacing: 0.24em;
+  color: #9fd6f6;
+  text-shadow: var(--ts-hud);
+}
+.cf-gd-t b {
+  font-family: var(--f-num);
+  font-weight: 500;
+  font-size: calc(var(--u) * 20);
+  line-height: 0.9;
+  padding-top: 0.1em;
+  letter-spacing: 0.06em;
+  color: #eef8ff;
+  text-shadow: var(--ts-hud);
+}
+.cf-gadget.used {
+  opacity: 0.55;
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(0, 0, 0, 0.3);
+}
+.cf-gadget.used .cf-gd-ico {
+  color: #6c7a84;
+  filter: none;
+}
+.cf-gadget.used .cf-gd-t b {
+  color: #9aa4ab;
+}
 .cf-gren.cf-can {
   margin-left: calc(var(--u) * -12);
   border-color: rgba(255, 110, 70, 0.38);

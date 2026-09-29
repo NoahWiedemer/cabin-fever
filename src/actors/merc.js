@@ -528,18 +528,19 @@ export class MercSquad {
   /** somewhere in the yard they can land and walk from: 17-28 m out, not under a roof */
   _site() {
     const g = this.game, nav = g.nav;
+    const c = g.eventCenter(); // the farmhouse, else the fireteam (game.js)
     for (let i = 0; i < 120; i++) {
       const a = Math.random() * Math.PI * 2, r = rand(17, 28);
-      const x = Math.cos(a) * r * 1.1, z = Math.sin(a) * r;
+      const x = c.x + Math.cos(a) * r * 1.1, z = c.z + Math.sin(a) * r;
       if (g.level.isSheltered(x, 0.5, z)) continue;
-      if (Math.abs(x) < 15 && Math.abs(z) < 12) continue;
+      if (g.level.eventClear ? g.level.eventClear(x, z, 15) : Math.abs(x) < 15 && Math.abs(z) < 12) continue;
       const i0 = nav.index(1, x, z);
       if (i0 < 0 || !nav.walk[i0] || !(nav.distanceAt(1, x, z) < 1e6)) continue;
       const gy = g.world.groundHeight(x, z, 0.5, 2);
       if (gy > 0.5) continue;
       return new THREE.Vector3(x, gy > -50 ? gy : -0.5, z);
     }
-    return new THREE.Vector3(0, -0.5, 22);
+    return new THREE.Vector3(c.x, -0.5, c.z + 22);
   }
 
   /** send them in (game/events.js 'squad') */
@@ -557,11 +558,12 @@ export class MercSquad {
     }
     const ch = this.chopper, site = (this.site = this._site());
     // in over the fields from across the farm, down to a hover over the site, facing the house
-    const a = Math.atan2(site.z, site.x) + rand(-0.5, 0.5);
+    const ec = g.eventCenter();
+    const a = Math.atan2(site.z - ec.z, site.x - ec.x) + rand(-0.5, 0.5);
     const from = new THREE.Vector3(site.x + Math.cos(a) * 150, 44, site.z + Math.sin(a) * 150);
     const mid = new THREE.Vector3(site.x + Math.cos(a) * 55, 26, site.z + Math.sin(a) * 55);
     this.hover = new THREE.Vector3(site.x, site.y + DROP.hover, site.z);
-    this.hoverYaw = Math.atan2(-site.x, -site.z);
+    this.hoverYaw = Math.atan2(ec.x - site.x, ec.z - site.z);
     ch.flight.setPath([from, mid, this.hover.clone().add(new THREE.Vector3(Math.cos(a) * 12, 3, Math.sin(a) * 12)), this.hover]);
     ch.flight.yaw = Math.atan2(site.x - from.x, site.z - from.z);
     ch.show(true);
@@ -588,7 +590,8 @@ export class MercSquad {
       if (!this.leaving) {
         this.leaving = true;
         const p = h.root.position;
-        const out = Math.atan2(p.z, p.x);
+        const ec = g.eventCenter();
+        const out = Math.atan2(p.z - ec.z, p.x - ec.x);
         fl.setPath([p.clone(), new THREE.Vector3(p.x + Math.cos(out) * 30, p.y + 10, p.z + Math.sin(out) * 30), new THREE.Vector3(p.x + Math.cos(out) * 160, 50, p.z + Math.sin(out) * 160)]);
       }
       fl.at(clamp((t - DROP.leave) / (DROP.gone - DROP.leave), 0, 1) ** 1.6, dt);

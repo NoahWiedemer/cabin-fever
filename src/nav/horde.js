@@ -95,7 +95,8 @@ export class Horde {
    */
   pickRoute(z) {
     const g = this.game, nav = g.nav, tgt = z.target;
-    if (!tgt || !inHouse(tgt.pos) || inHouse(z.pos) || z.level !== 1) return null;
+    const inside = g.level?.inHouse ?? inHouse; // (another map: its enterable buildings)
+    if (!tgt || !inside(tgt.pos) || inside(z.pos) || z.level !== 1) return null;
     const zi = nav.index(1, z.pos.x, z.pos.z);
     if (zi < 0 || !(nav.dist[zi] < Infinity)) return z.route;
     const bias = (z.routeBias ??= {});
@@ -135,7 +136,7 @@ export class Horde {
     const e = z.route;
     if (!e) return true;
     if (!this._open(e)) return true;
-    if (inHouse(z.pos)) return true;
+    if ((this.game.level?.inHouse ?? inHouse)(z.pos)) return true;
     return z.level === (e.level ?? 1) && Math.hypot(z.pos.x - e.x, z.pos.z - e.z) < 1.2;
   }
 

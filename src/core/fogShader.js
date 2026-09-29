@@ -5,7 +5,8 @@
 // A THREE.Fog instance is used as a uniform carrier (refreshed by three.js for every material):
 //   fog.color -> fog color, fog.near -> time (seconds), fog.far -> outside fog density.
 // labRect (minX, minZ, maxX, maxZ): the lab behind the basement's south wall (src/world/lab.js) reaches
-// under the front yard; a point in it seen from below ground gets no yard fog.
+// under the front yard; a point in it seen from below ground gets no yard fog (null: no such room).
+// Both come from the map (world/maps.js) and are baked in once, at boot, before any material compiles.
 import * as THREE from 'three';
 import { HOUSE_FOG_RECT, BARN_INSIDE } from '../world/ranchLayout.js';
 
@@ -28,7 +29,7 @@ export function installFogShader(insideRects = [HOUSE_FOG_RECT, BARN_INSIDE], la
       return `cfInsideLen(${to('cfC.xz')}, ${to('cfP.xz')}, vec4(${f(-r.hx)}, ${f(-r.hz)}, ${f(r.hx)}, ${f(r.hz)}))`;
     })
     .join(' + ');
-  const U = labRect.map((v) => v.toFixed(2));
+  const U = labRect ? labRect.map((v) => v.toFixed(2)) : null;
 
   THREE.ShaderChunk.fog_pars_vertex = /* glsl */ `
 #ifdef USE_FOG
@@ -97,7 +98,7 @@ export function installFogShader(insideRects = [HOUSE_FOG_RECT, BARN_INSIDE], la
       float insideXZ = ${insideSum};
       float outsideFrac = clamp(1.0 - insideXZ / lenXZ, 0.0, 1.0);
       // underground lab: camera and point both below ground, the point inside the lab rect
-      if (cfC.y < -0.8 && cfP.y < -0.8 && cfP.x > ${U[0]} && cfP.x < ${U[2]} && cfP.z > ${U[1]} && cfP.z < ${U[3]}) outsideFrac = 0.0;
+      ${U ? `if (cfC.y < -0.8 && cfP.y < -0.8 && cfP.x > ${U[0]} && cfP.x < ${U[2]} && cfP.z > ${U[1]} && cfP.z < ${U[3]}) outsideFrac = 0.0;` : ''}
       float outsideDist = cfDist * outsideFrac;
       // fog hugs the ground (yard at y = -0.5)
       float hA = max(cfP.y + 0.5, 0.0);

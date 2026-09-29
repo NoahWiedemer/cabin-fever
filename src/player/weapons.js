@@ -6,6 +6,9 @@ import { effectiveDef } from '../game/shop.js';
 import { akimboDef, akimboTriggers, akimboTryReload, akimboReloadTick, akimboRounds } from './akimbo.js';
 import { gearDef, PACK_SLOT } from '../game/gear.js';
 import { rogueDef } from '../game/rogue.js';
+
+// slot 3's throwables in the order key 4 cycles through the ones in stock
+const THROWABLES = ['m67', 'molotov', 'mine', 'pipebomb'];
 import { clamp, coneDirection, damp, rand } from '../core/utils.js';
 
 const _dir = new THREE.Vector3();
@@ -23,6 +26,8 @@ export class WeaponSystem {
     this.ammo = {};
     this.grenades = 2;
     this.molotovs = 0;
+    this.mines = 0; // store M16A1 mines
+    this.pipebombs = 0; // store pipe bombs (the lure)
     this.barricades = 0; // store barricade kits (slot 5; world/barricades.js does the building)
     this.buildT = null; // seconds into nailing one up (viewmodel hammer swing), set by world/barricades.js
     this.gascans = 0; // jerry cans from upstairs (slot 6; world/power.js does the refuelling)
@@ -68,6 +73,8 @@ export class WeaponSystem {
     for (const id of this.slots) this._initAmmo(id);
     this.grenades = 2;
     this.molotovs = 0;
+    this.mines = 0;
+    this.pipebombs = 0;
     this.barricades = 0;
     this.buildT = null;
     this.gascans = 0;
@@ -283,20 +290,38 @@ export class WeaponSystem {
     return true;
   }
 
-  /** Carried count of a throwable ('m67' frags or 'molotov'). */
+  /** Carried count of a throwable ('m67' frags, 'molotov', 'mine', 'pipebomb'). */
   throwCount(id = this.slots[3]) {
-    return id === 'molotov' ? this.molotovs : this.grenades;
+    return id === 'molotov' ? this.molotovs : id === 'mine' ? this.mines : id === 'pipebomb' ? this.pipebombs : this.grenades;
   }
 
+  /** All the throwables you carry. */
+  _throwTotal() {
+    return this.grenades + this.molotovs + this.mines + this.pipebombs;
+  }
+
+  _useThrowable(id) {
+    if (id === 'molotov') this.molotovs--;
+    else if (id === 'mine') this.mines--;
+    else if (id === 'pipebomb') this.pipebombs--;
+    else this.grenades--;
+  }
+
+  /** The next throwable in stock after `id` (key 4 again: frag -> Molotov -> mine -> pipe bomb), or null. */
   _otherThrowable(id = this.slots[3]) {
-    return id === 'molotov' ? 'm67' : 'molotov';
+    const i = THROWABLES.indexOf(id);
+    for (let k = 1; k < THROWABLES.length; k++) {
+      const n = THROWABLES[(i + k) % THROWABLES.length];
+      if (this.throwCount(n) > 0) return n;
+    }
+    return null;
   }
 
   /** Pick a throwable that is in stock for slot 3 (prefers the current one). */
   _pickThrowable() {
     if (this.throwCount() > 0) return true;
     const other = this._otherThrowable();
-    if (this.throwCount(other) <= 0) return false;
+    if (!other) return false;
     this.slots[3] = other;
     return true;
   }
@@ -304,7 +329,7 @@ export class WeaponSystem {
   /** A usable slot to fall back to once a consumable slot (kits, cans) runs empty. */
   fallbackSlot() {
     const p = this.prev;
-    if (p === 4 || p === 5 || (p === 3 && this.grenades + this.molotovs <= 0)) return 0;
+    if (p === 4 || p === 5 || (p === 3 && this._throwTotal() <= 0)) return 0;
     return p;
   }
 
@@ -336,10 +361,10 @@ export class WeaponSystem {
       this.tool = null;
       this.toolT = null;
     }
-    // pressing 4 again while holding a throwable toggles frag <-> molotov
+    // pressing 4 again while holding a throwable cycles frag -> Molotov -> mine -> pipe bomb (those in stock)
     if (slot === 3 && slot === this.cur && !force && this.state !== 'pinpull' && this.state !== 'throw') {
       const other = this._otherThrowable();
-      if (this.throwCount(other) <= 0) return;
+      if (!other) return;
       this.slots[3] = other;
       force = true;
     }
@@ -405,7 +430,7 @@ export class WeaponSystem {
         for (let k = 0; k < n; k++) {
           i = (i + (input.wheel > 0 ? 1 : n - 1)) % n;
           s = order[i];
-          if (s === 3 ? this.grenades + this.molotovs > 0 : s === 4 ? this.barricades > 0 : s === 5 ? this.gascans > 0 : !!this.slots[s]) break;
+          if (s === 3 ? this._throwTotal() > 0 : s === 4 ? this.barricades > 0 : s === 5 ? this.gascans > 0 : !!this.slots[s]) break;
         }
         this.switchTo(s);
       }
@@ -483,8 +508,7 @@ export class WeaponSystem {
       case 'throw':
         if (!this.phaseDone.release && this.stateT >= 0.14) {
           this.phaseDone.release = true;
-          if (d.id === 'molotov') this.molotovs--;
-          else this.grenades--;
+          this._useThrowable(d.id);
           this.game.throwGrenade(p, d);
           this.game.audio.play('grenade_throw', { volume: 0.7 });
         }
@@ -614,7 +638,21 @@ export class WeaponSystem {
     const a = this.curAmmo;
     const T = this.reloadDur;
     const f = this.stateT / T;
-    if (d.id !== 'm9') {
+    if (d.beltReload) {
+      // the MG 42: cover open, box off, box on, belt in, cover shut, cocking handle (viewmodel.js 'belt')
+      const at = (key, when, name, o = { volume: 0.85 }) => {
+        if (!this.phaseDone[key] && f > when) {
+          this.phaseDone[key] = true;
+          this.game.audio.play(name, o);
+        }
+      };
+      at('cover', 0.1, 'mg_cover_open');
+      at('out', 0.22, 'mg_box_off');
+      at('in', 0.5, 'mg_box_on');
+      at('belt', 0.57, 'mg_belt');
+      at('shut', 0.69, 'mg_cover_close', { volume: 1 });
+      at('bolt', 0.81, 'm4_bolt', { volume: 0.9, pitch: 0.78 });
+    } else if (d.id !== 'm9') {
       if (!this.phaseDone.out && f > 0.12) {
         this.phaseDone.out = true;
         this.game.audio.play('m4_mag_out', { volume: 0.8 });
@@ -800,7 +838,7 @@ export class WeaponSystem {
     const a = this.curAmmo;
     return {
       name: d.name,
-      ammo: a ? a.mag : d.mode === 'grenade' ? this.grenades : 0,
+      ammo: a ? a.mag : d.mode === 'grenade' ? this.throwCount(d.id) : 0,
       magSize: a ? d.mag : 1,
       reserve: a ? a.reserve : 0,
       showAmmo: d.mode !== 'melee' && d.mode !== 'build' && d.mode !== 'pour',

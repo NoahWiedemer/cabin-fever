@@ -78,10 +78,12 @@ function sightClear(world, ax, ay, az, bx, by, bz) {
   return len < 1e-4 || !world.raycast(ax, ay, az, dx / len, dy / len, dz / len, len, sightFilter, _ray);
 }
 
+// the house it runs through: the farmhouse, or the map's (level.stalkerHouse, set by the director; null: none)
+let HR = HOUSE;
 /** (x, z) inside the farmhouse walls (a margin in from them) */
-const insideHouse = (x, z) => x > HOUSE.minX + 0.4 && x < HOUSE.maxX - 0.4 && z > HOUSE.minZ + 0.4 && z < HOUSE.maxZ - 0.4;
+const insideHouse = (x, z) => !!HR && x > HR.minX + 0.4 && x < HR.maxX - 0.4 && z > HR.minZ + 0.4 && z < HR.maxZ - 0.4;
 /** (x, z) in the farmhouse or within m of its walls */
-const nearHouse = (x, z, m) => x > HOUSE.minX - m && x < HOUSE.maxX + m && z > HOUSE.minZ - m && z < HOUSE.maxZ + m;
+const nearHouse = (x, z, m) => !!HR && x > HR.minX - m && x < HR.maxX + m && z > HR.minZ - m && z < HR.maxZ + m;
 const _v = new THREE.Vector3();
 const _d = new THREE.Vector3();
 const _w = { x: 0, z: 0 };
@@ -1025,6 +1027,7 @@ ZOMBIE_CLASSES.stalker = Stalker;
 export class StalkerDirector {
   constructor(game) {
     this.game = game;
+    HR = game.level.stalkerHouse === undefined ? HOUSE : game.level.stalkerHouse; // (a map without a house run: null)
     const n = game.nav.N;
     // one field per purpose (only one Stalker at a time): a dash's / house run's two legs (a peeking watcher's
     // step out: a), a watcher's way out, the chase, the escape

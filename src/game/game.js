@@ -2,7 +2,8 @@
 // rare random events (game/events.js), unlocks, special weapons, scoring/combos, damage routing (hitscan,
 // melee, explosions, acid, gas), team & spectating.
 import * as THREE from 'three';
-import { buildLevel, levelOf } from '../world/level.js';
+import { levelOf } from '../world/level.js';
+import { buildMap, MAPS } from '../world/maps.js';
 import { Lighting } from '../world/lighting.js';
 import { Weather } from '../world/weather.js';
 import { NavGrid } from '../nav/navgrid.js';
@@ -23,14 +24,14 @@ import { WEAPONS, SPECIAL_SPAWNS } from '../player/weaponDefs.js';
 import { Projectiles } from './projectiles.js';
 import { Pickups } from './pickups.js';
 import { Economy, killReward, roundBonus } from './economy.js';
-import { MODES, UPSTAIRS_ROUND, BASEMENT_ROUND } from './modes.js';
+import { MODES } from './modes.js';
 import { GAS_MASK, maskCapacity, setPriceScale } from './shop.js';
 import { Cinema } from './cinema.js';
 import { Mission, STORY } from './mission.js';
 import { RandomEvents } from './events.js';
 import { Chopper } from '../world/helicopter.js';
 import { StoryUI } from '../ui/story.js';
-import { Gear } from './gear.js';
+import { Gear, SHOCKWAVE } from './gear.js';
 import { FLAG_NOBULLET, SURF } from '../world/collision.js';
 import { Shake, clamp, rand, pick, damp } from '../core/utils.js';
 import { QUALITY } from '../core/renderer.js';
@@ -70,12 +71,15 @@ const LOOT_GUNS = ['p90', 'r201', 'spas12', 'devotion', 'sigma']; // the Surviva
 // ...and from round LAUNCHER_LOOT.round on, now and then the Softball grenade launcher (a special: no
 // store sells it, one load and no reloads, marked on the map)
 const LAUNCHER_LOOT = { round: 7, chance: 0.22 };
+const NAV_SLICE = 9000; // a big map: nav cells relaxed a frame for the infected's field (about 2 ms)
 const F_TAP = 0.25; // F released faster than this is a tap (flashlight / open the gun shop)
 const READY_HOLD = 1.2; // hold F this long in the buy phase to ready up
 // weapon mastery (game/progress.js) counts the real weapons only (not a Boomer's blast, not a barrel)
 const masteryWeapon = (id) => (id && WEAPONS[id] && WEAPONS[id].slot >= 0 ? id : null);
 // the fireteam's ranks (fireteam.js, 0-5) on the career ladder, for the scoreboard's insignia
 const BOT_GRADE = [1, 2, 3, 5, 8, 10];
+// who a pipe bomb's beeping draws in (game.lureStart)
+const LURED = new Set(['mauler', 'worker', 'survivor', 'dog', 'charger', 'striker']);
 
 // Main-menu camera shots: a / b = [camX, camY, camZ, lookX, lookY, lookZ], eased over `period` s.
 const MENU_SHOTS = {
@@ -85,7 +89,8 @@ const MENU_SHOTS = {
 };
 
 export class Game {
-  constructor({ gr, audio, hud, input, settings }) {
+  constructor({ gr, audio, hud, input, settings, map }) {
+    this.map = map ?? MAPS.farm; // world/maps.js: fixed for the page (a new pick reloads it)
     this.gr = gr;
     this.scene = gr.scene;
     this.camera = gr.camera;
@@ -121,8 +126,8 @@ export class Game {
     this.fog = new THREE.Fog(0x141c1a, 0, 0.055);
     scene.fog = this.fog;
 
-    await step(0.55, 'Building the farmhouse');
-    this.level = buildLevel();
+    await step(0.55, this.map.loading);
+    this.level = await buildMap(this.map, (f, label) => progress?.(0.55 + f * 0.09, label ?? this.map.loading));
     this.world = this.level.world;
     scene.add(this.level.group);
     this.breach = new Breach(this, scene); // the rare wall breach (world/breach.js): its wall patches collide from the start
@@ -132,6 +137,7 @@ export class Game {
     this.quality = QUALITY[this.settings.quality] || QUALITY.high;
     this.lighting = new Lighting(scene, this.level.lamps, this.quality);
     this.lighting.world = this.world; // flashlight auto-dim raycast
+    this.lighting.moonFollow = !!this.level.bigMap; // (the moon's shadow box slides with the camera)
     this.lighting.onThunder = (intensity, delay) => {
       this.audio.thunder(intensity, delay);
       if (intensity > 0.8) this.weather?.strike();
@@ -143,14 +149,15 @@ export class Game {
     this.weather = new Weather(scene, this.level);
 
     await step(0.76, 'Computing navigation');
-    this.nav = new NavGrid(this.world, this.level.portals, this.level.navBlocks);
+    this.nav = new NavGrid(this.world, this.level.portals, this.level.navBlocks, this.level.navOpts ?? {});
     this.postFields = new Map();
     this.horde = new Horde(this); // entrance routes + crowd bookkeeping for the infected (nav/horde.js)
 
     await step(0.78, 'Loading models');
     await preloadGLBs(GLB_URLS, (f) => progress?.(0.78 + f * 0.04, 'Loading models'));
-    addLandmarks(scene);
-    this.gunshop = buildGunShop(scene, this.level, this.world);
+    if (this.level.landmarks !== false) addLandmarks(scene); // (the farm's chapel on the horizon)
+    // the map's own shop (level.shop.custom: Appenweier's garage), else the farm's cellar shop
+    this.gunshop = this.level.shop?.custom ? this.level.shop.custom(scene, this) : buildGunShop(scene, this.level, this.world);
     this.lab = this.level.lab; // behind the basement's armored glass (world/lab.js): Nadja at her counter
     this.lab?.spawnTech(createLabTech);
     this.barricades = new Barricades(this, scene);
@@ -226,6 +233,20 @@ export class Game {
     await step(1, 'Ready');
   }
 
+  /** where the rare events (game/events.js: crash, shells) and the NOX drop centre on: the farmhouse, or on a
+   * big map (level.eventCenter: 'team') the living fireteam's middle */
+  eventCenter() {
+    if (this.level?.eventCenter !== 'team') return { x: 0, z: 0 };
+    let x = 0, z = 0, n = 0;
+    for (const m of this.team ?? []) {
+      if (!m.alive) continue;
+      x += m.pos.x;
+      z += m.pos.z;
+      n++;
+    }
+    return n ? { x: x / n, z: z / n } : { x: this.level.playerSpawn.x, z: this.level.playerSpawn.z };
+  }
+
   /** the story's helicopter (world/helicopter.js), built on first use */
   chopper() {
     return (this._chopper ??= new Chopper(this.scene, this.audio));
@@ -254,7 +275,7 @@ export class Game {
   _decorate() {
     // Pre-existing carnage: blood splats on floors, smears on walls, bullet holes.
     const decals = this.fx.decals;
-    const rooms = [
+    const rooms = this.level.decor?.rooms ?? [
       [-11.5, -1.3, -0.8, 7.5, 0],
       [-11.5, -1.3, -7.5, -1.3, 0],
       [-0.8, 2.2, -7.5, 7.5, 0],
@@ -279,14 +300,14 @@ export class Game {
         const o = _p.set(rand(x0, x1), y + rand(0.25, 1.9), rand(z0, z1));
         const a = Math.random() * Math.PI * 2;
         const hit = this.world.raycast(o.x, o.y, o.z, Math.cos(a), 0, Math.sin(a), 8, bulletFilter, _hit);
-        if (!hit || hit.box.tag?.startsWith('lab') || hit.box.tag === 'generator') continue; // the lab's door, window frame and glass stay clean; the generator's bounding box would float smears in mid-air
+        if (!hit || hit.box.tag?.startsWith('lab') || hit.box.tag === 'generator' || hit.box.tag === 'clean') continue; // ('clean': walls kept free of it, e.g. Appenweier's murals) // the lab's door, window frame and glass stay clean; the generator's bounding box would float smears in mid-air
         const pt = new THREE.Vector3(o.x + Math.cos(a) * hit.t, o.y, o.z + Math.sin(a) * hit.t);
         _n.set(hit.nx, hit.ny, hit.nz);
         if (Math.random() < 0.45) decals.bloodSplat(pt, _n, rand(0.4, 1.0), rand(1, 2.2));
         else for (let k = 0; k < 4; k++) decals.bulletHole(pt.clone().add(new THREE.Vector3(rand(-0.3, 0.3), rand(-0.3, 0.3), rand(-0.3, 0.3)).projectOnPlane(_n)), _n);
       }
     }
-    for (let i = 0; i < 8; i++) this.fx.bloodPoolAt(new THREE.Vector3(rand(-11, 11), 0.2, rand(-7, 7)));
+    for (const [x0, x1, z0, z1, y, n] of this.level.decor?.pools ?? [[-11, 11, -7, 7, 0.2, 8]]) for (let i = 0; i < n; i++) this.fx.bloodPoolAt(new THREE.Vector3(rand(x0, x1), y, rand(z0, z1)));
     decals.permanent = {};
     for (const k of ['blood', 'holes', 'pools', 'scorch']) {
       decals.permanent[k] = decals[k]?.count ?? 0;
@@ -296,14 +317,15 @@ export class Game {
 
   /** Main-menu camera shot ('title' | 'porch' | 'interior'); the menu dips to black on a cut. */
   setMenuShot(name) {
-    if (!MENU_SHOTS[name] || name === this.menuShot) return;
+    if (!(this.level?.menuShots ?? MENU_SHOTS)[name] || name === this.menuShot) return;
     this.menuShot = name;
     this._shotT0 = this.time;
   }
 
   _menuCam(t) {
     // slow eased dolly A → B → A with a faint handheld sway
-    const s = MENU_SHOTS[this.menuShot] || MENU_SHOTS.title;
+    const shots = this.level?.menuShots ?? MENU_SHOTS;
+    const s = shots[this.menuShot] || shots.title;
     const k = (1 - Math.cos(((t - (this._shotT0 ?? 0)) / s.period) * Math.PI * 2)) / 2;
     const { a, b } = s;
     const L = (i) => a[i] + (b[i] - a[i]) * k;
@@ -352,7 +374,9 @@ export class Game {
     this.navT = 0;
     this.gameOverT = 0;
     this.pendingExplosions = [];
-    this.unlocked = { basement: false, upstairs: false };
+    this.lures = []; // pipe bombs pulling the horde (lureStart)
+    this.pulseReady = true; // the shockwave emitter's charge (once a round)
+    this.unlocked = Object.fromEntries((this.level.unlocks ?? []).map((u) => [u.id, false])); // (the farm: basement, upstairs)
     this.dawn = 0;
     this.lighting.moonBase = 0.55;
     for (const p of this.level.portals) p.enabled = !!p.always; // `always`: open from round 1 (e.g. a ladder)
@@ -377,7 +401,7 @@ export class Game {
       pool.mesh.count = n;
     }
 
-    this.player.spawn(this.level.playerSpawn, Math.PI);
+    this.player.spawn(this.level.playerSpawn, this.level.playerYaw ?? Math.PI);
     this.player.stats = { kills: 0, deaths: 0, headshots: 0, score: 0, shots: 0, hits: 0 };
     if (Progress.inRun()) Progress.runEnd(); // (a run restarted before its end)
     Progress.runStart({ mode: this.mode.id, difficulty: Object.keys(DIFF).find((k) => DIFF[k] === this.diff) ?? 'hard' });
@@ -415,14 +439,14 @@ export class Game {
     this.power?.start();
     this.revives?.reset();
     this.audio.startAmbience();
-    this._updateNav();
+    this._updateNav(true);
     // the story (Cabin Fever mode): the intro cutscene first; endless: straight in
     this._chopper?.show(false);
     this.lighting.spotOverride = null;
     if (this.lab) this.lab.forceVisible = false;
     this.events.reset();
     this.mission.reset();
-    if (this.endless) this.hud.banner('ENDLESS · CABIN FEVER', 'No extraction is coming. Hold out as long as you can', 3.2, 'normal');
+    if (this.endless) this.hud.banner(`ENDLESS · ${this.map.id === 'farm' ? 'CABIN FEVER' : this.map.name}`, 'No extraction is coming. Hold out as long as you can', 3.2, 'normal');
     if (this.rogue.on) this.intermissionT = 8; // the Gauntlet: the opening pick, then the countdown
     this.mission.begin();
   }
@@ -456,6 +480,7 @@ export class Game {
       outcome, // 'victory' | 'overrun' | 'timeout' | 'quit'
       victory: outcome === 'victory',
       mode: this.mode.id,
+      map: this.map.id,
       endless: this.endless,
       difficulty: Object.keys(DIFF).find((k) => DIFF[k] === this.diff) ?? 'hard',
       score: this.score,
@@ -575,14 +600,20 @@ export class Game {
     this.audio.play('round_start', { volume: 0.9 });
     this.power?.onRoundStart(this.round); // used gas cans come back upstairs
     this.revives?.onRoundStart(); // everyone can be revived once again
+    this.pulseReady = true; // the shockwave emitter recharges
     // special weapons
     for (const s of SPECIAL_SPAWNS) {
       if (s.round === this.round && this.round <= this.maxRounds) {
-        const spot = this.level.specialSpots[s.spot];
-        if (s.spot === 'l96a1' && !this.unlocked.basement) continue;
-        if (s.spot === 'goldenPunisher' && !this.unlocked.upstairs) continue;
-        this.pickups.spawnWeapon(s.weapon, spot, { permanent: true, mark: true }); // (marked on the map)
-        setTimeout(() => this.hud.banner(s.banner, `has appeared ${s.where}`, 3, 'success'), 3400);
+        // the map's spot: a position (the farm: the basement / upstairs ones wait for their floor) or
+        // { pos, where, requires: the unlock it waits for }
+        const spot = this.level.specialSpots?.[s.spot];
+        if (!spot) continue;
+        const pos = spot.isVector3 ? spot : spot.pos;
+        const requires = spot.isVector3 ? { l96a1: 'basement', goldenPunisher: 'upstairs' }[s.spot] : spot.requires;
+        if (requires && !this.unlocked[requires]) continue;
+        const where = (!spot.isVector3 && spot.where) || s.where;
+        this.pickups.spawnWeapon(s.weapon, pos, { permanent: true, mark: true }); // (marked on the map)
+        setTimeout(() => this.hud.banner(s.banner, `has appeared ${where}`, 3, 'success'), 3400);
       }
     }
   }
@@ -615,7 +646,7 @@ export class Game {
     this.gunshop?.setOpen(!rogue);
     if (!rogue) {
       setTimeout(() => {
-        if (this.state === 'shop') this.hud.banner('BUY PHASE', this.gunshop ? 'The gun shop in the cellar is open · hold F when ready' : 'Tap F for the gun shop · hold F when ready', 3, 'normal');
+        if (this.state === 'shop') this.hud.banner('BUY PHASE', this.gunshop ? `The gun shop ${this.map.shopWhere ?? 'in the cellar'} is open · hold F when ready` : 'Tap F for the gun shop · hold F when ready', 3, 'normal');
       }, 3200);
     }
     this.audio.play('round_end', { volume: 0.9 });
@@ -642,32 +673,21 @@ export class Game {
     if (mask.owned) mask.filter = maskCapacity(mask.level); // fresh filter every round
     this.economy.payAll(roundBonus(this.round), 'round');
     this.botBuys = this.economy.botsShop();
-    // unlocks: the upstairs with round 4, the basement with round 10 (the story: Command has found Nadja's lab)
+    // unlocks (level.unlocks): the farm opens the upstairs with round 4, the basement with round 10 (the story:
+    // Command has found Nadja's lab); Appenweier the fire station, then the drugstore
     const next = this.round + 1;
     this.mission?.onRoundEnd(this.round);
-    if (next >= BASEMENT_ROUND && !this.unlocked.basement) {
-      this.unlocked.basement = true;
-      this.level.unlock('basementDoor');
-      this.level.unlock('cellarBarricade');
-      for (const p of this.level.portals) if (p.id !== 'upstairs') p.enabled = true;
+    for (const u of this.level.unlocks ?? []) {
+      if (next < u.round || this.unlocked[u.id]) continue;
+      this.unlocked[u.id] = true;
+      for (const name of u.open ?? []) this.level.unlock(name, this); // (a map's doors re-rasterize their nav cells)
+      for (const p of this.level.portals) if (u.portals?.includes(p.id)) p.enabled = true;
       this.postFields.clear();
       this.horde?.reset();
-      this.shopNews.push('THE BASEMENT IS OPEN');
-      this.power?.activate(); // from now on the generator burns fuel and can fail; gas cans upstairs
-      setTimeout(() => {
-        this.hud.banner('THE BASEMENT IS OPEN', 'The infected can now come through the cellar', 3, 'danger');
-        this.audio.play('wood_creak', { volume: 1 });
-      }, 3300);
-      setTimeout(() => this.hud.banner('THE GENERATOR BURNS FUEL', 'Keep it running · gas cans are upstairs', 3, 'normal'), 6800);
-    }
-    if (next >= UPSTAIRS_ROUND && !this.unlocked.upstairs) {
-      this.unlocked.upstairs = true;
-      this.level.unlock('upstairsBarricade');
-      for (const p of this.level.portals) if (p.id === 'upstairs') p.enabled = true;
-      this.postFields.clear();
-      this.horde?.reset();
-      this.shopNews.push('THE UPSTAIRS IS OPEN');
-      setTimeout(() => this.hud.banner('THE UPSTAIRS IS OPEN', 'A special weapon waits upstairs · the balcony overlooks the yard · watch the stairs', 3.5, 'danger'), 3300);
+      this.shopNews.push(u.news);
+      if (u.power) this.power?.activate(); // (the farm's basement) from now on the generator burns fuel and can fail
+      for (const [title, sub, kind, at, dur] of u.banners ?? []) setTimeout(() => this.hud.banner(title, sub, dur ?? 3, kind), at);
+      if (u.sound) setTimeout(() => this.audio.play(u.sound, { volume: 1 }), 3300);
     }
   }
 
@@ -743,7 +763,7 @@ export class Game {
     this.gameOverT = 0;
     this.audio.play(victory ? 'victory' : 'defeat', { volume: 1 });
     const rogue = this.rogue.on;
-    const sub = victory ? (rogue ? 'Fifteen waves, and you are still standing' : 'The reagent reached Nadja') : this.endless || rogue ? `Your fireteam fell in round ${this.round}` : 'Your fireteam was overrun';
+    const sub = victory ? (rogue ? 'Fifteen waves, and you are still standing' : this.mission.story ? 'The reagent reached Nadja' : `Fifteen waves, and ${this.map.id === 'appenweier' ? 'Appenweier' : 'the farm'} still stands`) : this.endless || rogue ? `Your fireteam fell in round ${this.round}` : 'Your fireteam was overrun';
     this.hud.banner(victory ? (rogue ? 'GAUNTLET CLEARED' : 'MISSION COMPLETE') : 'MISSION FAILED', sub, 4, victory ? 'success' : 'danger');
     if (victory) this._career(Progress.win());
     const career = Progress.runEnd(); // the after-action report: xp, rank, mastery, unlocks
@@ -763,20 +783,25 @@ export class Game {
       return;
     }
     // choose a spawn point far from the player, in the fog
+    // (a big map: level.spawnBand [near, far] m from the nearest survivor, closer or farther counts against it)
     const pts = this.level.spawnPoints;
+    const band = this.level.spawnBand;
     let best = null, bs = -Infinity;
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < (band ? 14 : 5); i++) {
       const p = pick(pts);
+      if (band && !(this.nav.distanceAt(1, p.x, p.z) < 1e6)) continue; // (a big map: only where there is a way to you)
       let d = Infinity;
       for (const m of this.team) if (m.alive) d = Math.min(d, p.distanceTo(m.pos));
-      const s = Math.min(d, 40) + Math.random() * 6;
+      const s = band ? (d < band[0] ? d - band[0] * 3 : d > band[1] ? band[1] - (d - band[1]) * 2 : band[1]) + Math.random() * 14 : Math.min(d, 40) + Math.random() * 6;
       if (s > bs) {
         bs = s;
         best = p;
       }
     }
-    best = this.breach?.spawnPoint(pts) ?? best; // a breached wall: part of the horde comes from that side
-    const pos = best.clone().add(new THREE.Vector3(rand(-2.5, 2.5), 0.05, rand(-2.5, 2.5)));
+    best = this.breach?.spawnPoint(pts) ?? best ?? pick(pts); // a breached wall: part of the horde comes from that side
+    let pos = best.clone().add(new THREE.Vector3(rand(-2.5, 2.5), 0.05, rand(-2.5, 2.5)));
+    // a big map: the scatter must not land behind a fence or in a wall (else the point itself)
+    if (band && !(this.nav.distanceAt(1, pos.x, pos.z) < 1e6)) pos = best.clone().add(new THREE.Vector3(0, 0.05, 0));
     this.breach?.onSpawn(this.zombies.spawn(type, pos, r, hpMult, spd)); // (the round's wall-breaching Boomer)
     // the rest of a dog / Biter pack queued right behind comes in with its leader
     while ((type === 'dog' || type === 'biter') && this.toSpawn[0] === type && this.zombies.aliveCount < this.maxAlive) {
@@ -957,7 +982,134 @@ export class Game {
     const pos = cam.position.clone().addScaledVector(fwd, 0.45).add(new THREE.Vector3(0, -0.1, 0));
     const vel = fwd.multiplyScalar(def.throwSpeed).add(new THREE.Vector3(0, 2.2, 0)).add(player.body.vel.clone().multiplyScalar(0.6));
     if (def.id === 'molotov') this.projectiles.throwMolotov(pos, vel, player, def);
+    else if (def.id === 'mine') this.projectiles.throwMine(pos, vel, player, def);
+    else if (def.id === 'pipebomb') this.projectiles.throwPipeBomb(pos, vel, player, def);
     else this.projectiles.throwFrag(pos, vel, player, def);
+  }
+
+  /**
+   * A pipe bomb (game/projectiles.js) starts beeping: every infected within its def.lure metres, bar the
+   * Crushers, the Biters and the Stalker, drops what it was doing and makes for it (zombie.js goal: the flow
+   * field to it, never clawed); latecomers in range join it every half second. lureEnd lets them go.
+   */
+  lureStart(p) {
+    const level = levelOf(p.pos.y + 0.3);
+    const L = { pos: p.pos, level, alive: true, radius: 0.35, isGoal: true, isLure: true, spot: { broken: false }, field: null };
+    L.field = this.nav.makeField([{ level, x: p.pos.x, z: p.pos.z }], { infected: true });
+    const e = { L, r: p.def.lure, t: 0 };
+    this.lures.push(e);
+    p.lure = L;
+    this._lurePull(e);
+  }
+
+  lureEnd(L) {
+    if (!L) return;
+    L.spot.broken = true; // (zombie.js drops the goal)
+    L.alive = false;
+    this.lures = this.lures.filter((e) => e.L !== L);
+  }
+
+  _lurePull(e) {
+    for (const z of this.zombies.list) {
+      if (!z.alive || !z.active || z.goal || !LURED.has(z.typeName)) continue;
+      if (z.pos.distanceTo(e.L.pos) > e.r) continue;
+      z.goal = e.L;
+      z.route = null;
+      z.tgtT = 0;
+      if (!z.alerted) z._alert(rand(0, 0.4));
+    }
+  }
+
+  /** the shockwave emitter (pocket gear, key X): once a round a blast of force around you (SHOCKWAVE) */
+  shockwave() {
+    const p = this.player;
+    if (!p.alive || !this.gear.has('shockwave') || this.cinema?.active) return false;
+    if (!this.pulseReady) {
+      this.audio.play('dryfire', { volume: 0.5 });
+      this.hud.popScore?.(0, 'SHOCKWAVE · NEXT ROUND');
+      return false;
+    }
+    this.pulseReady = false;
+    const S = SHOCKWAVE;
+    const c = p.pos;
+    const dir = new THREE.Vector3();
+    for (const { zombie: z, d } of this.zombies.inRadius(c, S.radius)) {
+      if (!z.alive || Math.abs(z.pos.y - c.y) > 2.2) continue;
+      const k = 1 - d / S.radius;
+      dir.set(z.pos.x - c.x, 0, z.pos.z - c.z);
+      if (dir.lengthSq() < 1e-4) dir.set(Math.sin(p.yaw), 0, Math.cos(p.yaw));
+      dir.normalize();
+      const mass = z.type.mass ?? 1;
+      const push = (S.push * (0.45 + 0.55 * k)) / mass;
+      z.body.vel.x += dir.x * push;
+      z.body.vel.z += dir.z * push;
+      z.body.vel.y = Math.max(z.body.vel.y, (S.lift * (0.3 + 0.7 * k)) / Math.sqrt(mass));
+      z.body.onGround = false;
+      z.stagger = Math.max(z.stagger ?? 0, (S.stun * (0.5 + 0.5 * k)) / Math.max(1, mass));
+      if (z.attackT >= 0) z.attackT = -1; // an attack in progress is broken off
+      z.damage(S.damage * (0.5 + 0.5 * k), 'torso', dir.clone().setY(0.3), p, { weapon: 'shockwave', explosion: true, blast: 0.5 * k });
+    }
+    // a Biter clinging to your back is torn off (actors/biter.js)
+    for (const z of this.zombies.list) if (z.alive && z.latchHost === p) z._release?.('shaken', dir.set(Math.sin(p.yaw + Math.PI), 0.4, Math.cos(p.yaw + Math.PI)));
+    // the NOX squad: thrown back, off their aim for a moment (actors/merc.js)
+    for (const m of this.mercs?.list ?? []) {
+      if (!m.alive || !m.inPlay || !m.root.visible) continue;
+      const d = m.pos.distanceTo(c);
+      if (d > S.radius) continue;
+      const k = 1 - d / S.radius;
+      dir.set(m.pos.x - c.x, 0, m.pos.z - c.z).normalize();
+      m.body.vel.x += dir.x * S.push * 0.6 * (0.45 + 0.55 * k);
+      m.body.vel.z += dir.z * S.push * 0.6 * (0.45 + 0.55 * k);
+      m.flinchV = (m.flinchV ?? 0) + 6;
+      m.acquire = Math.max(m.acquire ?? 0, S.stun);
+    }
+    // the look: a ring of force over the floor, a flash, sparks, the camera jolts
+    this._ring(c);
+    this.lighting.flashAt?.(c.clone().setY(c.y + 1), 0x7fd8ff, 140, 0.25, 12);
+    for (let i = 0; i < 36; i++) {
+      const a = (i / 36) * Math.PI * 2;
+      this.fx.sparks?.emit(c.x + Math.cos(a) * 0.5, c.y + 0.3, c.z + Math.sin(a) * 0.5, Math.cos(a) * rand(6, 10), rand(0.5, 2), Math.sin(a) * rand(6, 10), { life: rand(0.2, 0.45), length: 0.05, color: [1.4, 3.6, 6], width: 0.012, gravity: 2, drag: 2.5 });
+    }
+    this.shake.add(0.4);
+    this.audio.play('shockwave', { volume: 1 });
+    this.alertNoise(c, 20);
+    return true;
+  }
+
+  /** a ring of force spreading over the floor (the shockwave) */
+  _ring(c) {
+    const mat = new THREE.MeshBasicMaterial({ color: 0x7fd8ff, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, toneMapped: false });
+    const m = new THREE.Mesh(new THREE.RingGeometry(0.42, 0.5, 64), mat);
+    m.rotation.x = -Math.PI / 2;
+    m.position.set(c.x, c.y + 0.06, c.z);
+    this.scene.add(m);
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(0.5, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2), mat.clone());
+    dome.material.opacity = 0.35;
+    dome.position.copy(m.position);
+    this.scene.add(dome);
+    (this._rings ??= []).push({ m, dome, t: 0 });
+  }
+
+  _updateRings(dt) {
+    const R = SHOCKWAVE.radius;
+    for (let i = (this._rings?.length ?? 0) - 1; i >= 0; i--) {
+      const r = this._rings[i];
+      r.t += dt;
+      const k = Math.min(1, r.t / 0.45);
+      const e = 1 - Math.pow(1 - k, 3);
+      r.m.scale.setScalar(1 + e * (R / 0.5 - 1));
+      r.m.material.opacity = 0.9 * (1 - k) * (1 - k);
+      r.dome.scale.set(1 + e * (R / 0.5 - 1) * 0.8, 1 + e * 4, 1 + e * (R / 0.5 - 1) * 0.8);
+      r.dome.material.opacity = 0.35 * (1 - k);
+      if (k >= 1) {
+        for (const o of [r.m, r.dome]) {
+          this.scene.remove(o);
+          o.geometry.dispose();
+          o.material.dispose();
+        }
+        this._rings.splice(i, 1);
+      }
+    }
   }
 
   /** Molotov shatters: a burning pool on the floor below the impact that ignites the infected. */
@@ -1052,8 +1204,8 @@ export class Game {
       }
       else if (source && source.stats) source.stats.score += Math.round((res.dealt ?? 0) * 0.5);
     }
-    // team damage (reduced friendly fire)
-    for (const m of this.team) {
+    // team damage (reduced friendly fire; none from a mine)
+    for (const m of opts.friendly === 0 ? [] : this.team) {
       if (!m.alive) continue;
       const d = m.pos.distanceTo(pos);
       if (d > radius) continue;
@@ -1222,7 +1374,7 @@ export class Game {
 
   // ------------------------------------------------------------------ update
   /** The infected's flow field toward every living team member (labels each cell with the nearest one). */
-  _updateNav() {
+  _updateNav(sync = false) {
     const sources = [];
     let sig = '';
     for (const m of this.team) {
@@ -1231,9 +1383,13 @@ export class Game {
       sources.push({ level, x: m.pos.x, z: m.pos.z, ref: m });
       sig += level;
     }
-    if (!sources.length) sources.push({ level: 1, x: 0, z: 0, ref: null });
+    if (!sources.length) sources.push({ level: 1, x: this.level.playerSpawn.x, z: this.level.playerSpawn.z, ref: null });
     this._navSig = sig;
-    this.nav.compute(sources);
+    // a big map: built a slice a frame in the background (nav/navgrid.js beginCompute), the last one in use meanwhile
+    if (this.level.bigMap) {
+      this.nav.beginCompute(sources);
+      if (sync) this.nav.stepCompute();
+    } else this.nav.compute(sources);
   }
 
   /** re-flow early when someone changes floor, dies or respawns (else every 0.2 s) */
@@ -1303,7 +1459,14 @@ export class Game {
     if (player.alive) {
       this.weapons.update(dt, input.locked ? input : null);
       this._updateF(dt, input);
+      if (input.locked && input.hit('KeyX')) this.shockwave(); // the shockwave emitter (pocket gear)
     }
+    // pipe bombs: the horde in range keeps coming (see lureStart)
+    for (const e of this.lures) if ((e.t -= dt) <= 0) {
+      e.t = 0.5;
+      this._lurePull(e);
+    }
+    if (this._rings?.length) this._updateRings(dt);
 
     // gas (a store gas mask filters it until the filter runs dry)
     const mask = this.gear.mask;
@@ -1338,7 +1501,14 @@ export class Game {
 
     // nav field
     this.navT -= dt;
-    if (this.navT <= 0 || this._navStale()) {
+    if (this.level.bigMap) {
+      // (a new field once the last one is in: every 0.2 s at most, at once when someone changes floor)
+      if (!this.nav.computing && (this.navT <= 0 || this._navStale())) {
+        this.navT = 0.2;
+        this._updateNav();
+      }
+      this.nav.stepCompute(NAV_SLICE);
+    } else if (this.navT <= 0 || this._navStale()) {
       this.navT = 0.2;
       this._updateNav();
     }
@@ -1532,12 +1702,15 @@ export class Game {
         lowHealth: clamp(1 - player.hp / 30, 0, 1),
         weaponName: info.name,
         altPrimary: w.altPrimary?.() ?? null, // weapon backpack: the other primary (key 1)
-        ammo: w.def.mode === 'grenade' ? w.grenades : info.ammo,
+        ammo: w.def.mode === 'grenade' ? w.throwCount(w.def.id) : info.ammo,
         magSize: info.magSize,
         reserve: info.reserve,
         noReload: info.noReload, // one load (chain gun, grenade launchers)
         dual: info.dual, // akimbo pistols: both mags
         grenades: w.grenades,
+        mines: w.mines,
+        pipebombs: w.pipebombs,
+        gadget: this.gear.has('shockwave') ? { ready: this.pulseReady } : null, // the shockwave emitter (key X)
         molotovs: w.molotovs,
         barricades: w.barricades,
         gascans: w.gascans,
@@ -1565,7 +1738,7 @@ export class Game {
 
     // buy phase: panel, hold-to-ready ring, shop prompt and a waypoint to the cellar stairs
     const buy = this.state === 'shop';
-    hud.setBuyPhase?.(buy && !this.shopOpen ? { next: this.round + 1, gunshop: !!this.gunshop, rogue: this.rogue.on } : null);
+    hud.setBuyPhase?.(buy && !this.shopOpen ? { next: this.round + 1, gunshop: !!this.gunshop, where: this.map.shopWhere, rogue: this.rogue.on } : null);
     const readyHold = buy && this.fHold != null && this.fHold > 0.15;
     const pw = this.power, rv = this.revives, ms = this.mission;
     const hold = rv?.hold != null ? rv : pw?.hold != null ? pw : ms?.hold != null ? ms : this.barricades;

@@ -170,7 +170,7 @@ export class Power {
   }
 
   activate() {
-    if (this.active) return;
+    if (this.active || !this.rig) return; // (a map without the generator: the lights just stay on)
     this.active = true;
     this.sinceStart = 0;
     this.cans.spawnAll();

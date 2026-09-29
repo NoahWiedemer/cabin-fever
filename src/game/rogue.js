@@ -48,11 +48,12 @@ const WEAPON_POOL = [
   { id: 'l96a1', rarity: 'epic', from: 3 },
   { id: 'devotion', rarity: 'epic', from: 4 },
   { id: 'sigma', rarity: 'epic', from: 5 },
+  { id: 'mg42', rarity: 'epic', from: 5 },
   { id: 'm32', rarity: 'legendary', from: 6 },
   { id: 'goldenPunisher', rarity: 'legendary', from: 7 },
   { id: 'chaingun', rarity: 'legendary', from: 9 },
 ];
-const WEAPON_TYPE = { m16a2: 'BURST RIFLE', m4super90: 'SEMI-AUTO SHOTGUN', p90: 'SUBMACHINE GUN', mozambique: 'SHOTGUN PISTOL · SIDEARM', m4a1: 'ASSAULT RIFLE', spas12: 'COMBAT SHOTGUN', r201: 'ASSAULT RIFLE', l96a1: 'SNIPER RIFLE', devotion: 'LIGHT MACHINE GUN', sigma: 'HEAVY MACHINE GUN', m32: 'GRENADE LAUNCHER · ONE LOAD', goldenPunisher: 'GOLDEN SHOTGUN', chaingun: 'CHAIN GUN · ONE BELT' };
+const WEAPON_TYPE = { m16a2: 'BURST RIFLE', m4super90: 'SEMI-AUTO SHOTGUN', p90: 'SUBMACHINE GUN', mozambique: 'SHOTGUN PISTOL · SIDEARM', m4a1: 'ASSAULT RIFLE', spas12: 'COMBAT SHOTGUN', r201: 'ASSAULT RIFLE', l96a1: 'SNIPER RIFLE', devotion: 'LIGHT MACHINE GUN', sigma: 'HEAVY MACHINE GUN', mg42: 'BELT-FED MACHINE GUN', m32: 'GRENADE LAUNCHER · ONE LOAD', goldenPunisher: 'GOLDEN SHOTGUN', chaingun: 'CHAIN GUN · ONE BELT' };
 const UPG_SHORT = { dmg: 'DMG', mag: 'MAG', reload: 'RLD', rate: 'ROF' };
 
 // supply cards: instant. `gear`: a store gear item for free (not while you own it)
@@ -62,6 +63,9 @@ const SUPPLIES = [
   { id: 'plates', name: 'KEVLAR PLATES', icon: 'shield', thumb: 'e:armor', rarity: 'common', text: '+100 armor (up to 200)' },
   { id: 'ammo', name: 'AMMO CACHE', icon: 'ammo', thumb: 'e:ammo', rarity: 'common', text: 'Every gun to max reserve · +1 frag' },
   { id: 'barricades', name: 'BARRICADE KITS', icon: 'plank', thumb: 'e:barricade', rarity: 'common', text: '+2 barricade kits' },
+  { id: 'mines', name: 'MINEFIELD', icon: 'mine', thumb: 'e:mine', rarity: 'common', text: '+3 M16A1 bounding mines' },
+  { id: 'pipebomb', name: 'PIPE BOMB', icon: 'pipe', thumb: 'e:pipebomb', rarity: 'rare', text: '+1 pipe bomb: it lures the horde, then blows' },
+  { id: 'gear:shockwave', gear: 'shockwave', rarity: 'rare' },
   { id: 'medkit', name: 'FIELD SURGEON', icon: 'medkit', rarity: 'rare', text: 'Full HP now · +10 max HP' },
   { id: 'gear:backpack', gear: 'backpack', rarity: 'rare' },
   { id: 'gear:grenadier', gear: 'grenadier', rarity: 'common' },
@@ -531,6 +535,12 @@ export class Rogue {
         break;
       case 'barricades':
         w.barricades = (w.barricades ?? 0) + 2;
+        break;
+      case 'mines':
+        w.mines = (w.mines ?? 0) + 3;
+        break;
+      case 'pipebomb':
+        w.pipebombs = (w.pipebombs ?? 0) + 1;
         break;
       case 'medkit':
         this.bonusHp = (this.bonusHp ?? 0) + 1;

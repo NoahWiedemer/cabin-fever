@@ -386,7 +386,7 @@ export class Zombie {
       this._updateAttack(dt, tgt, dist);
     } else if (tgt && this.stagger <= 0) {
       const reach = this.type.reach * (this.typeName === 'crusher' ? 1 : 1) + (tgt.radius ?? 0.3);
-      if (dist < reach && sameLevel && this.attackCooldown <= 0 && Math.abs(tgt.pos.y - pos.y) < 1.2) {
+      if (dist < reach && sameLevel && this.attackCooldown <= 0 && Math.abs(tgt.pos.y - pos.y) < 1.2 && !tgt.isLure) {
         if (this.typeName === 'charger') {
           if (this.fuse < 0) {
             this.fuse = 0;
@@ -800,7 +800,7 @@ export class Zombie {
     if (!this.attackHit && this.attackT >= hitAt) {
       this.attackHit = true;
       if (this.barricade) this.game.barricades?.hit(this.barricade, this);
-      else if (tgt && tgt.alive && dist < this.type.reach + (tgt.radius ?? 0.3) + 0.45 && Math.abs(tgt.pos.y - this.pos.y) < 1.4) {
+      else if (tgt && tgt.alive && tgt.takeDamage && dist < this.type.reach + (tgt.radius ?? 0.3) + 0.45 && Math.abs(tgt.pos.y - this.pos.y) < 1.4) {
         const dmg = this.type.dmg * (this.game.difficultyDamage ?? 1);
         tgt.takeDamage(dmg, this.pos, this);
         this.game.audio.play('impact_flesh', { position: tgt.pos, volume: 0.7 });

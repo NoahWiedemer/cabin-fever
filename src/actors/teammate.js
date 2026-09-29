@@ -313,7 +313,8 @@ export class Teammate {
   _choosePost() {
     const game = this.game;
     const player = game.player;
-    const posts = game.level.defensePosts.filter((p) => !game.team.some((t) => t !== this && t.post === p));
+    // (a post can wait for an unlock: `requires`, e.g. Appenweier's fire station hall)
+    const posts = game.level.defensePosts.filter((p) => (!p.requires || game.unlocked?.[p.requires]) && !game.team.some((t) => t !== this && t.post === p));
     const ref = player.alive ? player.pos : this.pos;
     posts.sort((a, b) => a.pos.distanceToSquared(ref) - b.pos.distanceToSquared(ref));
     const pick = posts[Math.min(posts.length - 1, Math.floor(Math.random() * Math.min(3, posts.length)))];

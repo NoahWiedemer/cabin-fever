@@ -13,8 +13,12 @@ import { generateAllTextures } from './world/textures.js';
 import { Game } from './game/game.js';
 import { renderPortraits } from './actors/portraits.js';
 import { fullscreen } from './core/fullscreen.js';
+import { currentMap, storeMapId, MAPS } from './world/maps.js';
 
-installFogShader();
+// the map this page plays (world/maps.js): picking another one in the menu reloads the page
+const MAP = currentMap();
+installFogShader(MAP.fogRects, MAP.labRect);
+const LS_PENDING = 'cabinfever.pendingDeploy'; // (sessionStorage) a deploy that switched maps: resumed after the reload
 
 const container = document.getElementById('game');
 const hud = new HUD(document.getElementById('hud'));
@@ -29,7 +33,21 @@ const audio = new AudioSystem();
 const music = new MenuMusic(`${import.meta.env.BASE_URL}audio/abandoned-farmhouse.mp3`);
 
 const menu = new Menu(document.getElementById('menu'), {
+  map: MAP,
   onDeploy: async (config) => {
+    // another map than the one loaded: remember the deploy, switch, reload (it resumes after loading)
+    if (config.map && config.map !== MAP.id && MAPS[config.map]) {
+      try {
+        sessionStorage.setItem(LS_PENDING, JSON.stringify(config));
+      } catch (_) {
+        /* no session storage: the menu comes back with the new map */
+      }
+      storeMapId(config.map);
+      const url = new URL(location.href);
+      url.searchParams.delete('map');
+      location.replace(url.href);
+      return;
+    }
     await audio.init();
     audio.setMasterVolume(settings.volume ?? 0.8);
     if (!game) return;
@@ -232,7 +250,7 @@ async function boot() {
   } catch (e) {
     console.error('texture generation failed', e);
   }
-  game = new Game({ gr, audio, hud, input, settings });
+  game = new Game({ gr, audio, hud, input, settings, map: MAP });
   await game.load((f, label) => menu.setLoading(f, label));
   game.onShopOpen = openStore;
   game.onDraft = openDraft; // the Gauntlet's cards
@@ -265,7 +283,16 @@ async function boot() {
   resize();
   window.addEventListener('resize', resize);
   menu.hideLoading();
-  menu.showMain();
+  // a deploy that switched maps (onDeploy above): straight on into the game with the same setup
+  let pending = null;
+  try {
+    pending = JSON.parse(sessionStorage.getItem(LS_PENDING) || 'null');
+    sessionStorage.removeItem(LS_PENDING);
+  } catch (_) {
+    pending = null;
+  }
+  if (pending && pending.map === MAP.id) menu.deploy(pending);
+  else menu.showMain();
   store.warmup(); // bakes the gun store's 3D item thumbnails in idle time
   // debug handles (used for automated testing when rAF is throttled)
   window.__game = game;

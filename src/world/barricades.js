@@ -431,7 +431,7 @@ export class Barricades {
     this._syncNav();
     if (w.barricades <= 0 && w.cur === 4) {
       // out of kits: back to the last weapon (a gun if that was an empty throwable slot)
-      const back = w.prev === 4 || (w.prev === 3 && w.grenades + w.molotovs <= 0) ? 0 : w.prev;
+      const back = w.prev === 4 || (w.prev === 3 && w._throwTotal() <= 0) ? 0 : w.prev;
       w.switchTo(back, true);
     }
   }

@@ -36,6 +36,8 @@ const ICONS = {
   plank: `<path d="M4 8l25 6-1 4L3 12z"/><path d="M4 24l25-6-1-4L3 20z"/>${dot(8, 11, 1.1)}${dot(24, 15, 1.1)}${dot(8, 21, 1.1)}${dot(24, 17, 1.1)}`,
   medkit: '<rect x="4.5" y="9" width="23" height="18" rx="2.5"/><path d="M12 9V5.5h8V9M16 13.5v9M11.5 18h9"/>',
   gear: '<path d="M10 9h12a4 4 0 0 1 4 4v14H6V13a4 4 0 0 1 4-4z"/><path d="M12.5 9V5.5h7V9M6 17.5h20M13 17.5v4h6v-4"/>',
+  mine: '<path d="M7 15h18v12a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2z"/><path d="M6 15l2-3h16l2 3M13 12V9h6v3M14 9l-2-5M18 9l2-5M16 9V3M7 21h18"/>',
+  pipe: '<path d="M11 8h10v18H11z"/><path d="M9 5h14v3H9zM9 26h14v3H9zM21 13h4v5h-4M16 5V2"/>',
   // curses
   skullrun: `${skull(8.5, 3.5, 0.78)}<path d="M1.5 11h5M1 16.5h6M1.5 22h5"/>`,
   skullshield: `<path d="M16 2l12 4.5v9c0 7-5.5 11.5-12 14.5C9.5 27 4 22.5 4 15.5v-9z"/>${skull(7.2, 7.4, 0.55)}`,

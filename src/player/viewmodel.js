@@ -14,6 +14,7 @@ import { clamp, damp, lerp, smoothstep } from '../core/utils.js';
 
 const _v = new THREE.Vector3();
 const _q = new THREE.Quaternion();
+const _edge = new THREE.Vector3(); // the MG 42 cover's rear edge (belt reload)
 const _e = new THREE.Euler();
 const _adsArm = new THREE.Vector3();
 // full-sprint offsets [x, y, z, rx, ry, rz]: the gun drops and cants across the body (a def may bring its own)
@@ -294,7 +295,7 @@ export class Viewmodel {
   }
 
   onReload(def, phase, duration, empty) {
-    if (phase === 'mag') this.anim = { kind: 'mag', t: 0, dur: duration, empty };
+    if (phase === 'mag') this.anim = { kind: def.beltReload ? 'belt' : 'mag', t: 0, dur: duration, empty };
     else if (phase === 'shellStart') this.anim = { kind: 'shell', sub: 'start', t: 0, dur: def.reloadStart, tilt: 0 };
     else if (phase === 'shellInsert') this.anim = { kind: 'shell', sub: 'insert', t: 0, dur: duration, tilt: 1 };
     else if (phase === 'shellEnd') this.anim = { kind: 'shell', sub: 'end', t: 0, dur: duration, tilt: 1, empty };
@@ -476,6 +477,75 @@ export class Viewmodel {
       rx += o.rx;
       ry += o.ry;
       rz += o.rz;
+    } else if (a && a.kind === 'belt' && st === 'reload') {
+      // belt-fed (the MG 42): the support hand flips the feed cover up, pulls the empty ammo box off (it falls
+      // free), hooks a fresh one on and lays the belt in the tray, slams the cover shut; then the right hand
+      // leaves the grip and racks the cocking handle
+      const f = clamp(a.t / a.dur, 0, 1);
+      const tilt = pulse(f, 0.0, 0.1, 0.86, 1.0);
+      rz -= tilt * 0.2; // roll right: the feed and the box on its left side come up into view
+      rx += tilt * 0.14;
+      ry += tilt * 0.1;
+      pos.x -= tilt * 0.05;
+      pos.y += tilt * 0.045;
+      pos.z += tilt * 0.03;
+      const open = smoothstep(0.08, 0.15, f) * (1 - smoothstep(0.66, 0.71, f));
+      if (P.cover && m.rest.cover) P.cover.rotation.x = m.rest.cover.rot.x - open * 1.05; // hinged at its front
+      if (P.mag && m.rest.mag) {
+        const r = m.rest.mag.pos;
+        if (f < 0.4) {
+          const k = smoothstep(0.18, 0.3, f);
+          P.mag.position.set(r.x - 0.07 * k, r.y - 0.2 * k * k, r.z + 0.03 * k);
+          P.mag.rotation.z = m.rest.mag.rot.z + 0.5 * k;
+          if (f >= 0.27 && !a.dropped) {
+            a.dropped = true;
+            this.dropMag(P.mag, def.model); // (fx/magDrops.js: the empty box tumbles away)
+          }
+          P.mag.visible = !a.dropped;
+        } else {
+          const k = 1 - smoothstep(0.4, 0.52, f);
+          P.mag.position.set(r.x - 0.09 * k, r.y - 0.24 * k, r.z + 0.04 * k);
+          P.mag.rotation.z = m.rest.mag.rot.z + 0.35 * k;
+          P.mag.visible = true;
+        }
+      }
+      // the support hand: the cover's rear edge, the box, a sweep over the tray, the cover again
+      leftBlend = pulse(f, 0.04, 0.1, 0.72, 0.8);
+      if (leftBlend > 0) {
+        const L = this.leftProxy;
+        L.quaternion.copy(m.leftHand ? m.leftHand.quaternion : _q.identity());
+        const C = P.cover;
+        const edge = C ? _edge.set(0, 0.015, 0.14).applyEuler(C.rotation).add(C.position) : null;
+        if (edge && (f < 0.13 || f > 0.62)) {
+          L.position.copy(edge); // flips the latch and lifts the cover / pushes it back down
+        } else if (P.mag && f < 0.54) {
+          L.position.copy(P.mag.position);
+          L.position.x -= 0.02;
+          L.position.y += 0.02;
+          if (f > 0.3 && f < 0.42) L.position.y -= 0.14; // down for a fresh box, out of view
+          if (edge && f < 0.19) L.position.lerp(edge, 1 - smoothstep(0.13, 0.19, f)); // over from the cover
+        } else if (C) {
+          const s = smoothstep(0.54, 0.62, f);
+          L.position.set(-0.05 + 0.06 * s, -0.012, 0.07).add(C.position);
+        }
+      }
+      // the cover slams shut
+      const jolt = pulse(f, 0.69, 0.71, 0.71, 0.76);
+      pos.y -= jolt * 0.01;
+      rx -= jolt * 0.03;
+      // the right hand racks the cocking handle
+      const rb = pulse(f, 0.74, 0.79, 0.9, 0.96);
+      const pull = pulse(f, 0.79, 0.83, 0.85, 0.89);
+      if (P.chargingHandle && m.rest.chargingHandle) {
+        P.chargingHandle.position.z = m.rest.chargingHandle.pos.z + pull * 0.09;
+        if (rb > 0) {
+          this.rightProxy.position.copy(P.chargingHandle.position);
+          this.rightProxy.position.x += 0.02; // on the knob
+          this.rightProxy.position.lerpVectors(m.rightHand.position, this.rightProxy.position, rb);
+          this.rightProxy.quaternion.copy(m.rightHand.quaternion);
+          rightTarget = this.rightProxy;
+        }
+      }
     } else if (a && a.kind === 'mag' && st === 'reload') {
       const f = clamp(a.t / a.dur, 0, 1);
       const tilt = pulse(f, 0.0, 0.15, 0.82, 1.0);

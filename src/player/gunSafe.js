@@ -5,6 +5,7 @@ import { buildGltfWeapon, hasGltfWeapon } from './gltfGuns.js';
 import { buildGltfArms, hasGltfArms } from './gltfArms.js';
 import { buildBarricadeKit } from './barricadeKit.js';
 import { buildMachete } from './machete.js';
+import { buildMineViewmodel, buildPipeBombViewmodel } from './throwables.js';
 
 const fbMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.5, metalness: 0.6 });
 
@@ -29,11 +30,13 @@ function fallbackWeapon(id) {
 }
 
 // GLB weapons borrow a procedural model when their file is missing or broken
-const STAND_IN = { m16a2: 'm4a1', spas12: 'm4super90', r201: 'm4a1', devotion: 'm4a1', sigma: 'm4a1', p90: 'm4a1', mozambique: 'm9', softball: 'm32', molotov: 'm67' };
+const STAND_IN = { m16a2: 'm4a1', spas12: 'm4super90', r201: 'm4a1', devotion: 'm4a1', sigma: 'm4a1', p90: 'm4a1', mg42: 'm4a1', mozambique: 'm9', softball: 'm32', molotov: 'm67' };
 
 export function buildWeaponModel(id) {
   if (id === 'barricade') return buildBarricadeKit();
   if (id === 'machete') return buildMachete(); // store gear (game/gear.js)
+  if (id === 'mine') return buildMineViewmodel(); // store throwables (player/throwables.js)
+  if (id === 'pipebomb') return buildPipeBombViewmodel();
   if (hasGltfWeapon(id)) {
     try {
       return buildGltfWeapon(id);

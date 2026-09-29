@@ -117,7 +117,7 @@ export class RandomEvents {
       setTimeout(() => g.hud.banner('BLOOD MOON', 'The infected are frenzied · every kill pays double', 3.4, 'danger'), 2600);
     } else if (name === 'crash') this._startCrash();
     else if (name === 'blackout') {
-      const pole = V(-14, 3.2, 14.5);
+      const pole = g.level.powerPole?.clone() ?? V(-14, 3.2, 14.5);
       g.lighting.triggerLightning(1.4);
       setTimeout(() => {
         if (!g.running) return;
@@ -136,18 +136,19 @@ export class RandomEvents {
   // ---------------------------------------------------------------- the crash
   _crashSite() {
     const g = this.game, nav = g.nav;
+    const c = g.eventCenter();
     for (let i = 0; i < 100; i++) {
       const a = Math.random() * TAU, r = rand(22, 34);
-      const x = Math.cos(a) * r * 1.15, z = Math.sin(a) * r;
+      const x = c.x + Math.cos(a) * r * 1.15, z = c.z + Math.sin(a) * r;
       if (g.level.isSheltered(x, 0.5, z)) continue;
-      if (Math.abs(x) < 16 && Math.abs(z) < 13) continue;
+      if (g.level.eventClear ? g.level.eventClear(x, z, 16) : Math.abs(x) < 16 && Math.abs(z) < 13) continue;
       const i0 = nav.index(1, x, z);
       if (i0 < 0 || !nav.walk[i0] || !(nav.distanceAt(1, x, z) < 1e6)) continue;
       const gy = g.world.groundHeight(x, z, 0.5, 2);
       if (gy > 0.5) continue;
       return V(x, gy > -50 ? gy : -0.5, z);
     }
-    return V(24, -0.5, 22);
+    return V(c.x + 24, -0.5, c.z + 22);
   }
 
   _startCrash() {
@@ -155,7 +156,8 @@ export class RandomEvents {
     if (!this.wreck) this.wreck = new Chopper(g.scene, g.audio);
     const ch = this.wreck;
     const site = this._crashSite();
-    const a = Math.atan2(site.z, site.x) + Math.PI * rand(0.7, 1.3); // it comes in from across the farm
+    const c = g.eventCenter();
+    const a = Math.atan2(site.z - c.z, site.x - c.x) + Math.PI * rand(0.7, 1.3); // it comes in from across the farm
     const from = V(site.x + Math.cos(a) * 120, 42, site.z + Math.sin(a) * 120);
     const hit = V(site.x + Math.cos(a) * 45, 32, site.z + Math.sin(a) * 45);
     ch.flight.setPath([from, V((from.x + hit.x) / 2, 38, (from.z + hit.z) / 2), hit]);
@@ -228,7 +230,8 @@ export class RandomEvents {
     g.alertNoise(s, 60);
     g.shake.add(0.6);
     // the cargo, thrown clear of the fire
-    const away = Math.atan2(-s.z, -s.x);
+    const ec = g.eventCenter();
+    const away = Math.atan2(ec.z - s.z, ec.x - s.x);
     const drop = (k) => {
       const a = away + rand(-0.6, 0.6);
       const x = s.x + Math.cos(a) * (3.5 + k), z = s.z + Math.sin(a) * (3.5 + k);
@@ -286,18 +289,19 @@ export class RandomEvents {
   _shellSpot() {
     const g = this.game;
     // most shells fall where the infected are, outside the buildings
-    const outside = g.zombies.list.filter((z) => z.alive && !g.level.isSheltered(z.pos.x, z.pos.y + 0.5, z.pos.z) && Math.hypot(z.pos.x, z.pos.z) > 12);
+    const c = g.eventCenter();
+    const outside = g.zombies.list.filter((z) => z.alive && !g.level.isSheltered(z.pos.x, z.pos.y + 0.5, z.pos.z) && Math.hypot(z.pos.x - c.x, z.pos.z - c.z) > 12);
     if (outside.length && Math.random() < 0.65) {
       const z = pick(outside);
       return V(z.pos.x + rand(-2, 2), z.pos.y, z.pos.z + rand(-2, 2));
     }
     for (let i = 0; i < 40; i++) {
       const a = Math.random() * TAU, r = rand(15, 36);
-      const x = Math.cos(a) * r * 1.15, z = Math.sin(a) * r;
-      if (g.level.isSheltered(x, 0.5, z) || (Math.abs(x) < 14.5 && Math.abs(z) < 11.5)) continue;
+      const x = c.x + Math.cos(a) * r * 1.15, z = c.z + Math.sin(a) * r;
+      if (g.level.isSheltered(x, 0.5, z) || (g.level.eventClear ? g.level.eventClear(x, z, 12) : Math.abs(x) < 14.5 && Math.abs(z) < 11.5)) continue;
       const y = g.world.groundHeight(x, z, 0.3, 3);
       return V(x, y > -50 ? y : -0.5, z);
     }
-    return V(20, -0.5, 20);
+    return V(c.x + 20, -0.5, c.z + 20);
   }
 }

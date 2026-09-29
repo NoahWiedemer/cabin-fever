@@ -9,11 +9,13 @@ import { damp } from '../core/utils.js';
 // long (s) each lasts, and the time constant (s) it eases to the next one with
 const RAIN = { heavy: [0.85, 1], steady: [0.5, 0.7], light: [0.14, 0.3], hold: [35, 90], ease: 9 };
 
-// the barn is turned: its roof test runs in its own frame (constants baked into the shaders)
-const BR = BARN_ROOF, f4 = (v) => v.toFixed(4);
+// the barn is turned: its roof test runs in its own frame. uBarn = (x, z, cos, sin), uBarnH = (hx, hz, ridge y): the
+// farm's barn, or the map's one turned roof (level.rainRoofTurned, e.g. Appenweier's drugstore)
 const IN_BARN = (p) =>
-  `(abs(${f4(BR.cos)} * (${p}.x - ${f4(BR.x)}) - ${f4(BR.sin)} * (${p}.y - ${f4(BR.z)})) < ${f4(BR.hx)} && ` +
-  `abs(${f4(BR.sin)} * (${p}.x - ${f4(BR.x)}) + ${f4(BR.cos)} * (${p}.y - ${f4(BR.z)})) < ${f4(BR.hz)})`;
+  `(abs(uBarn.z * (${p}.x - uBarn.x) - uBarn.w * (${p}.y - uBarn.y)) < uBarnH.x && ` +
+  `abs(uBarn.w * (${p}.x - uBarn.x) + uBarn.z * (${p}.y - uBarn.y)) < uBarnH.y)`;
+const BARN_UNIFORMS = `uniform vec4 uBarn;
+uniform vec3 uBarnH;`;
 
 const skyVert = /* glsl */ `
 varying vec3 vDir;
@@ -78,7 +80,9 @@ uniform vec3 uCam;
 uniform vec4 uRoofA;
 uniform vec4 uRoofB;
 uniform vec4 uRoofC;
+uniform vec3 uRoofY;
 uniform float uDensity;
+${BARN_UNIFORMS}
 varying float vA;
 varying float vV;
 bool inRect(vec2 p, vec4 r) { return p.x > r.x && p.x < r.z && p.y > r.y && p.y < r.w; }
@@ -102,10 +106,10 @@ void main() {
   float w = max(0.012, camDist * 0.0012);
   wp += side * position.x * w;
   vA = 0.012 / w;
-  if (inRect(p.xz, uRoofA) && p.y < 9.5) vA = 0.0;
-  if (inRect(p.xz, uRoofB) && p.y < 3.2) vA = 0.0;
-  if (inRect(p.xz, uRoofC) && p.y < 3.3) vA = 0.0;
-  if (p.y < ${BARN.ridge.toFixed(2)} && ${IN_BARN('p.xz')}) vA = 0.0; // barn (ranchLayout.js)
+  if (inRect(p.xz, uRoofA) && p.y < uRoofY.x) vA = 0.0;
+  if (inRect(p.xz, uRoofB) && p.y < uRoofY.y) vA = 0.0;
+  if (inRect(p.xz, uRoofC) && p.y < uRoofY.z) vA = 0.0;
+  if (p.y < uBarnH.z && ${IN_BARN('p.xz')}) vA = 0.0; // barn (ranchLayout.js)
   if (p.y < -0.6) vA = 0.0;
   if (fract(aSeed.x * 7.13 + aSeed.z * 3.71) > uDensity) vA = 0.0; // a shower easing off: fewer drops
   float dist = length(wp - uCam);
@@ -132,6 +136,7 @@ uniform float uTime;
 uniform vec3 uCam;
 uniform vec4 uRoofA;
 uniform float uSize;
+${BARN_UNIFORMS}
 uniform float uDensity;
 varying float vA;
 void main() {
@@ -174,6 +179,9 @@ void main() {
 const fogVert = /* glsl */ `
 attribute vec4 aSeed;
 uniform float uTime;
+uniform vec4 uBank; // the banks drift through this box (centre x, z, half x, half z)
+uniform vec4 uHouse; // no banks inside the house (x0, z0, x1, z1)
+${BARN_UNIFORMS}
 varying vec2 vUv;
 varying float vA;
 varying float vFrame;
@@ -182,7 +190,7 @@ void main() {
   vec3 center = aSeed.xyz;
   center.x += sin(uTime * 0.03 + aSeed.w * 6.28) * 3.0 + uTime * 0.25;
   center.z += cos(uTime * 0.025 + aSeed.w * 3.0) * 3.0;
-  center.x = mod(center.x + 45.0, 90.0) - 45.0;
+  center.x = mod(center.x - uBank.x + uBank.z, 2.0 * uBank.z) - uBank.z + uBank.x;
   float size = 7.0 + aSeed.w * 7.0;
   vec3 camRight = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]);
   vec3 camUp = vec3(0.0, 1.0, 0.0);
@@ -190,7 +198,7 @@ void main() {
   vec4 mv = viewMatrix * vec4(wp, 1.0);
   float dist = -mv.z;
   // hide when inside the house region or too close to the camera
-  float inHouse = max(step(abs(center.x), 13.0) * step(abs(center.z), 9.0), ${IN_BARN('center.xz')} ? 1.0 : 0.0);
+  float inHouse = max(step(uHouse.x, center.x) * step(center.x, uHouse.z) * step(uHouse.y, center.z) * step(center.z, uHouse.w), ${IN_BARN('center.xz')} ? 1.0 : 0.0);
   vA = (1.0 - inHouse) * smoothstep(2.0, 8.0, dist) * (1.0 - smoothstep(38.0, 55.0, dist));
   vFrame = floor(aSeed.w * 3.99);
   gl_Position = projectionMatrix * mv;
@@ -347,15 +355,33 @@ export class Weather {
     const rg = new THREE.BufferGeometry();
     rg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     rg.setAttribute('aSeed', new THREE.BufferAttribute(seed, 4));
+    // roofs the rain stops at: level.rain = { roofs: up to 3 x [x0, z0, x1, z1, top y], turned: { x, z, cos, sin, hx,
+    // hz, top } | null, splash: [x0, z0, x1, z1], banks: [cx, cz, hx, hz], house: [x0, z0, x1, z1] }; else the farm's
+    const R = level.rain ?? {
+      roofs: [[-12.8, -8.8, 12.8, 8.8, 9.5], [-9.8, 8.0, -3.2, 10.8, 3.2], [3.8, 8.0, 11.2, 9.7, 3.3]],
+      turned: { ...BARN_ROOF, top: BARN.ridge },
+      splash: [-12.2, -8.2, 12.2, 8.2],
+      banks: [0, 0, 45, 42],
+      house: [-13, -9, 13, 9],
+    };
+    const roof = (i) => {
+      const r = R.roofs[i];
+      return r ? new THREE.Vector4(r[0], r[1], r[2], r[3]) : new THREE.Vector4(1e5, 1e5, 1e5, 1e5);
+    };
+    const T = R.turned ?? { x: 1e5, z: 1e5, cos: 1, sin: 0, hx: 0, hz: 0, top: -99 };
+    const barn = { uBarn: { value: new THREE.Vector4(T.x, T.z, T.cos, T.sin) }, uBarnH: { value: new THREE.Vector3(T.hx, T.hz, T.top) } };
+    this.bankBox = R.banks;
     this.rainMat = new THREE.ShaderMaterial({
       vertexShader: rainVert,
       fragmentShader: rainFrag,
       uniforms: {
+        ...barn,
         uTime: { value: 0 },
         uCam: { value: new THREE.Vector3() },
-        uRoofA: { value: new THREE.Vector4(-12.8, -8.8, 12.8, 8.8) },
-        uRoofB: { value: new THREE.Vector4(-9.8, 8.0, -3.2, 10.8) },
-        uRoofC: { value: new THREE.Vector4(3.8, 8.0, 11.2, 9.7) },
+        uRoofA: { value: roof(0) },
+        uRoofB: { value: roof(1) },
+        uRoofC: { value: roof(2) },
+        uRoofY: { value: new THREE.Vector3(R.roofs[0]?.[4] ?? 0, R.roofs[1]?.[4] ?? 0, R.roofs[2]?.[4] ?? 0) },
         uFlash: { value: 0 },
         uBright: { value: 0.5 },
         uDensity: { value: 1 },
@@ -386,9 +412,10 @@ export class Weather {
       vertexShader: splashVert,
       fragmentShader: splashFrag,
       uniforms: {
+        ...barn,
         uTime: { value: 0 },
         uCam: { value: new THREE.Vector3() },
-        uRoofA: { value: new THREE.Vector4(-12.2, -8.2, 12.2, 8.2) },
+        uRoofA: { value: new THREE.Vector4(...R.splash) },
         uSize: { value: 60 },
         uFlash: { value: 0 },
         uDensity: { value: 1 },
@@ -414,12 +441,13 @@ export class Weather {
       const fu = [];
       const fs = [];
       const fi = [];
+      const [bx, bz, bhx, bhz] = R.banks, H = R.house;
       for (let i = 0; i < F; i++) {
-        let x, z;
+        let x, z, k = 0;
         do {
-          x = (Math.random() * 2 - 1) * 42;
-          z = (Math.random() * 2 - 1) * 42;
-        } while (Math.abs(x) < 14 && Math.abs(z) < 10);
+          x = bx + (Math.random() * 2 - 1) * bhx * 0.93;
+          z = bz + (Math.random() * 2 - 1) * bhz;
+        } while (x > H[0] - 1 && x < H[2] + 1 && z > H[1] - 1 && z < H[3] + 1 && ++k < 20);
         const y = -0.5 + 0.6 + Math.random() * 1.6;
         const w = Math.random();
         const b = i * 4;
@@ -437,6 +465,9 @@ export class Weather {
         vertexShader: fogVert,
         fragmentShader: fogFrag,
         uniforms: {
+          ...barn,
+          uBank: { value: new THREE.Vector4(...R.banks) },
+          uHouse: { value: new THREE.Vector4(...R.house) },
           uTime: { value: 0 },
           uMap: { value: fogTex },
           uColor: { value: new THREE.Color(0x1d2a22) },
@@ -459,7 +490,7 @@ export class Weather {
 
     // Ceiling drips inside (leaky roof)
     this.drips = [];
-    const dripSpots = [
+    const dripSpots = level.drips ?? [
       [-5.2, 3.15, 6.6, 0],
       [8.8, 3.15, -6.2, 0],
       [-9.6, -0.3, -1.2, -3.2],

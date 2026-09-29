@@ -10,11 +10,28 @@ npm run dev      # http://localhost:5173 (the game), /viewer.html (weapon + arms
 
 ## Main menu
 
-The title sits over the live farmhouse scene. A slow camera moves between shots, cutting through black when you change screens, and the lightning brightens the title. **Play** sets up a run in three steps: game mode, difficulty and fireteam size (0–3 bots). A briefing panel shows the rounds, time limit, floors that open, the threat timeline and the standard kit. Everyone deploys with the same kit: M4A1, M9, knife and 2 frags. Better guns are bought in the store between rounds. The menu also has **Career** (your rank, weapon mastery, camos and operators; see [Career](#career)), **Settings** (with a separate music volume), **Controls** and **Credits**. A badge in the top right corner of the title screen shows your rank and the bar to the next one. You can use the mouse, or the arrow keys, Enter and Esc.
+The title sits over the live scene of the loaded map (the farmhouse, or 13a's painted gable in Appenweier). A slow camera moves between shots, cutting through black when you change screens, and the lightning brightens the title. **Play** sets up a run in four steps: map (see [Maps](#maps)), game mode, difficulty and fireteam. A briefing panel shows the rounds, time limit, floors that open, the threat timeline and the standard kit. Everyone deploys with the same kit: M4A1, M9, knife and 2 frags. Better guns are bought in the store between rounds. The menu also has **Career** (your rank, weapon mastery, camos and operators; see [Career](#career)), **Settings** (with a separate music volume), **Controls** and **Credits**. A badge in the top right corner of the title screen shows your rank and the bar to the next one. You can use the mouse, or the arrow keys, Enter and Esc.
 
 **Fullscreen**: the FULLSCREEN switch in the settings (main menu and pause menu) puts the whole page in fullscreen. It is saved with the other settings. Browsers only go fullscreen on a click or key press, so after a reload it comes back on your first click, and again when you deploy, resume or click back into the game. In Chrome and Edge, Esc stays with the game while fullscreen (Keyboard Lock): a tap pauses as usual, and holding Esc leaves fullscreen and switches the setting off. In other browsers Esc leaves fullscreen along with the mouse, and resuming brings it back. `src/core/fullscreen.js` wraps the Fullscreen and Keyboard Lock APIs.
 
 **Menu music**: `public/audio/abandoned-farmhouse.mp3` loops on the main menu screens. Browsers block audio until the first click or key press, so the track starts then, or right away if the page already has permission. It fades out over 1.5 s when you deploy and fades back in when you return to the menu. It is silent in the pause menu, on the end screens and in `/viewer.html`. Volume is master × music, and both settings are saved with the others. The track plays through an `HTMLAudioElement` (`src/ui/music.js`), separate from the synthesized game mix.
+
+## Maps
+
+The PLAY screen's first step picks the map. A map is built once per page load (the fog shader, the nav grid and the lights are made for it), so picking the other one saves the choice and reloads the page, and DEPLOY then goes straight on with the same setup (`src/world/maps.js`; `?map=farm` or `?map=appenweier` forces one).
+
+- **The Farm**: the farmhouse, its ranch and Nadja's lab, with the story (below).
+- **Appenweier** (`src/world/appenweier.js`): Sander Straße in Appenweier (Ortenau, Baden-Württemberg) at night, about 200 × 160 m.
+  - You start in the yard of Sanderstraße 13, before the painted gable of 13a. Its Lüftlmalerei (peasant children, goats and geese, the vine border, the cherubs at the peak, the painted satellite dish, the "Sanderstrasse 13a" scroll) is cut from photos of the house.
+  - Round the yard: 13c (the boarded bungalow with the star door and its tiled sign), 13, the fenced garden with the hazels, the walnut by the gate, the parked cars.
+  - Across the road with its red cycle lanes: the corn field, ready for the harvest, and the fire station (Sander Straße 22) with its hose tower (FEUERWEHR · 112) and its recruiting banner. North-east, past the car park: the drugstore at Im See 18.
+  - It plays like the farm: the same modes, rounds and infected. There is no story, so Cabin Fever is 15 waves to survive.
+  - **The gun shop** is the double garage behind 13a. Its left door rolls up in the buy phase.
+  - **Round 4**: the fire station's three red doors roll up on the vehicle hall (fire engine, crew van, turnout lockers, hoses), with the Golden Punisher on a table. The infected can get in too. The three doors and the side door take barricades.
+  - **Round 10**: the drugstore's doors slide open on aisles and checkouts, with the L96A1 on a checkout. The M32 turns up by the gun garage, the chain gun on the fire station's forecourt.
+  - The infected come from anywhere on the map (out of the corn, down the streets, from behind the houses), 30–60 m from the fireteam. The toxic haze only thickens at the map's edge.
+  - The Stalker watches and dashes, with no house runs here. The events (the crash, the shells, the NOX squad) centre on the fireteam.
+  - The big map's flow field is rebuilt a slice a frame (`nav/navgrid.js` `beginCompute` / `stepCompute`), and the moon's shadow box follows the camera.
 
 ## Game modes
 
@@ -51,7 +68,7 @@ The upstairs opens with round 4 (Golden Punisher, balcony over the yard), the ba
 - **After every cleared round** comes a **reward**: one **weapon**, one **perk** and one **supply** card, and you take one. Then comes a **curse**: three cards, and you have to take one of them.
 - **Weapons**: a random gun you don't carry. From round 5 it comes as MK II and from round 10 as MK III, with store upgrade levels on it. It replaces the gun in your hands, and your old one drops at your feet. A sidearm replaces the M9. The M32 waits on your back like a found launcher.
 - **Perks** stack (max 1-3): Hollow Points (+15 % damage), Headhunter (+35 % headshot damage), Quick Hands (reload 20 % faster), Hair Trigger (+12 % fire rate), Extended Mags (+35 % mag and reserve), Steady Aim (−30 % spread and recoil), Adrenaline (+8 % speed), Thick Skin (+25 max HP), Bloodthirst (+3 HP a kill), Kevlar Weave (+40 armor every round), Scavenger (+60 % drops), AP Rounds (+1 penetration), Demolition (your explosions +40 % damage, +25 % radius), Lucky Rounds (15 % of shots cost no ammo), Executioner (melee +75 %, melee kills heal 12) and Second Wind (once a round, a killing blow leaves you at 1 HP).
-- **Supplies**: frags, Molotovs, kevlar plates, an ammo cache, barricade kits, a field surgeon (full HP, +10 max HP), or one of the store's gear items for free.
+- **Supplies**: frags, Molotovs, mines, a pipe bomb, kevlar plates, an ammo cache, barricade kits, a field surgeon (full HP, +10 max HP), or one of the store's gear items for free (the shockwave emitter too).
 - **Curses**: *permanent* ones stack for the rest of the run. Frenzy (infected +8 % speed), Hardened (+15 % health), Brutality (+15 % damage), Swarm (+15 % wave size), Scarcity (−40 % drops), Half Rations (half reserve refill), Open Wounds (round ends heal to 70 % only), Rusted Guns (reload 15 % slower), Heavy Boots (−8 % speed), and Infestation (an extra pack of dogs, Biters, Boomers or Strikers in every wave). *Next round* curses hit harder, but only once: a Blood Moon, Hunted (the NOX squad drops in), a Blackout, Titans (two Crushers), Marked (the Stalker comes for you), Pack Season (twice the dogs and Biters), Berserk (+30 % speed and damage) or a Dry Spell (no drops).
 - Rarity (common, rare, epic, legendary) weights the draws and shifts toward rare ones as the rounds go on. The draft shows the run so far under the cards, and so does the scoreboard (Tab). Pick with a click or 1, 2 and 3.
 - Debug: `__game.rogue.add('hollow')`, `__game.rogue.curse('frenzy')`, `__game.rogue.draft('reward')`.
@@ -121,6 +138,12 @@ The upstairs opens with round 4 (Golden Punisher, balcony over the yard), the ba
 - **Money**: every kill by anyone in the fireteam pays every member the same amount (mauler $60, worker $70, dog $70, biter $75, striker $80, charger $90, survivalist $150, crusher $600, stalker $400, +$20 for a headshot), plus a round-clear bonus of $250 + $50 × round. Everyone starts with $500 and spends from an own wallet; bots buy rifle damage upgrades.
 - **Store arsenal**
   - Rifles: M4A1, M16A2 (3-round burst, modeled in Blender), R-201 Carbine, X-55 Devotion (LMG whose fire rate winds up), SIGMA-420 (heavy drum-fed LMG, 100 rounds).
+  - **MG 42** ($4,800): a 150-round belt at 1,150 rpm that hits hard (38) and kicks harder. The ammo box hangs on the left of the feed, and you can see the belted rounds through its window. The reload takes 5.6 s (6.2 s empty):
+    - the support hand flips the feed cover up (the belt in the tray shows),
+    - pulls the empty box off (it tumbles away) and hooks a fresh one on,
+    - lays the belt in the tray and slams the cover shut,
+    - and the right hand leaves the grip to rack the cocking handle.
+    - Each step has its own sound. The model is a 610k-triangle scan, cut to 75k in Blender, with the cover, the cocking handle and the separate ammo-box scan split out as moving parts (`tools/blender/weapons_import.py mg42`).
   - P90 ($2,000): a bullpup SMG with a 50-round top magazine, 900 rpm and fast handling. It aims over its iron sights, and the reload slides the magazine back out from under the rail.
   - Shotguns: M4 Super 90 (semi-auto), SPAS-12 (pump action).
   - SA-3 Mozambique: a triple-barrel shotgun pistol that replaces the M9.
@@ -129,7 +152,9 @@ The upstairs opens with round 4 (Golden Punisher, balcony over the yard), the ba
     - There's no aiming down sights. The hip cone is 30% wider (the crosshair shows it) and each round kicks the aim a little less. Damage per shot is unchanged, so the gain is double the fire rate and capacity.
     - One reload does both guns and takes 1.35× as long: both empties drop, then each gun dips onto a fresh mag, right first. Pulling an empty gun's trigger reloads, and so does running both dry.
 - **Spent magazines**: when you reload a magazine gun, the empty drops out and clatters to the floor. It lies there for 8 s, then sinks away, with at most 16 on the floor at once.
-  - Throwables: M67 frags and Molotovs. A Molotov shatters into a burning pool that sets the Infected on fire.
+  - Throwables: M67 frags and Molotovs. A Molotov shatters into a burning pool that sets the Infected on fire. Key **4** again cycles through the ones you carry: frag → Molotov → mine → pipe bomb.
+  - **M16A1 mine** ($400, carry 3): the bounding mine from Combat Arms, an olive steel can with the three-pronged fuze and a yellow stencil. You pull its pin and toss it a few metres. It stands up where it lands and arms after 1.2 s (a click, then a slow red blink). The moment an infected or a NOX operative steps within 1.3 m, it clicks, jumps to waist height and bursts (280 damage, 5.5 m). It never hurts the fireteam. Up to 8 lie out at once, and they stay between rounds.
+  - **Pipe bomb** ($1,200, carry 1): the lure, like Left 4 Dead's. It beeps and blinks faster and faster for 6.5 s. Every infected within 30 m drops what it was doing and makes for it (not the Crushers, the Biters or the Stalker). Then it blows up in the crowd (340 damage, 6.5 m).
 - **Special weapons**
   - Round 4: Golden Punisher (upstairs by the bathroom, as the upstairs opens)
   - Round 11: L96A1 Black-Magnum (in the basement crate)
@@ -188,6 +213,7 @@ The upstairs opens with round 4 (Golden Punisher, balcony over the yard), the ba
     - Bot-to-bot revives and the 15 s revive window don't change.
   - **Tactical gloves** (hands, $800): aiming down sights and drawing weapons are 30% faster (ADS and draw time ×0.7). Your first-person gloves turn coyote tan.
   - **Combat boots** (feet, $600): sprint 15% faster (7.1 → 8.2 m/s). Stairs never slowed you down (you climb at full walking or sprinting speed), so the boots speed up the stairs as well.
+  - **Shockwave emitter** (pocket, $1,800): press **X** once a round, and a blast of force throws every infected within 7 m back, stuns it for up to 1.6 s and hurts it a little (a ring of force spreads over the floor). It tears a Biter off your back and shoves the NOX squad off their aim. The HUD shows it above the vitals: READY, or NEXT ROUND.
   - **Machete** (belt, $500): it replaces the knife in slot 3.
     - It does double the damage (160 slash / 380 heavy, against 80 / 190) and swings faster (0.33 s against 0.42 s, heavy 0.72 s against 0.9 s), with a little more reach.
     - Any hit cuts a Biter down.
@@ -212,7 +238,7 @@ The upstairs opens with round 4 (Golden Punisher, balcony over the yard), the ba
 ## Controls
 
 WASD move · Shift sprint · Space jump · Ctrl/C crouch · Mouse1 fire · Mouse2 aim/scope (akimbo pistols: Mouse1 right gun, Mouse2 left gun) · R reload ·
-W / Space at a ladder climb (S down, C slide, Space jump off) · 1–6 / wheel switch (1 again: primary ↔ backpack gun, with the weapon backpack; 4 again: frag ↔ Molotov; 5 = barricade kit, hold Mouse1 at a doorway to nail it up; 6 = gas can, hold Mouse1 at the generator to refuel it; empty slots are skipped) · Q last weapon · G quick throw · E pick up · V (mash) shake off a Biter · F flashlight (buy phase: tap F at the counter to open the gun shop, hold F to ready up; hold F at the broken generator to repair it, hold F at a downed teammate to revive them) · Tab scoreboard · Esc pause / close the shop (hold Esc: leave fullscreen)
+W / Space at a ladder climb (S down, C slide, Space jump off) · 1–6 / wheel switch (1 again: primary ↔ backpack gun, with the weapon backpack; 4 again: frag → Molotov → mine → pipe bomb; 5 = barricade kit, hold Mouse1 at a doorway to nail it up; 6 = gas can, hold Mouse1 at the generator to refuel it; empty slots are skipped) · Q last weapon · G quick throw · X shockwave emitter (store gear) · E pick up · V (mash) shake off a Biter · F flashlight (buy phase: tap F at the counter to open the gun shop, hold F to ready up; hold F at the broken generator to repair it, hold F at a downed teammate to revive them) · Tab scoreboard · Esc pause / close the shop (hold Esc: leave fullscreen)
 
 ## Code map
 
@@ -222,6 +248,12 @@ W / Space at a ladder climb (S down, C slide, Space jump off) · 1–6 / wheel s
   - `audio.js`: synthesized, spatialized sound.
 - `src/world`
   - `level.js`: the farmhouse layout.
+  - `maps.js`: the map list (the farm, Appenweier), which one this page plays (localStorage, `?map=`) and `buildMap`.
+  - `appenweier.js` with `appenweierLayout.js`, `appenweierGeo.js`, `appenweierBuildings.js`, `appenweierProps.js` and `appenweierTextures.js`: the Appenweier map.
+    - `appenweier.js` builds it from `public/maps/appenweier.json`: streets and markings as ribbons, the LoD2 buildings (walls and roofs as measured, colliders along their footprints), the yards, the spawn points and the level interface (unlocks, the gun shop, rain roofs, bot posts).
+    - `appenweierBuildings.js` holds the hand-built places: 13a's painted gable, 13c, 13, the garage gun shop, the fire station's hall and tower, and the drugstore.
+    - `appenweierProps.js` holds the cars (no number plates), the fire engine, the street lamps and traffic lights, the trees, hedges and fence, and the instanced corn.
+    - `appenweierTextures.js` paints its textures on canvases when the map loads.
   - `ranch.js`, `barn.js`, `ranchLayout.js`, `ranchProps.js`: the ranch. `ranch.js` builds the yard (gravel path ribbons, paddock, windmill, coop, tractor, wagon), keeps trees and zombie spawns off the ranch, and turns the windmill. `barn.js` builds the barn: walls, gambrel roof, timber frame, loft, stalls, ladder, doors, props and lamps, plus the ladder nav portal. `ranchLayout.js` holds the shared coordinates: the barn is built in its own local frame (x 21..35, z -8..4) and placed by `BARN_XF` (35°, centre at world (26.5, -11.5)), with helpers `barnToWorld` / `worldToBarn` / `inBarn`, the world ladder definition, and the oriented rects for fog and rain plus the gas, spawn and tree-clearing tests. Its colliders are oriented boxes: `collision.js addOBB()` stores a chain of AABB pieces for the grid, the nav rasterizer and ragdolls, while movement, ground and ceiling queries and raycasts test the exact oriented box. Walls slide smoothly, and bullets and decals hit the real wall face. `ranchProps.js` holds the procedural ranch props, registered into `props.js` through `registerProp`.
   - `barnFire.js`: the lightning-strike barn fire event (`BARN_FIRE` tuning).
   - `levelBuilder.js`: static batching and baked grime.
@@ -258,6 +290,7 @@ W / Space at a ladder climb (S down, C slide, Space jump off) · 1–6 / wheel s
   - `gunSafe.js`: picks the GLB or the procedural model and falls back gracefully.
   - `akimbo.js`: the akimbo pistol rules (derived def, both triggers, the pair reload). `akimboRig.js` adds the left gun to the viewmodel, a mirrored second instance that the mirrored left arm grips like the right one, with its own recoil, flash, shells and reload timing.
   - `gasCan.js`: the jerry can (world pickup and viewmodel) and the generator repair tools (pipe wrench, pull-start handle).
+  - `throwables.js`: the M16A1 mine, the pipe bomb (also the Striker's death charge) and the shockwave emitter, built with gunModels.js' kit.
   - `barricadeKit.js`: the barricade kit viewmodel (a claw hammer and a tied bundle of planks) and the plank geometry that the world barricades share.
 - `src/tools/viewer.js` (`/viewer.html`): the real viewmodel in a lit room. It covers every weapon, ADS, fire/reload/pump animations and a freeze-and-orbit mode for inspecting the hands.
 - `src/fx`: particles, decals, impacts, blood, explosions, casings and tracers. `effects.js fleshBurst()` is the Boomer's wet burst: instanced flesh chunks (`gib()`: dented, squashed icospheres tinted meat, offal, fat or bile) that bleed in flight, splat onto walls, ceilings and floors and lie about for 10 to 14 s, plus gobbets, spray, a thin sinking haze and splatter decals. The sprite particles are unlit, so wet colours are kept dark or the night turns them into glowing embers. `magDrops.js` handles the player's dropped magazines: pooled world clones of the viewmodel mag that take over at the same spot on screen, then fall, bounce, settle flat and sink away. `latchView.js` is the first-person view with a Biter on your back: its GLB clawing in at the screen corners (arm IK on the viewmodel layer), a bite vignette and the shake-off prompt.
@@ -300,6 +333,17 @@ The Blender pipeline in `tools/blender/` is plain Python, run inside Blender (fo
 - `arms.py` builds the gloved first-person arm: palm, fingers and thumb are voxel-remeshed into one surface, with a molded knuckle guard, finger plates, wrist strap and sleeve. It uses a 19-bone skeleton with procedural weights.
 
 The weapon contract, in Blender space (+Y muzzle, +Z up, meters): a root empty holds meshes (one material each), `prefix_<part>` empties for animated parts, and `prefix_<marker>` empties for `web` (grip origin), `muzzle`, `ejectPort`, `rightHand`, `leftHand`, `rearSight`, and optionally `loadPort` and `rag`. Hand orientation, grip sizes and eye distance are set per weapon in `src/player/gltfGuns.js`.
+
+**The Appenweier map's data** (`public/maps/appenweier.json`) comes from two open data sets. `node tools/appenweier-data.mjs` builds it from the downloads in `assets/source/appenweier/` (not committed):
+
+- **Buildings**: the 3D building models LoD2 of the Landesamt für Geoinformation und Landentwicklung Baden-Württemberg (LGL, www.lgl-bw.de), under the Datenlizenz Deutschland – Namensnennung 2.0 (dl-de/by-2-0). The tiles are 423_5376 and 424_5376, from `https://opengeodata.lgl-bw.de/data/lod2/LoD2_32_423_5376_2_bw.zip`.
+- **Streets, parking, trees, lamps and land use**: © OpenStreetMap contributors, ODbL 1.0. The Overpass query covers the box 48.5330,7.9690,48.5380,7.9780 and is saved as `osm.json`. The derived map data is under the ODbL too.
+
+The script converts to UTM 32N and turns the map by 15.75° so the fire station's walls run along the axes. It triangulates the roof and wall polygons and matches the buildings to their OSM addresses.
+
+`node tools/appenweier-photos.mjs` cuts the painted details of Sanderstraße 13 / 13a / 13c (`public/maps/appenweier/*.webp`) out of the owner's photos of the houses, flattening the daylight and the tree shadows. No number plates or names are in them.
+
+The corn field, the yard, the fence, the hedges, the fire station's hall and tower and the drugstore's inside are built after those photos. The drugstore carries a plain DROGERIE sign, with no brand.
 
 The ranch (barn, tractor, windmill, wagon, fences, coop, scarecrow, bales and the rest) is fully procedural: `src/world/barn.js`, `ranch.js` and `ranchProps.js` build it in code, and `textures.js` synthesizes its barn siding, bare plank, tin roof, straw and gravel textures. It downloads nothing and needs no third-party licences.
 

@@ -329,16 +329,70 @@ export class NavGrid {
     const dist = distArr || this.dist;
     const owner = distArr ? null : this.owner;
     const C = cost || (this._zero ??= new Float32Array(this.N));
-    const B = this.baseCost;
+    this.heapSize = 0;
+    this._seed(sources, dist, owner, owner ? this.ownerRef : null);
+    this._relax(dist, owner, C, maxD, Infinity);
+  }
+
+  /**
+   * A big map (a field takes tens of ms): the default field is rebuilt in the background, a slice a frame
+   * (stepCompute), into spare buffers with their own heap; the infected follow the last complete field until
+   * the new one is swapped in.
+   */
+  beginCompute(sources, cost = this.cost) {
+    const N = this.N;
+    const st = (this._bg ??= { dist: new Float32Array(N), owner: new Int8Array(N), hi: new Int32Array(N * 2), hk: new Float32Array(N * 2), size: 0, refs: [], active: false });
+    st.cost = cost || (this._zero ??= new Float32Array(N));
+    st.active = true;
+    this._withHeap(st, () => {
+      this.heapSize = 0;
+      this._seed(sources, st.dist, st.owner, st.refs);
+    });
+  }
+
+  get computing() {
+    return !!this._bg?.active;
+  }
+
+  /** advance the background field by up to `budget` cells; true when it was finished and swapped in */
+  stepCompute(budget = Infinity) {
+    const st = this._bg;
+    if (!st?.active) return false;
+    const done = this._withHeap(st, () => this._relax(st.dist, st.owner, st.cost, Infinity, budget));
+    if (!done) return false;
+    [this.dist, st.dist] = [st.dist, this.dist];
+    [this.owner, st.owner] = [st.owner, this.owner];
+    this.ownerRef = st.refs.slice();
+    st.active = false;
+    return true;
+  }
+
+  /** run fn on the background field's own heap (the synchronous computes keep theirs) */
+  _withHeap(st, fn) {
+    const hi = this.heapIdx, hk = this.heapKey, size = this.heapSize;
+    this.heapIdx = st.hi;
+    this.heapKey = st.hk;
+    this.heapSize = st.size;
+    try {
+      return fn();
+    } finally {
+      st.size = this.heapSize;
+      this.heapIdx = hi;
+      this.heapKey = hk;
+      this.heapSize = size;
+    }
+  }
+
+  /** fill dist (and owner / refs: the default field) and push the sources */
+  _seed(sources, dist, owner, refs) {
     dist.fill(Infinity);
     if (owner) {
       owner.fill(-1);
-      this.ownerRef.length = 0;
+      refs.length = 0;
     }
-    this.heapSize = 0;
     for (let si = 0; si < sources.length; si++) {
       const s = sources[si];
-      if (owner) this.ownerRef[si] = s.ref ?? null;
+      if (owner) refs[si] = s.ref ?? null;
       let i = this.index(s.level, s.x, s.z);
       if (i < 0 || !this.walk[i]) {
         if (this._seedOnPortal(s, dist, owner, si)) continue;
@@ -357,15 +411,25 @@ export class NavGrid {
       if (owner) owner[i] = si;
       this._push(i, 0);
     }
+  }
+
+  /** Dijkstra from the heap: at most `budget` cells; true once it is done (heap empty or past maxD) */
+  _relax(dist, owner, C, maxD, budget) {
+    const B = this.baseCost;
+    let left = budget;
     const nx = this.nx, per = this.per, walk = this.walk;
     const D = Math.SQRT2;
     const FY = this.floorY;
     const MS = this.maxStep;
     while (this.heapSize > 0) {
+      if (left-- <= 0) return false;
       const i = this._pop();
       const d = dist[i];
       if (this._popKey > d + 1e-4) continue; // stale entry
-      if (d > maxD) break;
+      if (d > maxD) {
+        this.heapSize = 0;
+        break;
+      }
       const l = (i / per) | 0;
       const r = i - l * per;
       const iz = (r / nx) | 0;
@@ -434,6 +498,7 @@ export class NavGrid {
         }
       }
     }
+    return true;
   }
 
   /** The downhill neighbour of cell i (lowest dist, climbable, no corner cutting), or -1 at a minimum. */

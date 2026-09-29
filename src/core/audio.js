@@ -784,6 +784,16 @@ def('lmg_fire', { d: 0.7, v: 5, gain: 0.8, rev: 0.32, max: 9, jit: 0.03, ref: 3.
   mech: { t: 0.014, g: 0.3, f: rnd(0.8, 0.9), dec: 0.05 },
 }));
 
+// MG 42: 7.92 mm at 1,150 rpm, a hard, tearing report: a sharp crack, a heavy but short thump, a tight tail
+def('mg42_fire', { d: 0.55, v: 6, gain: 0.82, rev: 0.3, max: 12, jit: 0.04, ref: 3.6 }, (b) => gunshot(b, {
+  crackF: rnd(2400, 3000), crackQ: 0.75, crackD: 0.04, crackG: 1.0, airG: 0.45, airD: 0.022,
+  thF0: rnd(125, 145), thF1: 44, thSweep: 0.06, thD: 0.12, thG: 1.1, thDrive: 2.4, sub: 60, subG: 0.4,
+  bodyF: rnd(700, 880), bodyD: 0.08, bodyG: 0.72, drive: 5.5,
+  tailF: 1250, tailD: 0.3, tailG: 0.24,
+  echoT: rnd(0.07, 0.1), echoFb: 0.26, echoLP: 2100, echoWet: 0.26,
+  mech: { t: 0.01, g: 0.28, f: rnd(0.85, 0.95), dec: 0.03 },
+}));
+
 // 5.7 mm PDW: a sharp, bright snap with a light thump and a short tail, tight enough for 900 rpm
 def('smg_fire', { d: 0.5, v: 5, gain: 0.66, rev: 0.28, max: 10, jit: 0.035, ref: 2.8 }, (b) => gunshot(b, {
   crackF: rnd(3300, 4000), crackQ: 0.9, crackD: 0.035, crackG: 0.9, airG: 0.4, airD: 0.02,
@@ -793,6 +803,32 @@ def('smg_fire', { d: 0.5, v: 5, gain: 0.66, rev: 0.28, max: 10, jit: 0.035, ref:
   echoT: rnd(0.06, 0.085), echoFb: 0.22, echoLP: 2700, echoWet: 0.22,
   mech: { t: 0.01, g: 0.22, f: rnd(1.1, 1.22), dec: 0.035 },
 }));
+
+// the MG 42's belt reload (weapons.js beltReload): the cover's latch and spring, the ammo box coming off and hooking on,
+// the belt laid in the tray, the cover slammed shut (the cocking handle is m4_bolt, pitched down)
+def('mg_cover_open', { d: 0.4, v: 2, gain: 0.5, rev: 0.12 }, (b) => {
+  clack(b, 0.004, { g: 0.7, f: 1.2, dec: 0.03 });
+  b.modal(0.03, [[1900, 0.25, 0.12], [3100, 0.15, 0.08]], 1);
+  clack(b, 0.09, { g: 0.55, f: 0.8, dec: 0.05 });
+});
+def('mg_box_off', { d: 0.6, v: 2, gain: 0.5, rev: 0.12 }, (b) => {
+  clack(b, 0.004, { g: 0.6, f: 0.7, dec: 0.05 });
+  b.rattle(0.03, 0.25, 12, { f: 2600, g: 0.3 });
+  b.thump(0.02, { f0: 160, f1: 90, sweep: 0.05, d: 0.1, g: 0.35 });
+});
+def('mg_box_on', { d: 0.5, v: 2, gain: 0.55, rev: 0.12 }, (b) => {
+  b.thump(0.004, { f0: 150, f1: 80, sweep: 0.04, d: 0.12, g: 0.6 });
+  clack(b, 0.006, { g: 0.8, f: 0.75, dec: 0.06 });
+  clack(b, 0.09, { g: 0.45, f: 1.1, dec: 0.03 });
+});
+def('mg_belt', { d: 0.6, v: 2, gain: 0.45, rev: 0.1 }, (b) => {
+  b.rattle(0.004, 0.4, 16, { f: 3200, g: 0.35 });
+});
+def('mg_cover_close', { d: 0.6, v: 2, gain: 0.65, rev: 0.15 }, (b) => {
+  b.thump(0.004, { f0: 190, f1: 70, sweep: 0.05, d: 0.14, g: 0.8, drive: 2 });
+  clack(b, 0.004, { g: 1.0, f: 0.9, dec: 0.06 });
+  b.modal(0.01, [[1250, 0.3, 0.2], [2300, 0.2, 0.14], [3700, 0.1, 0.1]], 1);
+});
 
 def('m4_mag_out', { d: 0.35, v: 3, gain: 0.45, rev: 0.1 }, (b) => magOut(b, 0.01, rnd(0.97, 1.03)));
 def('m4_mag_in', { d: 0.4, v: 3, gain: 0.48, rev: 0.1 }, (b) => magIn(b, 0.01, rnd(0.97, 1.03)));
@@ -2010,6 +2046,31 @@ def('victory', { d: 3.4, v: 1, ch: 2, gain: 0.6, rev: 0.25, max: 1, jit: 0 }, (b
   b.timp(1.72, N.C3, 1);
   b.nb(1.72, { type: 'highpass', f: 5000, a: 0.002, d: 1.4, g: 0.22 });
   b.modal(1.72, [[3150, 0.1, 1.2], [4420, 0.08, 1.0], [6100, 0.05, 0.8]], 1);
+});
+
+// the M16A1 mine (game/projectiles.js): armed (a click and two short beeps), stepped on (the fuze's hard click),
+// the jump (the propelling charge's dull pop)
+def('mine_arm', { d: 0.4, v: 2, gain: 0.45, rev: 0.08, max: 3 }, (b) => {
+  clack(b, 0.004, { g: 0.5, f: 1.3, dec: 0.02 });
+  b.tone(0.07, 2400, { d: 0.05, g: 0.35 });
+  b.tone(0.15, 3200, { d: 0.05, g: 0.3 });
+});
+def('mine_click', { d: 0.35, v: 2, gain: 0.7, rev: 0.1, max: 3 }, (b) => {
+  clack(b, 0.004, { g: 1.0, f: 1.4, dec: 0.02 });
+  b.modal(0.006, [[3400, 0.35, 0.05], [5200, 0.2, 0.03]], 1);
+});
+def('mine_jump', { d: 0.6, v: 2, gain: 0.7, rev: 0.2, max: 3 }, (b) => {
+  b.thump(0.004, { f0: 180, f1: 60, sweep: 0.06, d: 0.18, g: 0.9, drive: 2 });
+  b.nb(0.004, { type: 'lowpass', f: 2500, f2: 600, ft: 0.1, a: 0.002, d: 0.2, g: 0.6 });
+});
+
+// the shockwave emitter (game.js shockwave): a deep thump, a rushing whoosh, a hum and an electric crackle
+def('shockwave', { d: 1.6, v: 2, gain: 0.8, rev: 0.35, max: 2, jit: 0.02 }, (b) => {
+  b.thump(0.004, { f0: 95, f1: 32, sweep: 0.35, a: 0.004, d: 0.9, g: 1.3, drive: 2.5 });
+  b.nb(0.004, { type: 'bandpass', f: 400, f2: 3800, ft: 0.25, q: 0.9, a: 0.01, d: 0.45, g: 0.7 });
+  b.nb(0.004, { type: 'highpass', f: 5000, a: 0.002, d: 0.25, g: 0.35 });
+  b.modal(0.004, [[220, 0.4, 0.9], [330, 0.3, 0.7], [660, 0.2, 0.5]], 1);
+  for (let i = 0; i < 6; i++) b.click(0.01 + i * 0.03 + rnd(0, 0.02), 0.5, 0.001);
 });
 
 // the career (game/progress.js): a promotion's bugle call, and a weapon's mastery level (a bright clink)

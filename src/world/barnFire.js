@@ -141,7 +141,7 @@ export class BarnFire {
   }
 
   onRoundStart() {
-    if (this.state !== 'idle') return; // once per game
+    if (this.state !== 'idle' || !this.game.level?.barn) return; // once per game (and only where the barn stands)
     if (!this.forceNext && !(Math.random() < BARN_FIRE.chance)) return;
     this.forceNext = false;
     this.state = 'armed';

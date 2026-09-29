@@ -1,7 +1,7 @@
 """Per-weapon normalization of the supplied GLBs (see import_weapon.py). Points are in final gun
 space (meters, bore on the Y axis, +Y = muzzle, +Z = up). Run build(key) then export in Blender."""
 import bpy
-from mathutils import Vector
+from mathutils import Matrix, Vector
 
 import import_weapon as iw
 
@@ -223,6 +223,8 @@ def split_box(w, part, pred):
     import bmesh
     made = []
     for o in list(w.meshes):
+        if not any(pred(o.matrix_world @ p.center) for p in o.data.polygons):
+            continue  # nothing of this mesh in the region
         me2 = o.data.copy()
         for me, keep in ((me2, True), (o.data, False)):
             bm = bmesh.new()
@@ -290,8 +292,125 @@ def p90():
     return w
 
 
+def _mat(name, color, metal=0.8, rough=0.5):
+    """A plain PBR material (for the bits added to a scan: the feed tray, cartridges)."""
+    m = bpy.data.materials.get(name) or bpy.data.materials.new(name)
+    m.use_nodes = True
+    bsdf = m.node_tree.nodes.get('Principled BSDF')
+    bsdf.inputs['Base Color'].default_value = color
+    bsdf.inputs['Metallic'].default_value = metal
+    bsdf.inputs['Roughness'].default_value = rough
+    return m
+
+
+def _solid(w, name, build, mat):
+    """A new mesh object in the import's collection, built by build(bm) (gun space)."""
+    import bmesh
+    me = bpy.data.meshes.new(name)
+    bm = bmesh.new()
+    build(bm)
+    bm.to_mesh(me)
+    bm.free()
+    me.materials.append(mat)
+    ob = bpy.data.objects.new(name, me)
+    w.coll.objects.link(ob)
+    return ob
+
+
+def _box(bm, a, b):
+    import bmesh
+    from mathutils import Matrix
+    c = [(a[i] + b[i]) / 2 for i in range(3)]
+    s = [abs(b[i] - a[i]) for i in range(3)]
+    bmesh.ops.create_cube(bm, size=1, matrix=Matrix.Translation(c) @ Matrix.Diagonal((*s, 1)))
+
+
+def mg42():
+    """MG 42 (single-mesh AI scan, 610k tris, 1.9 units long, muzzle toward -X, +Y = its right side) and its
+    ammo box (a separate 2.5M-tri scan, ~1.19 units: cartridge windows on both sides, the mounting bracket with
+    the feed opening on -Y). Measured in model units: bore y -0.0185 / z 0.0465, flash hider face x -0.952,
+    front post tip x -0.784 / z 0.1675, rear sight leaf at x 0.30 (0.04 right of the bore and 0.039 above the
+    post: lowered and centred here), grip web x 0.458 / z -0.036, cocking handle on the right x 0.26..0.43,
+    feed cover x -0.04..0.20 above z 0.085, hinged at its front; the folded bipod under the jacket."""
+    import bmesh
+    from mathutils import Matrix
+    S, BY, BZ = 1.22 / 1.9028, -0.0185, 0.0465  # 1.22 m overall
+    w = iw.Imported('mg42', 'MG42.glb')
+    w.orient(rot=(0, 0, -90), scale=S, offset=(-BY * S, 0, -BZ * S))
+    decimate(w, 80000, keep_normals=True)
+    for o in w.meshes:
+        for m in o.data.materials:
+            m.name = 'mg42_body'
+
+    def P(x, y, z):  # model units -> gun space
+        return Vector(((y - BY) * S, -x * S, (z - BZ) * S))
+
+    # the rear sight leaf: the scan has it raised for long range and off to the right; down to the front post's
+    # height and onto the bore line, so the sight line runs parallel to the bore
+    ya, yb = P(0.325, 0, 0).y, P(0.28, 0, 0).y
+    leaf = split_box(w, 'leaf', lambda c: ya < c.y < yb and c.z > P(0, 0, 0.145).z and c.x > P(0, -0.03, 0).x)
+    w.parts.pop('leaf')
+    for o in leaf:
+        o.data.transform(Matrix.Translation((-0.0395 * S, 0, -0.0385 * S)))
+    w.meshes.extend(leaf)
+
+    # the cocking handle on the right side (pulled back to charge the gun)
+    ya, yb = P(0.435, 0, 0).y, P(0.26, 0, 0).y
+    split_box(w, 'chargingHandle', lambda c: ya < c.y < yb and c.x > P(0, 0.042, 0).x and P(0, 0, 0.018).z < c.z < P(0, 0, 0.086).z)
+    # the feed cover over the tray, hinged at its front end
+    ya, yb = P(0.20, 0, 0).y, P(-0.04, 0, 0).y
+    zc = P(0, 0, 0.085).z
+    split_box(w, 'cover', lambda c: ya < c.y < yb and c.z > zc and P(0, -0.1, 0).x < c.x < P(0, 0.04, 0).x)
+
+    # what the open cover shows: the feed tray (a dark plate over the cut) with a belt of four rounds lying in it,
+    # and a plate closing the cover's underside
+    dark = _mat('mg42_tray', (0.05, 0.05, 0.055, 1), metal=0.75, rough=0.55)
+    brass = _mat('mg42_brass', (0.74, 0.54, 0.24, 1), metal=0.95, rough=0.32)
+    copper = _mat('mg42_brass_tip', (0.62, 0.3, 0.17, 1), metal=0.9, rough=0.35)
+    xa, xb = P(0, -0.095, 0).x, P(0, 0.035, 0).x
+    ya, yb = P(0.195, 0, 0).y, P(-0.035, 0, 0).y
+    w.meshes.append(_solid(w, 'mg42_trayplate', lambda bm: _box(bm, (xa, ya, zc - 0.007), (xb, yb, zc - 0.003)), dark))
+    lid = _solid(w, 'mg42_coverlid', lambda bm: _box(bm, (xa + 0.002, ya + 0.002, zc - 0.0012), (xb - 0.002, yb - 0.002, zc + 0.0005)), dark)
+    w.parts['cover'].append(lid)
+
+    def rounds(bm, part):
+        for k in range(4):
+            cx = xa + 0.011 + k * 0.0135
+            if part == 'case':
+                bmesh.ops.create_cone(bm, cap_ends=True, segments=12, radius1=0.0058, radius2=0.0058, depth=0.057,
+                                      matrix=Matrix.Translation((cx, -0.058, zc + 0.0028)) @ Matrix.Rotation(1.5708, 4, 'X'))
+            else:
+                bmesh.ops.create_cone(bm, cap_ends=True, segments=12, radius1=0.0041, radius2=0.0006, depth=0.022,
+                                      matrix=Matrix.Translation((cx, -0.0185, zc + 0.0028)) @ Matrix.Rotation(-1.5708, 4, 'X'))
+    w.meshes.append(_solid(w, 'mg42_cases', lambda bm: rounds(bm, 'case'), brass))
+    w.meshes.append(_solid(w, 'mg42_tips', lambda bm: rounds(bm, 'tip'), copper))
+
+    # the ammo box on the left of the feed: its bracket (the belt's way out) against the receiver, a cartridge
+    # window toward you; 14 cm tall
+    SB = 0.14 / 1.185
+    left = P(0, -0.1016, 0).x
+    box_c = Vector((left - 0.572 * SB - 0.004, P(0.08, 0, 0).y, 0.012 - 0.593 * SB))
+    b = iw.Imported('mg42box', 'MG42_box.glb')
+    b.orient(rot=(0, 0, 180), scale=SB, offset=tuple(box_c))
+    decimate(b, 30000, keep_normals=True)
+    for o in b.meshes:  # (player/skins.js keeps camo off the box and the brass)
+        for m in o.data.materials:
+            m.name = 'mg42_ammobox'
+    w.parts['mag'] = list(b.meshes)
+    top, _, _ = top_center(b.meshes)
+
+    w.finalize(
+        web=tuple(P(0.458, BY, -0.036)),  # the pocket between the grip's back strap and the receiver
+        markers={'muzzle': tuple(P(-0.952, BY, BZ)), 'ejectPort': tuple(P(0.05, BY, -0.025)), 'rightHand': tuple(P(0.43, BY, -0.046)),
+                 'leftHand': tuple(P(-0.30, BY, -0.06)),  # the folded bipod legs under the jacket
+                 'rearSight': tuple(P(0.301, BY, 0.168))},  # the lowered leaf's top, level with the front post
+        pivots={'mag': (top.x, top.y, top.z - 0.02), 'cover': tuple(P(-0.035, BY, 0.128)), 'chargingHandle': tuple(P(0.35, 0.07, 0.05))},
+    )
+    return w
+
+
 BUILDERS = {'r201': r201, 'spas12': spas12, 'devotion': devotion, 'mozambique': mozambique, 'softball': softball, 'molotov': molotov,
-            'sigma': sigma, 'p90': p90}
+            'sigma': sigma, 'p90': p90, 'mg42': mg42}
 
 
 def build(key, export=True):

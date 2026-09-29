@@ -48,15 +48,13 @@ export const DIFFICULTIES = [
   { id: 'extreme', name: 'EXTREME', rounds: 15, minutes: 60, skulls: 3, desc: 'Tougher, faster horde that hits harder. Dearer store, a longer hack.', edesc: 'Tougher, faster, hungrier Infected.' },
 ];
 
-/** Floors that open during a run: [{ round, name }]. */
-export function unlocksFor(modeId, diffId) {
+/** What opens during a run: [{ round, name }]. map: world/maps.js (its `unlocks`); none: the farm's floors. */
+export function unlocksFor(modeId, diffId, map = null) {
   const endless = MODES[modeId]?.endless;
-  const story = !endless && MODES[modeId]?.story !== false;
+  const story = !endless && MODES[modeId]?.story !== false && map?.story !== false;
   const rounds = DIFFICULTIES.find((d) => d.id === diffId)?.rounds ?? 15;
-  const out = [];
-  if (endless || rounds >= UPSTAIRS_ROUND) out.push({ round: UPSTAIRS_ROUND, name: 'UPSTAIRS' });
-  if (endless || rounds >= BASEMENT_ROUND) out.push({ round: BASEMENT_ROUND, name: story ? 'BASEMENT · LAB' : 'BASEMENT' });
-  return out;
+  const list = map?.unlocks ?? [{ round: UPSTAIRS_ROUND, name: 'UPSTAIRS' }, { round: BASEMENT_ROUND, name: 'BASEMENT', story: 'BASEMENT · LAB' }];
+  return list.filter((u) => endless || rounds >= u.round).map((u) => ({ round: u.round, name: story && u.story ? u.story : u.name }));
 }
 
 // Wave timeline for the briefing ("round: what happens").

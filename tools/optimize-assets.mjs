@@ -45,6 +45,7 @@ export const ASSETS = [
   ['molotov_raw.glb', 'weapons/molotov.glb', 1024],
   ['sigma_raw.glb', 'weapons/sigma.glb', 2048], // AI scan decimated to 90k tris
   ['p90_raw.glb', 'weapons/p90.glb', 2048], // textured scan decimated to 190k tris, normals re-projected
+  ['mg42_raw.glb', 'weapons/mg42.glb', 2048], // AI scan decimated to 75k tris + its ammo box (30k); cover, cocking handle and box split out
   // first-person arms (tools/blender/arms.py)
   ['arms_raw.glb', 'arms/arms.glb', 1024, { meshopt: false }], // skinned: keep float positions (UVs are projected at runtime)
 ];

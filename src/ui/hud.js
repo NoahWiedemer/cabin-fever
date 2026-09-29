@@ -78,7 +78,7 @@ const WPN_PATHS = {
 export function weaponKind(name) {
   const n = String(name || '').toLowerCase();
   if (/knife|kukri|machete|axe|melee|blade/.test(n)) return 'knife';
-  if (/grenade|frag|\bhe\b|explos|mine|c4|molotov|cocktail|softball/.test(n)) return 'grenade';
+  if (/grenade|frag|\bhe\b|explos|mine|c4|molotov|cocktail|softball|bomb/.test(n)) return 'grenade';
   if (/l96|sniper|awm|awp|barrett|m82|dragunov|svd|psg|msg|intervention|\bm24\b|scout/.test(n)) return 'sniper';
   if (/super ?90|shotgun|spas|m1014|870|saiga|aa-?12|usas|benelli/.test(n)) return 'shotgun';
   if (/pistol|m9|m1911|glock|deagle|desert eagle|p226|usp|revolver|python|five-?seven|mk23/.test(n)) return 'pistol';
@@ -92,6 +92,14 @@ export function weaponSvg(kind, cls = '') {
 
 const SKULL_SVG =
   '<svg class="cf-skull" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M8 1C4.2 1 1.5 3.6 1.5 7c0 2 1 3.4 2.5 4.2v2.3c0 .8.7 1.5 1.5 1.5h5c.8 0 1.5-.7 1.5-1.5v-2.3c1.5-.8 2.5-2.2 2.5-4.2C14.5 3.6 11.8 1 8 1ZM3.9 7.4a1.7 1.7 0 1 0 3.4 0a1.7 1.7 0 1 0-3.4 0ZM8.7 7.4a1.7 1.7 0 1 0 3.4 0a1.7 1.7 0 1 0-3.4 0ZM8 9.3L7.1 10.8h1.8ZM6.3 12.6h.9v2.4h-.9ZM7.55 12.6h.9v2.4h-.9ZM8.8 12.6h.9v2.4h-.9Z"/></svg>';
+
+// the store's special throwables (player/throwables.js) and the shockwave emitter (key X)
+const MINE_SVG =
+  '<svg class="cf-gren-ico" viewBox="0 0 32 36" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M7 16h18v17q0 2-2 2H9q-2 0-2-2ZM6 13h20l-1 3H7ZM12.5 8h7v5h-7ZM12 2l1.8 6h1.2L14 2ZM20 2l-1.8 6h-1.2L18 2ZM15.4 1h1.2v7h-1.2ZM7 22h18v2.2H7Z"/></svg>';
+const PIPE_SVG =
+  '<svg class="cf-gren-ico" viewBox="0 0 32 36" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M11 7h10v24H11ZM8.5 4h15v4h-15ZM8.5 30h15v4h-15ZM20 13h5.5v6H20ZM15.3 0h1.6v4h-1.6ZM13 20h6v5h-6Z"/></svg>';
+const PULSE_SVG =
+  '<svg class="cf-gd-ico" viewBox="0 0 32 32" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="16" cy="16" r="3.2" fill="currentColor" stroke="none"/><path d="M9.5 9.5a9 9 0 0 0 0 13M22.5 9.5a9 9 0 0 1 0 13M5.5 5.5a14.5 14.5 0 0 0 0 21M26.5 5.5a14.5 14.5 0 0 1 0 21"/></g></svg>';
 
 const HAZARD_SVG =
   '<svg viewBox="0 0 24 22" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M12 1L23 21H1ZM10.8 8h2.4l-.4 6.5h-1.6ZM10.7 16.2h2.6v2.4h-2.6Z"/></svg>';
@@ -317,6 +325,7 @@ const HUD_HTML = `
 <div class="cf-revive"><span class="cf-revive-t"></span><div class="cf-revive-bar"><i></i></div></div>
 <div class="cf-pickup"></div>
 <div class="cf-pickup cf-interact"></div>
+<div class="cf-gadget cf-hide">${PULSE_SVG}<span class="cf-gd-t"><small>SHOCKWAVE</small><b>READY</b></span><span class="cf-key">X</span></div>
 <div class="cf-vitals">
   <div class="cf-sil">${STAND_SVG}${CROUCH_SVG}<span class="cf-sp">SP</span></div>
   <div class="cf-vit-main">
@@ -332,6 +341,8 @@ const HUD_HTML = `
   <div class="cf-ammo-row">
     <div class="cf-gren">${GRENADE_SVG}<span class="cf-gren-x">×</span><b>0</b></div>
     <div class="cf-gren cf-molo cf-hide">${MOLOTOV_SVG}<span class="cf-gren-x">×</span><b>0</b></div>
+    <div class="cf-gren cf-mine cf-hide">${MINE_SVG}<span class="cf-gren-x">×</span><b>0</b></div>
+    <div class="cf-gren cf-pipe cf-hide">${PIPE_SVG}<span class="cf-gren-x">×</span><b>0</b></div>
     <div class="cf-gren cf-barr cf-hide">${BARRICADE_SVG}<span class="cf-gren-x">×</span><b>0</b></div>
     <div class="cf-gren cf-can cf-hide">${GASCAN_SVG}<span class="cf-gren-x">×</span><b>0</b></div>
     <div class="cf-ammo"><b class="cf-mag2">00</b><i class="cf-mag-sep"></i><b class="cf-mag">000</b><span class="cf-res">/000</span></div>
@@ -412,6 +423,12 @@ export class HUD {
       grenNum: q('.cf-gren b'),
       molo: q('.cf-molo'),
       moloNum: q('.cf-molo b'),
+      mine: q('.cf-mine'),
+      mineNum: q('.cf-mine b'),
+      pipe: q('.cf-pipe'),
+      pipeNum: q('.cf-pipe b'),
+      gadget: q('.cf-gadget'),
+      gadgetT: q('.cf-gadget b'),
       barr: q('.cf-barr'),
       barrNum: q('.cf-barr b'),
       revive: q('.cf-revive'),
@@ -641,6 +658,19 @@ export class HUD {
     const molo = Math.max(0, state.molotovs | 0);
     this._cls($.molo, 'cf-hide', 'moloHide', !molo);
     if (molo) this._text($.moloNum, 'molo', String(molo));
+    const mines = Math.max(0, state.mines | 0);
+    this._cls($.mine, 'cf-hide', 'mineHide', !mines);
+    if (mines) this._text($.mineNum, 'mine', String(mines));
+    const pipes = Math.max(0, state.pipebombs | 0);
+    this._cls($.pipe, 'cf-hide', 'pipeHide', !pipes);
+    if (pipes) this._text($.pipeNum, 'pipe', String(pipes));
+    // the shockwave emitter (pocket gear): ready, or spent until the next round
+    const gd = state.gadget;
+    this._cls($.gadget, 'cf-hide', 'gdHide', !gd);
+    if (gd) {
+      this._cls($.gadget, 'used', 'gdUsed', !gd.ready);
+      this._text($.gadgetT, 'gdT', gd.ready ? 'READY' : 'NEXT ROUND');
+    }
     const barr = Math.max(0, state.barricades | 0);
     this._cls($.barr, 'cf-hide', 'barrHide', !barr);
     if (barr) this._text($.barrNum, 'barr', String(barr));
@@ -967,7 +997,7 @@ export class HUD {
     this._cls($.buy, 'on', 'buyOn', !!info);
     if (!info) return;
     // the Gauntlet has no shop: a breather between the cards and the next wave
-    const where = info.rogue ? 'No shop in the Gauntlet' : info.gunshop ? 'Gun shop in the cellar' : 'Tap <b class="cf-key">F</b> for the gun shop';
+    const where = info.rogue ? 'No shop in the Gauntlet' : info.gunshop ? `Gun shop ${info.where ?? 'in the cellar'}` : 'Tap <b class="cf-key">F</b> for the gun shop';
     const html = `${where} <i>·</i> hold <b class="cf-key">F</b> when ready for round ${pad(info.next, 2)}`;
     if (this._set('buyS', html)) $.buyS.innerHTML = html;
     const t = info.rogue ? 'BREATHER' : 'BUY PHASE';

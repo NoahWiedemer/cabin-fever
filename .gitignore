@@ -8,3 +8,5 @@ dist
 assets/source/*.glb
 assets/source/*.blend1
 __pycache__/
+# the Appenweier map's downloads (LoD2, OpenStreetMap) and the site photos: tools/appenweier-data.mjs, tools/appenweier-photos.mjs
+assets/source/appenweier/

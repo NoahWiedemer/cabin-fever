@@ -422,7 +422,7 @@ export class Revives {
       // the weapons, ammo and gear you had; back to a slot that still has something in it
       const w = g.weapons;
       const c = w.cur;
-      const empty = (c === 3 && w.grenades + w.molotovs <= 0) || (c === 4 && !(w.barricades > 0)) || (c === 5 && !(w.gascans > 0)) || !w.slots[c];
+      const empty = (c === 3 && w._throwTotal() <= 0) || (c === 4 && !(w.barricades > 0)) || (c === 5 && !(w.gascans > 0)) || !w.slots[c];
       w.switchTo(empty ? 0 : c, true);
       g.spectate = null;
       g.hud?.banner('REVIVED', `${by?.name ?? 'A teammate'} got you back up · ${hp} HP`, 2.4, 'success');

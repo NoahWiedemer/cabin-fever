@@ -149,6 +149,18 @@ export function getMaterial(name, opts = {}) {
   return m;
 }
 
+/**
+ * Register a ready-made material under a name, so getMaterial(name, opts) (LevelBuilder boxes, props) can use it
+ * like the built-in ones (world/appenweierTextures.js: the canvas-painted materials of the Appenweier map).
+ * userData.metersPerRepeat sets its texture scale.
+ */
+export function registerMaterial(name, material) {
+  material.userData.metersPerRepeat ??= 1;
+  material.name ||= name;
+  cache.set(name + '||||||', material);
+  return material;
+}
+
 export function allMaterials() {
   return [...cache.values()];
 }

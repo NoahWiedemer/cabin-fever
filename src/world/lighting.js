@@ -205,7 +205,7 @@ export class Lighting {
         L.glow = sp;
       }
       if (L.spot && !L.porch && L.fx !== false) {
-        const floorY = L.level === 0 ? -3.2 : L.level === 1 ? 0 : 3.45;
+        const floorY = L.floorY ?? (L.level === 0 ? -3.2 : L.level === 1 ? 0 : 3.45); // (a street lamp: the street's)
         const len = Math.max(0.5, L.pos.y - floorY - 0.02);
         const rad = Math.tan(L.angle * 0.62) * len;
         const geo = new THREE.ConeGeometry(rad, len, 28, 1, true);
@@ -243,7 +243,7 @@ export class Lighting {
       const seed = [];
       for (const L of lamps) {
         if (!L.spot || L.porch || L.fx === false) continue;
-        const floorY = L.level === 0 ? -3.2 : L.level === 1 ? 0 : 3.45;
+        const floorY = L.floorY ?? (L.level === 0 ? -3.2 : L.level === 1 ? 0 : 3.45); // (a street lamp: the street's)
         for (let i = 0; i < per; i++) {
           const r = Math.sqrt(Math.random()) * 1.6;
           const a = Math.random() * Math.PI * 2;
@@ -395,6 +395,7 @@ export class Lighting {
         if (L.fire || L.hidden) continue; // hidden: the lab's spot while the lab isn't drawn (world/lab.js)
         let d = L.pos.distanceTo(camPos);
         if (L.level !== playerLevel) d += 10;
+        if (L.room && !L.room(camPos)) d += 18; // a lamp inside a building (a big map): the street's first while you are out
         if (L.slot && L.slot.castShadow) d -= 2.5; // hysteresis
         if (this.mains < 0.02 && L.mains !== false) d += 100; // blackout: the emergency lamps get the slots
         scored.push([d, L]);
@@ -445,7 +446,20 @@ export class Lighting {
     for (let i = 0; i < this.shadowSlots.length; i++) {
       if ((i + this.frame) % 2 === 0) this.shadowSlots[i].shadow.needsUpdate = true;
     }
-    if (this.frame % 3 === 0 || this.lightning > 0.05) this.moon.shadow.needsUpdate = true;
+    if (this.frame % 3 === 0 || this.lightning > 0.05) {
+      this.moon.shadow.needsUpdate = true;
+      // a map bigger than the moon's shadow box (±32 m): the box slides with the camera, in steps, and only when
+      // its map is redrawn anyway (the old map and its matrix stay a pair until then)
+      if (this.moonFollow && camPos) {
+        const snap = 1.5;
+        const tx = Math.round(camPos.x / snap) * snap, tz = Math.round(camPos.z / snap) * snap;
+        if (tx !== this.moon.target.position.x || tz !== this.moon.target.position.z) {
+          this.moon.target.position.set(tx, 0, tz);
+          this.moon.position.copy(this.moonDir).multiplyScalar(60).add(this.moon.target.position);
+          this.moon.target.updateMatrixWorld();
+        }
+      }
+    }
     const fire = this.lamps.find((L) => L.fire);
     if (fire) {
       this.firePoint.position.copy(fire.pos);

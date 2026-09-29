@@ -1,11 +1,17 @@
 // Physical projectiles: frag grenades (bounce, fuse), 40mm rounds (impact), Molotovs (shatter on
-// impact into a fire pool), Striker death shells.
+// impact into a fire pool), Striker death shells, and the store's specials:
+//   mine       the M16A1 bounding mine: it lands, stands up, arms (a click, a slow red blink), and when an
+//              infected or a NOX operative steps within def.trigger it clicks, jumps to waist height and bursts
+//              (no friendly fire)
+//   pipebomb   the lure (L4D's pipe bomb): beeping faster and faster, it pulls the horde to it (game.js
+//              lureStart / lureEnd), then blows
 import * as THREE from 'three';
 import { buildThirdPersonWeapon } from '../player/gunSafe.js';
 import { rand } from '../core/utils.js';
 import { FLAG_NOBULLET } from '../world/collision.js';
 import { getGLB } from '../core/assets.js';
 import { MODELS } from '../core/assetList.js';
+import { buildCharge, buildMineModel } from '../player/throwables.js';
 
 const _hit = {};
 const _rag = new THREE.Vector3();
@@ -14,87 +20,7 @@ const _qa = new THREE.Quaternion(), _qb = new THREE.Quaternion(), _qc = new THRE
 const _UP = new THREE.Vector3(0, 1, 0), _Z = new THREE.Vector3(0, 0, 1);
 const filter = (b) => (b.flags & FLAG_NOBULLET) === 0;
 const CHARGE_SCALE = 1.5; // chunky enough to read at combat distance (~26 cm pipe)
-
-function canvasTexture(w, h, draw) {
-  const c = document.createElement('canvas');
-  c.width = w;
-  c.height = h;
-  draw(c.getContext('2d'), w, h);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
-}
-
-/**
- * The Striker's death charge: a taped steel pipe bomb (hex end caps, hazard band, timer box with a
- * red LED, red / yellow leads, a burning fuse). Pipe axis = local Y. Named parts: led, glow, fuseTip.
- */
-function buildCharge() {
-  const g = new THREE.Group();
-  const metal = new THREE.MeshStandardMaterial({ color: 0x4a4d50, metalness: 0.85, roughness: 0.42 });
-  const capMat = new THREE.MeshStandardMaterial({ color: 0x6d7072, metalness: 0.9, roughness: 0.32 });
-  const tapeMat = new THREE.MeshStandardMaterial({ color: 0x151515, roughness: 0.85 });
-  const hazard = canvasTexture(128, 32, (c, w, h) => {
-    c.fillStyle = '#e8b400';
-    c.fillRect(0, 0, w, h);
-    c.fillStyle = '#111';
-    for (let x = -h; x < w + h; x += 24) {
-      c.beginPath();
-      c.moveTo(x, h);
-      c.lineTo(x + 12, h);
-      c.lineTo(x + 12 + h, 0);
-      c.lineTo(x + h, 0);
-      c.fill();
-    }
-  });
-  hazard.wrapS = THREE.RepeatWrapping;
-  hazard.repeat.set(2, 1);
-  const hazardMat = new THREE.MeshStandardMaterial({ map: hazard, roughness: 0.65 });
-  const boxMat = new THREE.MeshStandardMaterial({ color: 0x2c3324, roughness: 0.6 });
-  const add = (geo, mat, x, y, z, name) => {
-    const m = new THREE.Mesh(geo, mat);
-    m.position.set(x, y, z);
-    if (name) m.name = name;
-    g.add(m);
-    return m;
-  };
-  add(new THREE.CylinderGeometry(0.03, 0.03, 0.17, 16), metal, 0, 0, 0);
-  add(new THREE.CylinderGeometry(0.038, 0.038, 0.024, 6), capMat, 0, 0.087, 0);
-  add(new THREE.CylinderGeometry(0.038, 0.038, 0.024, 6), capMat, 0, -0.087, 0);
-  add(new THREE.CylinderGeometry(0.0318, 0.0318, 0.046, 16), tapeMat, 0, 0.022, 0);
-  add(new THREE.CylinderGeometry(0.0315, 0.0315, 0.028, 16, 1, true), hazardMat, 0, -0.045, 0);
-  add(new THREE.BoxGeometry(0.036, 0.036, 0.016), boxMat, 0, 0.022, 0.037);
-  add(new THREE.PlaneGeometry(0.022, 0.01), new THREE.MeshBasicMaterial({ color: 0x3a0a06 }), -0.004, 0.012, 0.0455); // dead LCD
-  add(new THREE.SphereGeometry(0.0055, 10, 8), new THREE.MeshStandardMaterial({ color: 0x400000, emissive: 0xff1a08, emissiveIntensity: 0.4 }), 0.009, 0.03, 0.045, 'led');
-  // leads from the timer to both caps
-  const lead = (pts, color) => {
-    const curve = new THREE.CatmullRomCurve3(pts.map(([x, y, z]) => new THREE.Vector3(x, y, z)));
-    g.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 12, 0.0022, 5), new THREE.MeshStandardMaterial({ color, roughness: 0.5 })));
-  };
-  lead([[0.012, 0.04, 0.042], [0.02, 0.06, 0.04], [0.018, 0.08, 0.036]], 0xb81a12);
-  lead([[-0.012, 0.004, 0.042], [-0.02, -0.03, 0.04], [-0.016, -0.074, 0.037]], 0xd8b010);
-  // fuse out of the top cap
-  add(new THREE.CylinderGeometry(0.0028, 0.0028, 0.03, 6), tapeMat, 0, 0.113, 0);
-  const tip = new THREE.Object3D();
-  tip.name = 'fuseTip';
-  tip.position.set(0, 0.128, 0);
-  g.add(tip);
-  // halo around the LED (bloom picks it up)
-  const glowTex = canvasTexture(64, 64, (c, w) => {
-    const r = c.createRadialGradient(w / 2, w / 2, 0, w / 2, w / 2, w / 2);
-    r.addColorStop(0, 'rgba(255,255,255,1)');
-    r.addColorStop(0.25, 'rgba(255,255,255,0.55)');
-    r.addColorStop(1, 'rgba(255,255,255,0)');
-    c.fillStyle = r;
-    c.fillRect(0, 0, w, w);
-  });
-  const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0xff2a10, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0 }));
-  glow.name = 'glow';
-  glow.position.set(0.009, 0.03, 0.05);
-  glow.scale.setScalar(0.001);
-  g.add(glow);
-  return g;
-}
+const MINES_MAX = 8; // planted at once: the oldest goes when a ninth lands
 
 export class Projectiles {
   constructor(game, scene) {
@@ -130,6 +56,123 @@ export class Projectiles {
   throwFrag(pos, vel, owner, def) {
     const mesh = this.fragProto.clone();
     return this._add(mesh, { kind: 'frag', pos: pos.clone(), vel: vel.clone(), fuse: def.fuse, owner, def, spin: new THREE.Vector3(rand(-12, 12), rand(-12, 12), rand(-12, 12)), bounces: 0, radius: 0.05 });
+  }
+
+  _mineProto() {
+    return (this.mine ??= buildMineModel());
+  }
+
+  /** an M16A1 mine: tossed a few metres, it stands up where it lands and arms (see _mine) */
+  throwMine(pos, vel, owner, def) {
+    const mines = this.list.filter((p) => p.kind === 'mine');
+    if (mines.length >= MINES_MAX) {
+      const old = mines[0];
+      this.scene.remove(old.mesh);
+      this.list.splice(this.list.indexOf(old), 1);
+    }
+    const mesh = this._mineProto().clone(true);
+    const led = mesh.getObjectByName('led');
+    led.material = led.material.clone();
+    const glow = mesh.getObjectByName('glow');
+    glow.material = glow.material.clone();
+    return this._add(mesh, { kind: 'mine', state: 'flying', pos: pos.clone(), vel: vel.clone(), fuse: Infinity, owner, def, spin: new THREE.Vector3(rand(-5, 5), rand(-3, 3), rand(-5, 5)), bounces: 0, radius: 0.05, led, glow, pin: mesh.getObjectByName('pin'), blink: 0 });
+  }
+
+  /** the pipe bomb: bounces and rolls like the Striker's charge, beeps, lures, blows */
+  throwPipeBomb(pos, vel, owner, def) {
+    const mesh = this.chargeProto.clone(true);
+    const led = mesh.getObjectByName('led');
+    led.material = led.material.clone();
+    const glow = mesh.getObjectByName('glow');
+    glow.material = glow.material.clone();
+    mesh.scale.setScalar(1.25);
+    return this._add(mesh, {
+      kind: 'pipebomb',
+      pos: pos.clone(),
+      vel: vel.clone(),
+      fuse: def.fuse,
+      owner,
+      def,
+      bounces: 0,
+      radius: 0.05,
+      spin: new THREE.Vector3(rand(-10, 10), rand(-4, 4), rand(-10, 10)),
+      led,
+      glow,
+      tip: mesh.getObjectByName('fuseTip'),
+      blink: 0,
+      lure: null,
+      lureT: 1.5,
+    });
+  }
+
+  /** a mine on the ground: arming, the blink, the trigger, the jump (its flight and burst run in update) */
+  _mine(p, dt) {
+    const game = this.game;
+    if (p.state === 'planted') {
+      if ((p.armT -= dt) <= 0) {
+        p.state = 'armed';
+        p.blink = 0;
+        game.audio.play('mine_arm', { position: p.pos, volume: 0.7 });
+      }
+    } else if (p.state === 'armed') {
+      p.blink += dt;
+      const on = p.blink % 1.6 < 0.13;
+      p.led.material.emissiveIntensity = on ? 12 : 0.3;
+      p.glow.material.opacity = on ? 0.9 : 0;
+      p.glow.scale.setScalar(on ? 0.12 : 0.001);
+      if ((p.scanT = (p.scanT ?? 0) - dt) <= 0) {
+        p.scanT = 0.05;
+        if (this._mineVictim(p)) {
+          p.state = 'triggered';
+          p.jumpT = 0.2;
+          game.audio.play('mine_click', { position: p.pos, volume: 1 });
+        }
+      }
+    } else if (p.state === 'triggered') {
+      p.led.material.emissiveIntensity = 14;
+      p.glow.material.opacity = 1;
+      p.glow.scale.setScalar(0.16);
+      if ((p.jumpT -= dt) <= 0) {
+        // the propelling charge throws the can up to about waist height, where it bursts
+        p.state = 'jumping';
+        p.vel.set(0, 5.2, 0);
+        p.fuse = 0.26;
+        p.spin = new THREE.Vector3(rand(-7, 7), rand(-3, 3), rand(-7, 7));
+        game.audio.play('mine_jump', { position: p.pos, volume: 1 });
+        for (let k = 0; k < 14; k++) {
+          const a = Math.random() * Math.PI * 2;
+          game.fx.sparks?.emit(p.pos.x, p.pos.y + 0.05, p.pos.z, Math.cos(a) * rand(1, 3), rand(1, 3), Math.sin(a) * rand(1, 3), { life: rand(0.15, 0.35), length: 0.02, color: [5, 2.6, 1], width: 0.008, gravity: 9.8, drag: 1 });
+        }
+      }
+    }
+  }
+
+  /** anything hostile standing on it: an infected (not the Stalker) or one of the NOX squad */
+  _mineVictim(p) {
+    const game = this.game;
+    const r = p.def.trigger;
+    for (const { zombie } of game.zombies.inRadius(p.pos, r)) {
+      if (zombie.alive && zombie.typeName !== 'stalker' && Math.abs(zombie.pos.y - p.pos.y) < 1.2) return true;
+    }
+    for (const m of game.mercs?.list ?? []) {
+      if (m.alive && m.inPlay && m.root.visible && Math.hypot(m.pos.x - p.pos.x, m.pos.z - p.pos.z) < r && Math.abs(m.pos.y - p.pos.y) < 1.2) return true;
+    }
+    return false;
+  }
+
+  /** the mine hits the ground: it stands up there (the safety pin long gone) and starts arming */
+  _plant(p) {
+    const world = this.game.world;
+    const g = world.groundHeight(p.pos.x, p.pos.z, 0.06, p.pos.y + 0.3);
+    if (g > -50) p.pos.y = g;
+    p.state = 'planted';
+    p.armT = p.def.arm;
+    p.vel.set(0, 0, 0);
+    p.spin = null;
+    p.mesh.rotation.set(0, Math.random() * Math.PI * 2, 0);
+    p.mesh.position.copy(p.pos);
+    if (p.pin) p.pin.visible = false;
+    this.game.audio.play('grenade_bounce', { position: p.pos, volume: 0.6, pitch: 0.7 });
   }
 
   _molotovProto() {
@@ -215,7 +258,7 @@ export class Projectiles {
       p.blink += dt;
       if (p.blink >= period) {
         p.blink = 0;
-        game.audio.play('charge_beep', { position: p.pos, volume: 0.5, pitch: 1 + (1.5 - Math.min(1.5, p.fuse)) * 0.3 });
+        game.audio.play('charge_beep', { position: p.pos, volume: p.kind === 'pipebomb' ? 0.85 : 0.5, pitch: 1 + (1.5 - Math.min(1.5, p.fuse)) * 0.3 });
       }
       on = p.blink < period * 0.45;
     }
@@ -240,6 +283,12 @@ export class Projectiles {
     const world = game.world;
     for (let i = this.list.length - 1; i >= 0; i--) {
       const p = this.list[i];
+      if (p.kind === 'mine' && p.state !== 'flying' && p.state !== 'jumping') {
+        this._mine(p, dt); // on the ground: no physics
+        continue;
+      }
+      // the lure starts once it lies still (or after a while in the air): the field needs the floor it's on
+      if (p.kind === 'pipebomb' && !p.lure && ((p.lureT -= dt) <= 0 || (p.grounded && p.vel.lengthSq() < 1))) game.lureStart?.(p);
       p.fuse -= dt;
       let explode = p.fuse <= 0;
       if (!explode) {
@@ -278,10 +327,11 @@ export class Projectiles {
                 p.vel.addScaledVector(n, -(1 + 0.38) * vn);
                 p.vel.multiplyScalar(n.y > 0.5 ? 0.62 : 0.8);
                 if (p.spin) p.spin.multiplyScalar(0.7);
-                if (p.kind === 'shell' && n.y > 0.5) {
+                if ((p.kind === 'shell' || p.kind === 'pipebomb') && n.y > 0.5) {
                   p.grounded = true; // from here on it lies flat and rolls (see _charge)
                   p.spin = null;
                 }
+                if (p.kind === 'mine' && p.state === 'flying' && n.y > 0.5) this._plant(p);
                 if (Math.abs(vn) > 1.5) game.audio.play(p.kind === 'shell' ? 'shell_casing' : 'grenade_bounce', { position: p.pos, volume: Math.min(1, Math.abs(vn) / 6) });
                 p.bounces++;
               }
@@ -297,7 +347,7 @@ export class Projectiles {
           p.mesh.rotation.z += p.spin.z * dt;
         }
         if (p.kind === 'round40' && sp > 1) p.mesh.lookAt(p.pos.x + p.vel.x, p.pos.y + p.vel.y, p.pos.z + p.vel.z);
-        if (p.kind === 'shell') this._charge(p, dt);
+        if (p.kind === 'shell' || p.kind === 'pipebomb') this._charge(p, dt);
         if (p.kind === 'molotov' && Math.random() < 0.8) {
           const r = _rag.copy(p.mesh.userData.rag).applyQuaternion(p.mesh.quaternion).add(p.pos);
           game.fx.fire.emit(r.x, r.y, r.z, rand(-0.2, 0.2), rand(0.3, 0.8), rand(-0.2, 0.2), { life: rand(0.12, 0.25), size: rand(0.12, 0.22), grow: 0.6, drag: 2, gravity: -1, color: [5, 2.6, 1.0], endColor: [1.0, 0.25, 0.05], rotV: rand(-2, 2) });
@@ -312,8 +362,10 @@ export class Projectiles {
           game.igniteMolotov(p.pos, p.owner, p.def);
           continue;
         }
-        const scale = p.kind === 'shell' ? 0.55 : p.kind === 'round40' ? 0.9 : 1;
-        game.explode(p.pos, p.def.radius, p.def.damage, p.owner, { scale, weapon: p.kind === 'frag' ? 'm67' : p.kind === 'round40' ? 'm32' : 'striker' });
+        if (p.kind === 'pipebomb') game.lureEnd?.(p.lure);
+        const scale = p.kind === 'shell' ? 0.55 : p.kind === 'round40' ? 0.9 : p.kind === 'pipebomb' ? 1.25 : 1;
+        const weapon = p.kind === 'frag' ? 'm67' : p.kind === 'round40' ? 'm32' : p.kind === 'mine' ? 'mine' : p.kind === 'pipebomb' ? 'pipebomb' : 'striker';
+        game.explode(p.pos, p.def.radius, p.def.damage, p.owner, { scale, weapon, friendly: p.kind === 'mine' ? 0 : 1 });
       }
     }
   }

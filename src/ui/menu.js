@@ -15,6 +15,13 @@ import { insigniaSvg, masterySvg } from './insignia.js';
 import { skinSwatch } from '../player/skins.js';
 import { WEAPONS } from '../player/weaponDefs.js';
 import { cardIcon } from './cardIcons.js';
+import { MAP_LIST, MAPS } from '../world/maps.js';
+
+// the MAP step's emblems (world/maps.js ids)
+const MAP_EMBLEMS = {
+  farm: '<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 15L16 5l12 10M7 13v14h18V13"/><path d="M13 27v-7h6v7M9.5 17h3v3h-3zM19.5 17h3v3h-3z"/></svg>',
+  appenweier: '<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 27h26M5 27V15l7-4 7 4v12M19 27V17h9v10"/><path d="M9 3h6v8M9 7h6M8.5 20h3v4h-3zM21 20h5M21 23h5"/></svg>',
+};
 
 const LS_SETTINGS = 'cabinfever.settings.v1';
 const LS_LOADOUT = 'cabinfever.loadout.v1';
@@ -37,7 +44,7 @@ const QUALITIES = ['low', 'medium', 'high', 'ultra'];
 const VIEWS = { home: 'title', play: 'porch', career: 'interior', leaderboard: 'interior', settings: 'interior', controls: 'interior', credits: 'interior' };
 
 const NAV = [
-  ['play', 'PLAY', 'Mode · difficulty · fireteam'],
+  ['play', 'PLAY', 'Map · mode · difficulty · fireteam'],
   ['career', 'CAREER', 'Rank · weapon mastery · operators'],
   ['leaderboard', 'LEADERBOARD', 'Your best runs'],
   ['settings', 'SETTINGS', 'Mouse · video · audio'],
@@ -62,7 +69,8 @@ const CONTROLS = [
   [['R'], 'Reload'],
   [['1', '–', '5', '/', 'WHEEL'], 'Switch weapon'],
   [['1'], 'Again: primary ↔ backpack gun (weapon backpack)'],
-  [['4'], 'Again: frag ↔ Molotov'],
+  [['4'], 'Again: frag → Molotov → mine → pipe bomb'],
+  [['X'], 'Shockwave emitter (store gear, once a round)'],
   [['5'], 'Barricade kit · hold Mouse 1 at a doorway'],
   [['Q'], 'Last weapon'],
   [['G'], 'Quick throw'],
@@ -75,16 +83,23 @@ const CONTROLS = [
   [['HOLD ESC'], 'Leave fullscreen'],
 ];
 
+// a tip per map where they differ: { farm, appenweier } (world/maps.js ids)
 const TIPS = [
   'Headshots are worth bonus points — and bonus cash.',
-  'Every kill by your fireteam pays everyone. Spend it in the cellar gun shop between rounds.',
-  'A gas mask from the gun shop lets you breathe outside for a while. Upgrade the filter for longer.',
+  {
+    farm: 'Every kill by your fireteam pays everyone. Spend it in the cellar gun shop between rounds.',
+    appenweier: 'Every kill by your fireteam pays everyone. Spend it in the garage gun shop behind 13a between rounds.',
+  },
+  {
+    farm: 'A gas mask from the gun shop lets you breathe outside for a while. Upgrade the filter for longer.',
+    appenweier: 'The toxic haze only thickens at the edge of Appenweier. Keep to the houses and the road.',
+  },
   'Gear from the gun shop stays with you all match: one item per body slot, and owned gear goes back on for free.',
   'Barricade kits from the gun shop board up a doorway. You can still shoot through the gaps between the planks.',
   'Stick with your fireteam. Infected flank lone survivors.',
-  'Stay out of the green gas. It hurts more than it looks.',
+  { farm: 'Stay out of the green gas. It hurts more than it looks.', appenweier: 'Listen to the corn field across the road. The infected come out of it.' },
   'Mutant dogs hunt in packs from round 3. Listen for them.',
-  'Rare weapons appear in the basement once it opens.',
+  { farm: 'Rare weapons appear in the basement once it opens.', appenweier: 'Rare weapons wait in the fire station and the drugstore once they open.' },
   'Chain kills quickly to build a combo multiplier.',
   'Crouch to steady your aim.',
 ];
@@ -206,6 +221,9 @@ export class Menu {
     this.cb = callbacks || {};
     this.settings = sanitizeSettings(loadJSON(LS_SETTINGS));
     this.config = sanitizeLoadout(loadJSON(LS_LOADOUT));
+    // the map this page loaded (world/maps.js); picking another one on the PLAY screen reloads on DEPLOY
+    this.loadedMap = this.cb.map ?? MAPS.farm;
+    this.config.map = this.loadedMap.id;
     saveJSON(LS_LOADOUT, this.config);
     this._panels = [];
     this._current = null;
@@ -534,6 +552,17 @@ export class Menu {
       </button>`
     ).join('');
 
+    const mapHtml = MAP_LIST.map(
+      (m) => `
+      <button class="cf-mm-diff cf-mm-map" data-sfx data-map="${m.id}">
+        <span class="cf-mm-map-emb">${MAP_EMBLEMS[m.id] || ''}</span>
+        <span class="cf-mm-map-txt">
+          <span class="cf-mm-diff-s">${esc(m.place)}</span>
+          <span class="cf-mm-diff-n">${esc(m.name)}</span>
+        </span>
+      </button>`
+    ).join('');
+
     const diffHtml = DIFFICULTIES.map(
       (d) => `
       <button class="cf-mm-diff" data-sfx data-diff="${d.id}">
@@ -598,15 +627,19 @@ export class Menu {
             <div class="cf-mm-setup">
               <div class="cf-mm-steps">
                 <div class="cf-mm-step">
-                  <div class="cf-mm-step-h"><b>01</b>GAME MODE</div>
+                  <div class="cf-mm-step-h"><b>01</b>MAP</div>
+                  <div class="cf-mm-maps" data-row data-group>${mapHtml}</div>
+                </div>
+                <div class="cf-mm-step">
+                  <div class="cf-mm-step-h"><b>02</b>GAME MODE</div>
                   <div class="cf-mm-modes" data-row data-group>${modeHtml}</div>
                 </div>
                 <div class="cf-mm-step">
-                  <div class="cf-mm-step-h"><b>02</b>DIFFICULTY</div>
+                  <div class="cf-mm-step-h"><b>03</b>DIFFICULTY</div>
                   <div class="cf-mm-diffs" data-row data-group>${diffHtml}</div>
                 </div>
                 <div class="cf-mm-step">
-                  <div class="cf-mm-step-h"><b>03</b>FIRETEAM</div>
+                  <div class="cf-mm-step-h"><b>04</b>FIRETEAM</div>
                   <div class="cf-mm-mates" data-row data-group data-multi>${mateHtml}</div>
                   <div class="cf-mm-team-bar">
                     <span class="cf-mm-team-qs" data-row data-group data-multi>
@@ -698,6 +731,7 @@ export class Menu {
                 <dt>MAIN THEME</dt><dd>“Abandoned Farmhouse”</dd>
                 <dt>ENGINE</dt><dd>three.js · postprocessing · N8AO · Vite</dd>
                 <dt>TYPE</dt><dd>Black Ops One · Teko · Rajdhani · Share Tech Mono</dd>
+                <dt>APPENWEIER</dt><dd>Buildings: LoD2 © LGL Baden-Württemberg (dl-de/by-2-0) · Streets: © OpenStreetMap contributors (ODbL)</dd>
                 <dt>THANKS</dt><dd>Everyone who held the farmhouse in 2009</dd>
               </dl>
             </div>
@@ -712,6 +746,7 @@ export class Menu {
     this.$main = {
       root: el,
       views: Object.fromEntries([...el.querySelectorAll('[data-view]')].map((v) => [v.dataset.view, v])),
+      maps: [...el.querySelectorAll('[data-map]')],
       modes: [...el.querySelectorAll('[data-mode]')],
       diffs: [...el.querySelectorAll('[data-diff]')],
       mates: [...el.querySelectorAll('[data-mate]')],
@@ -744,6 +779,8 @@ export class Menu {
         if (go.dataset.go === 'career') this._renderCareer();
         return this._setView(go.dataset.go, { kbd: e.detail === 0 });
       }
+      const mp = t.closest('[data-map]');
+      if (mp) return this._setConfig('map', mp.dataset.map);
       const m = t.closest('[data-mode]');
       if (m) return m.classList.contains('locked') ? this._nope(m) : this._setConfig('mode', m.dataset.mode);
       const d = t.closest('[data-diff]');
@@ -1098,6 +1135,13 @@ export class Menu {
     }
   }
 
+  /** main.js: go straight on with a setup (a deploy that switched maps, resumed after the reload) */
+  deploy(config) {
+    if (config && typeof config === 'object') this.config = { ...sanitizeLoadout(config), map: this.loadedMap.id };
+    this._syncConfig();
+    this._deploy();
+  }
+
   _deploy() {
     if (MODES[this.config.mode]?.locked && !Progress.gauntletUnlocked()) this.config.mode = 'cabinfever';
     const cfg = { ...this.config, primary: STANDARD_PRIMARY };
@@ -1130,7 +1174,12 @@ export class Menu {
     const mode = MODES[c.mode] || MODES.cabinfever;
     const dId = mode.difficulty ?? c.difficulty; // (the Gauntlet: always Extreme)
     const diff = DIFFICULTIES.find((x) => x.id === dId) || DIFFICULTIES[1];
+    if (!MAPS[c.map]) c.map = this.loadedMap.id;
+    const map = MAPS[c.map];
+    for (const b of M.maps) b.classList.toggle('sel', b.dataset.map === c.map);
     for (const b of M.modes) {
+      const tag = b.querySelector('.cf-mm-mode-d');
+      if (tag) tag.textContent = map.modeTagline?.[b.dataset.mode] ?? MODES[b.dataset.mode]?.tagline ?? tag.textContent; // (a map without the story)
       b.classList.toggle('sel', b.dataset.mode === c.mode);
       b.classList.toggle('locked', !!MODES[b.dataset.mode]?.locked && !open);
     }
@@ -1153,20 +1202,22 @@ export class Menu {
 
     // briefing
     M.briefT.innerHTML = `${mode.name} <em>·</em> ${diff.name}`;
-    M.briefD.textContent = mode.rogue ? mode.desc : `${mode.desc} ${mode.endless ? diff.edesc : diff.desc}`;
-    const unlocks = unlocksFor(mode.id, diff.id);
+    const desc = map.modeDesc?.[mode.id] ?? mode.desc;
+    M.briefD.textContent = mode.rogue ? desc : `${desc} ${mode.endless ? diff.edesc : diff.desc}`;
+    const unlocks = unlocksFor(mode.id, diff.id, map);
     const names = team.map((id) => FIRETEAM_BY_ID[id].name.toUpperCase());
     const facts = [
+      ['MAP', `${map.name} · ${map.place}${map.id !== this.loadedMap.id ? ' · LOADS ON DEPLOY' : ''}`, 'wide'],
       ['ROUNDS', mode.endless ? '∞' : String(diff.rounds)],
       ['TIME LIMIT', mode.endless || mode.timer === false ? 'NONE' : `${diff.minutes}:00`],
       ...(mode.rogue ? [['GUN SHOP', 'NONE · CARDS AND CURSES INSTEAD', 'wide']] : []),
-      ['FLOORS', unlocks.length ? unlocks.map((u) => `${u.name} R${u.round}`).join(' · ') : 'GROUND FLOOR ONLY', 'wide'],
+      [map.id === 'farm' ? 'FLOORS' : 'UNLOCKS', unlocks.length ? unlocks.map((u) => `${u.name} R${u.round}`).join(' · ') : 'GROUND FLOOR ONLY', 'wide'],
       [team.length ? `FIRETEAM · YOU + ${team.length}` : 'FIRETEAM', team.length ? names.join(' · ') : 'SOLO · NO BACKUP', 'wide'],
     ];
     M.facts.innerHTML = facts.map(([k, v, cls]) => `<span class="${cls || ''}"><small>${k}</small><b>${esc(v)}</b></span>`).join('');
     M.kitNote.innerHTML = mode.rogue
       ? 'No gun shop, no cash. After every round <b>draw a card</b>: a weapon, a perk or supplies. Then <b>take a curse</b>.'
-      : 'Earn cash for every fireteam kill. Between rounds the <b>gun shop</b> in the cellar sells weapons, upgrades and gear.';
+      : `Earn cash for every fireteam kill. Between rounds the <b>gun shop</b> ${esc(map.shopWhere)} sells weapons, upgrades and gear.`;
     const last = mode.endless ? Infinity : diff.rounds;
     M.threats.innerHTML =
       '<div class="cf-mm-threats-h">THREAT TIMELINE</div>' +
@@ -1458,12 +1509,13 @@ export class Menu {
 
   _startTips() {
     const tip = this.$load.tip;
+    const text = (t) => (typeof t === 'string' ? t : t[this.loadedMap?.id] ?? t.farm);
     let i = Math.floor(Math.random() * TIPS.length);
-    tip.textContent = TIPS[i];
+    tip.textContent = text(TIPS[i]);
     clearInterval(this._tipTimer);
     this._tipTimer = setInterval(() => {
       i = (i + 1) % TIPS.length;
-      tip.textContent = TIPS[i];
+      tip.textContent = text(TIPS[i]);
     }, 4200);
   }
 

@@ -65,6 +65,17 @@ export const WEAPONS = {
     adsZoom: 1.3, adsTime: 0.24, sound: 'lmg_fire', shell: 'rifle', tracerEvery: 2, moveMul: 0.84,
     hip: [0.2, -0.245, -0.2], hipRot: [0.02, 0.07, 0.04], ammoKind: 'rifle', drawTime: 0.6,
   },
+  mg42: {
+    // belt-fed "buzzsaw": a 150-round belt at 1,150 rpm that hits hard, kicks harder, and takes its time to reload
+    // (the feed cover, the ammo box, the belt, the cocking handle: viewmodel.js beltReload)
+    id: 'mg42', name: 'MG 42', slot: 0, model: 'mg42', mode: 'auto', rpm: 1150,
+    damage: 38, pellets: 1, penetration: 2, falloff: [50, 120, 0.7],
+    spreadHip: 2.8, spreadAds: 0.35, spreadMove: 2.0, spreadAir: 4.2, spreadPerShot: 0.2, spreadMax: 3.4,
+    recoilV: 0.42, recoilH: 0.3, recoilRecover: 5, kick: 1.35, shake: 0.09,
+    mag: 150, reserve: 300, maxReserve: 450, reload: 5.6, reloadEmpty: 6.2, reloadType: 'mag', beltReload: true,
+    adsZoom: 1.25, adsTime: 0.32, sound: 'mg42_fire', shell: 'rifle', tracerEvery: 2, moveMul: 0.8,
+    hip: [0.2, -0.25, -0.2], hipRot: [0.02, 0.07, 0.04], ammoKind: 'rifle', drawTime: 0.8,
+  },
   p90: {
     // bullpup PDW: fast, flat and mobile with a 50-round top magazine; lighter hits that fall off early
     id: 'p90', name: 'P90', slot: 0, model: 'p90', mode: 'auto', rpm: 900,
@@ -142,6 +153,20 @@ export const WEAPONS = {
     id: 'molotov', name: 'MOLOTOV', slot: 3, model: 'molotov', mode: 'grenade',
     damage: 55, radius: 3.0, fireTime: 7, throwSpeed: 13.5, moveMul: 1.05,
     hip: [0.15, -0.3, -0.44], hipRot: [-0.4, 0.25, -0.12], drawTime: 0.3,
+  },
+  mine: {
+    // store: the M16A1 bounding mine (game/projectiles.js mine), key 4 again cycles the throwables. Tossed a few
+    // metres, it arms after `arm` s; an infected within `trigger` m sets it off: it jumps and bursts
+    id: 'mine', name: 'M16A1 MINE', slot: 3, model: 'mine', mode: 'grenade',
+    damage: 280, radius: 5.5, trigger: 1.3, arm: 1.2, throwSpeed: 6.5, moveMul: 1.02,
+    hip: [0.16, -0.12, -0.36], hipRot: [0.2, 0.25, -0.12], drawTime: 0.35,
+  },
+  pipebomb: {
+    // store: the lure (game/projectiles.js pipebomb, game.js lureStart): beeping for `fuse` s it draws every
+    // infected within `lure` m (not Crushers, Biters or the Stalker) to it, then blows up in the crowd
+    id: 'pipebomb', name: 'PIPE BOMB', slot: 3, model: 'pipebomb', mode: 'grenade',
+    damage: 340, radius: 6.5, fuse: 6.5, lure: 30, throwSpeed: 15, moveMul: 1.05,
+    hip: [0.15, -0.16, -0.34], hipRot: [0.2, 0.2, -0.15], drawTime: 0.3,
   },
   barricade: {
     // store kit, slot 5 (world/barricades.js): hold fire at a doorway to nail planks across it
