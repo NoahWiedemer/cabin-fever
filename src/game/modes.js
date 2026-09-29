@@ -3,8 +3,8 @@
 
 export const MODES = {
   cabinfever: {
-    id: 'cabinfever',
-    name: 'CABIN FEVER',
+    id: 'cabinfever', // (the id stays: saves and leaderboards use it)
+    name: 'STORY',
     kicker: 'FIRETEAM',
     tagline: 'Bring the reagent to Dr. Nadja, sealed in a lab somewhere under the farm.',
     desc: 'The story: dropped at the farm by helicopter, hold the house while Command traces Nadja, find her lab, hack its vault door open and deliver the reagent. 15 waves on every difficulty.',

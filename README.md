@@ -25,7 +25,7 @@ The PLAY screen's first step picks the map. A map is built once per page load (t
   - You start in the yard of Sanderstraße 13, before the painted gable of 13a. Its Lüftlmalerei (peasant children, goats and geese, the vine border, the cherubs at the peak, the painted satellite dish, the "Sanderstrasse 13a" scroll) is cut from photos of the house.
   - Round the yard: 13c (the boarded bungalow with the star door and its tiled sign), 13, the fenced garden with the hazels, the walnut by the gate, the parked cars.
   - Across the road with its red cycle lanes: the corn field, ready for the harvest, and the fire station (Sander Straße 22) with its hose tower (FEUERWEHR · 112) and its recruiting banner. North-east, past the car park: the drugstore at Im See 18.
-  - It plays like the farm: the same modes, rounds and infected. There is no story, so Cabin Fever is 15 waves to survive.
+  - It plays like the farm: the same modes, rounds and infected. There is no story, so the Story mode is 15 waves to survive.
   - **The gun shop** is the double garage behind 13a. Its left door rolls up in the buy phase.
   - **Round 4**: the fire station's three red doors roll up on the vehicle hall (fire engine, crew van, turnout lockers, hoses), with the Golden Punisher on a table. The infected can get in too. The three doors and the side door take barricades.
   - **Round 10**: the drugstore's doors slide open on aisles and checkouts, with the L96A1 on a checkout. The M32 turns up by the gun garage, the chain gun on the fire station's forecourt.
@@ -35,7 +35,7 @@ The PLAY screen's first step picks the map. A map is built once per page load (t
 
 ## Game modes
 
-**Cabin Fever** is the story mode, part one: a fireteam brings the only batch of a reagent to Dr. Nadja, a scientist sealed in a lab somewhere under an overrun farm. Every difficulty plays the same 15 waves in 60 minutes; the difficulty only changes the numbers.
+**Story** (the mode's id is `cabinfever`) is Cabin Fever's story mode, part one: a fireteam brings the only batch of a reagent to Dr. Nadja, a scientist sealed in a lab somewhere under an overrun farm. Every difficulty plays the same 15 waves in 60 minutes; the difficulty only changes the numbers.
 
 | Difficulty | Infected health | Damage you take | Wave size | Store prices | Starting cash | Hack |
 |---|---|---|---|---|---|---|
@@ -231,7 +231,7 @@ The upstairs opens with round 4 (Golden Punisher, balcony over the yard), the ba
 - **XP and ranks**: kills (by type: from 10 XP for a Mauler to 120 for a Crusher and 150 for the Stalker, 60 for a NOX operative), headshots, every round survived and the win, times the difficulty (Easy ×0.8, Extreme ×1.3, the Gauntlet ×1.5). Ranks follow Combat Arms' ladder of 23, from Trainee to General of the Army. Each has its own insignia (`src/ui/insignia.js`): chevrons and rockers, the specialist's shield, the diamond, star and wreath of the top sergeants, bars, oak leaves, the eagle and one to five stars. A promotion slides in on the HUD with a bugle call, and the scoreboard shows your insignia.
 - **Weapon mastery**: every kill with a gun, blade or throwable levels that weapon up, to level 10. A level-up shows on the HUD.
 - **Camos** (`src/player/skins.js`): Woodland, Urban Digital, Desert Tiger, Crimson and Gold unlock at mastery 2, 4, 6, 8 and 10. Pick them per weapon on the career screen. The pattern is projected onto the gun's own materials (triplanar, no UVs needed) and keeps its wear and detail. Glass, sights, brass and the arms stay as they are.
-- **Operators**: play as your own EmoSquad operator, or as **Scorpion** (reach Sergeant) or **Viper** (win Cabin Fever on Hard or Extreme). The pick shows in the cutscenes and on the store's paperdoll, and that fireteam bot sits your runs out.
+- **Operators**: play as your own EmoSquad operator, or as **Scorpion** (reach Sergeant) or **Viper** (win the Story on Hard or Extreme). The pick shows in the cutscenes and on the store's paperdoll, and that fireteam bot sits your runs out.
 - **After-action report**: the end screen counts up the XP the run earned, fills the rank bar, and shows a promotion, the weapons that levelled and everything the run unlocked. The career screen has the full record: rank and ladder, runs, kills and wins, every weapon's mastery and camos, and the operators.
 - Debug: `__game.progress.grant(xp)`, `__game.progress.unlockAll()`.
 

@@ -892,7 +892,7 @@ export class Menu {
         <span><small>HEADSHOTS</small><b>${fmtNum(p.headshots)}</b></span>
         <span><small>GAUNTLETS</small><b>${p.wins['gauntlet:extreme'] ?? 0}</b></span>
       </div>
-      <div class="cf-car-wins"><small>CABIN FEVER WINS</small>${wins}</div>
+      <div class="cf-car-wins"><small>STORY WINS</small>${wins}</div>
       <div class="cf-car-ladder">${ladder}</div>`;
     }
     // the operators (the window names only what is locked: how to earn it)

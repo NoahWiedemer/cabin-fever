@@ -65,7 +65,7 @@ export const WEAPON_SKINS = [
 export const CHARACTER_SKINS = [
   { id: 'emosquad', name: 'EMO SQUAD', body: 'emosquad', bot: null, unlock: null, how: 'Your own operator' },
   { id: 'scorpion', name: 'SCORPION', body: 'meshy', bot: 'meshy', unlock: { rank: 5 }, how: 'Reach the rank of Sergeant' },
-  { id: 'viper', name: 'VIPER', body: 'viper', bot: 'viper', unlock: { win: ['hard', 'extreme'] }, how: 'Win Cabin Fever on Hard or Extreme' },
+  { id: 'viper', name: 'VIPER', body: 'viper', bot: 'viper', unlock: { win: ['hard', 'extreme'] }, how: 'Win the Story on Hard or Extreme' },
 ];
 
 function load() {
