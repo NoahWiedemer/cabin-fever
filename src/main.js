@@ -361,6 +361,16 @@ async function boot() {
     }
     gr.render(dt);
   };
+  // debug camera: __look(px, py, pz, tx, ty, tz, fov, frames) parks the menu camera there (hides the menu) and renders
+  window.__look = (px, py, pz, tx, ty, tz, fov = 70, frames = 3) => {
+    const shots = game.level?.menuShots;
+    if (!shots) return;
+    shots.dbg = { fov, period: 1e9, a: [px, py, pz, tx, ty, tz], b: [px, py, pz, tx, ty, tz], fog: 0.05 };
+    game.menuShot = null;
+    game.setMenuShot('dbg');
+    for (const id of ['menu', 'hud']) document.getElementById(id)?.style.setProperty('display', 'none');
+    window.__step(frames);
+  };
   requestAnimationFrame(loop);
 }
 

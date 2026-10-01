@@ -588,13 +588,13 @@ export function cableTray(c, ax, az, bx, bz, y) {
 
 /**
  * A ceiling light panel at (x, z) under the ceiling h: `len` long along x (alongX) or z. Its light is baked
- * (two points along it); `broken`: dark, no light; `dim`: a weaker glow.
+ * (two points along it); `broken`: dark, no light; `dim`: a weaker glow; `flick`: 1..3, a tube on the guttering circuit (hive.js animates U.flick).
  */
-export function panel(c, x, z, h, { len = 1.2, alongX = true, broken = false, dim = false, i = 0.9, r = 3.4, color = COOL, range = null } = {}) {
+export function panel(c, x, z, h, { len = 1.2, alongX = true, broken = false, dim = false, flick = 0, i = 0.9, r = 3.4, color = COOL, range = null } = {}) {
   const { K, M, U } = c;
   const sx = alongX ? len : 0.34, sz = alongX ? 0.34 : len;
   K.cube(M.dark, x, h - 0.02, z, sx + 0.08, 0.04, sz + 0.08);
-  K.cube(broken ? U.deadPanel : dim ? U.dimPanel : U.panel, x, h - 0.045, z, sx, 0.012, sz);
+  K.cube(broken ? U.deadPanel : flick && U.flick ? U.flick[flick - 1] : dim ? U.dimPanel : U.panel, x, h - 0.045, z, sx, 0.012, sz);
   if (broken) return;
   const k = dim ? 0.45 : 1;
   for (const s of [-0.3, 0.3]) c.light(x + (alongX ? s * len : 0), h - 0.12, z + (alongX ? 0 : s * len), i * k * 0.5, r, color, DOWN, range);

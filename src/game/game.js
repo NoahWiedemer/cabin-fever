@@ -312,7 +312,7 @@ export class Game {
     // (fx.splat / fx.decalRay: only on solid level geometry, and only where the whole splat fits: splats over a
     // floor's edge or on the rough boxes round props and in open windows used to hang in the air)
     for (const [x0, x1, z0, z1, y] of rooms) {
-      const n = y === 3.45 ? 28 : Math.round((x1 - x0) * (z1 - z0) * 0.55);
+      const n = y === 3.45 ? 28 : Math.round((x1 - x0) * (z1 - z0) * (this.level.decor?.density ?? 0.55)); // (the Hive's rooms dress themselves: level.decor.density)
       for (let i = 0; i < n; i++) {
         const x = rand(x0, x1), z = rand(z0, z1);
         const down = this.fx.decalRay(x, y + 0.3, z, 0, -1, 0, 0.4);
@@ -322,7 +322,7 @@ export class Game {
     }
     // wall smears & bullet holes via random horizontal rays from room centers
     for (const [x0, x1, z0, z1, y] of rooms) {
-      for (let i = 0; i < 26; i++) {
+      for (let i = 0; i < (this.level.decor?.walls ?? 26); i++) {
         const o = _p.set(rand(x0, x1), y + rand(0.25, 1.9), rand(z0, z1));
         const a = Math.random() * Math.PI * 2;
         const hit = this.fx.decalRay(o.x, o.y, o.z, Math.cos(a), 0, Math.sin(a), 8);
@@ -634,7 +634,7 @@ export class Game {
     if (milestone) sub = 'The horde grows stronger';
     this.hud.banner(`ROUND ${this.round}`, sub, 3, this.round === this.maxRounds || milestone ? 'danger' : 'normal');
     this.audio.play('round_start', { volume: 0.9 });
-    this.power?.onRoundStart(this.round); // used gas cans come back upstairs
+    this.power?.onRoundStart(this.round); // used gas cans come back to the cellar
     this.revives?.onRoundStart(); // everyone can be revived once again
     this.pulseReady = true; // the shockwave emitter recharges
     // special weapons
@@ -1625,6 +1625,7 @@ export class Game {
       this.viewmodel.setVisible(false);
       this.fx.update(dt);
       this.lab?.update(dt, this); // hides the lab while the menu camera is above ground
+      this.level?.menuUpdate?.(dt); // (the Hive's tank)
       return;
     }
 

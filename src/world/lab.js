@@ -764,20 +764,38 @@ export class Kit {
   plane(mat, w, h, x, y, z, r, rect = null, W = 1024, H = 1024) {
     return this.add(mat, rect ? atlasPlane(w, h, rect, W, H) : new THREE.PlaneGeometry(w, h), x, y, z, r);
   }
-  /** merge into meshes under `group`; baked materials get their light from `bake` */
-  build(group, bake) {
-    for (const [mat, geos] of this.parts) {
-      const g = geos.length === 1 ? geos[0] : mergeGeometries(geos, false);
-      if (!g) continue;
-      if (mat.userData.bake) bake(g);
-      g.computeBoundingSphere();
-      const mesh = new THREE.Mesh(g, mat);
-      mesh.castShadow = !!mat.userData.cast;
-      mesh.receiveShadow = !mat.transparent;
-      if (mat.transparent) mesh.renderOrder = -1; // before the armored window (drawn over the lab)
-      mesh.matrixAutoUpdate = false;
-      mesh.updateMatrix();
-      group.add(mesh);
+  /**
+   * merge into meshes under `group`; baked materials get their light from `bake`. chunk > 0: one mesh per material AND
+   * per chunk x chunk metres of the plan (by the middle of each piece), so the view frustum can cull the level
+   */
+  build(group, bake, chunk = 0) {
+    const box = new THREE.Box3();
+    for (const [mat, all] of this.parts) {
+      const cells = new Map();
+      if (chunk > 0) {
+        for (const g of all) {
+          g.computeBoundingBox();
+          box.copy(g.boundingBox);
+          const key = Math.floor((box.min.x + box.max.x) / 2 / chunk) + ',' + Math.floor((box.min.z + box.max.z) / 2 / chunk);
+          const a = cells.get(key);
+          if (a) a.push(g);
+          else cells.set(key, [g]);
+        }
+      } else cells.set('', all);
+      for (const geos of cells.values()) {
+        const g = geos.length === 1 ? geos[0] : mergeGeometries(geos, false);
+        if (!g) continue;
+        if (mat.userData.bake) bake(g);
+        g.computeBoundingSphere();
+        const mesh = new THREE.Mesh(g, mat);
+        mesh.castShadow = !!mat.userData.cast;
+        mesh.receiveShadow = !mat.transparent;
+        if (mat.transparent) mesh.renderOrder = -1; // before the armored window (drawn over the lab)
+        mesh.matrixAutoUpdate = false;
+        mesh.updateMatrix();
+        if (chunk > 0) mesh.userData.chunk = true; // (hiveCull.js manages these)
+        group.add(mesh);
+      }
     }
     this.parts.clear();
   }

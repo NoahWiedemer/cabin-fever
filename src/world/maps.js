@@ -44,8 +44,8 @@ MAPS.hive = {
   id: 'hive',
   name: 'THE HIVE',
   place: 'SUBLEVEL 4',
-  desc: 'NOX Biosystems, sublevel 4: the atrium, long corridors, labs, offices, the specimen hall. Nadja works behind glass in her clean room.',
-  image: 'maps/hive.webp', // the atrium's specimen column (1024 x 576)
+  desc: 'NOX Biosystems, sublevel 4: a giant specimen tank in the atrium, long corridors, labs, an infirmary, offices, the specimen hall and the containment cells. Nadja works behind glass in her clean room.',
+  image: 'maps/hive.webp', // the atrium's specimen tank (1024 x 576)
   fogRects: [[-60, -60, 60, 60]], // (all inside: only the distance haze)
   labRect: null,
   story: false,
@@ -111,7 +111,9 @@ export async function buildMap(map, progress) {
     return buildAppenweier(progress);
   }
   if (map.id === 'hive') {
-    const { buildHive } = await import('./hive.js');
+    // the zombies that hang in the Hive's tanks have to be there before it is built
+    const [{ buildHive }, { SPECIMEN_URLS }, { preloadGLBs }] = await Promise.all([import('./hive.js'), import('./hiveTank.js'), import('../core/assets.js')]);
+    await preloadGLBs(SPECIMEN_URLS);
     return buildHive(progress);
   }
   return buildLevel();
