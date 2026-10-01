@@ -254,6 +254,7 @@ export class CollisionWorld {
    * Returns { t, box, nx, ny, nz } or null. `filter(box)` may reject boxes.
    */
   raycast(ox, oy, oz, dx, dy, dz, maxT, filter = null, out = {}) {
+    if (Number.isNaN(ox + oy + oz + dx + dy + dz)) return null; // (a broken ray never walks the grid)
     const cell = this.cell;
     let cx = this._cx(ox), cz = this._cz(oz);
     const stepX = dx > 0 ? 1 : -1;

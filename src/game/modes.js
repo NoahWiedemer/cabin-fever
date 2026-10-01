@@ -33,7 +33,30 @@ export const MODES = {
   },
 };
 
-export const MODE_LIST = [MODES.cabinfever, MODES.endless, MODES.gauntlet];
+// the mission (Desert Thunder, world/maps.js desert): sectors with objectives and checkpoints instead of waves, human
+// enemies instead of the infected (game/desertMission.js); on its own map only
+MODES.mission = {
+  id: 'mission',
+  name: 'MISSION',
+  kicker: 'FIRETEAM',
+  tagline: 'Four sectors, one hostage, no second chances.',
+  desc: 'A mission in four sectors: objectives, time limits and checkpoints instead of waves. Every checkpoint heals the fireteam and brings the fallen back; if all of you go down, the mission fails.',
+  endless: false,
+  story: false,
+  timer: false, // (the mission's own clocks: game/desertMission.js)
+  campaign: true,
+  maps: ['desert'],
+};
+
+export const MODE_LIST = [MODES.cabinfever, MODES.endless, MODES.gauntlet, MODES.mission];
+
+/** can mode `modeId` run on `map` (world/maps.js)? A map may list its own modes (Desert Thunder: the mission only), a mode the maps it runs on. */
+export function modeAllowed(modeId, map) {
+  const m = MODES[modeId];
+  if (!m) return false;
+  if (map?.modes) return map.modes.includes(modeId);
+  return !m.maps || m.maps.includes(map?.id);
+}
 
 // Unlock rounds: the upstairs (bedrooms, the Golden Punisher, the balcony over the yard) with round 4, the
 // basement (and in the story Nadja's lab behind it) with round 10, on every difficulty and in endless.

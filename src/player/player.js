@@ -295,7 +295,7 @@ export class Player {
         this.stepDist = 0;
         const hit = world.raycast(b.pos.x, b.pos.y + 0.2, b.pos.z, 0, -1, 0, 0.6, null, {});
         const s = hit ? hit.box.surface : SURF.wood;
-        const name = s === SURF.mud ? 'footstep_mud' : s === SURF.concrete ? 'footstep_concrete' : 'footstep_wood';
+        const name = s === SURF.mud ? 'footstep_mud' : s === SURF.concrete ? 'footstep_concrete' : s === SURF.metal ? 'footstep_metal' : 'footstep_wood';
         this.game.audio.play(name, { volume: this.crouching ? 0.25 : sprinting ? 0.62 : 0.5 });
       }
     }

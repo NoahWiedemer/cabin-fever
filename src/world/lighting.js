@@ -72,8 +72,12 @@ void main() {
 `;
 
 export class Lighting {
-  /** indoor: an underground map (level.indoor): no moon, no lightning; { sky, ground } its hemisphere's indoor colours */
-  constructor(scene, lamps, quality, indoor = null) {
+  /**
+   * indoor: an underground map (level.indoor): no moon, no lightning; { sky, ground } its hemisphere's indoor colours.
+   * day: a map at noon (level.daylight: world/desert.js): the moon becomes the sun ({ sunDir, sun, sunColor }), no
+   * lightning, a bright sky and warm ground bounce ({ sky, ground, hemi, shadeSky, shadeGround } for inside the houses).
+   */
+  constructor(scene, lamps, quality, indoor = null, day = null) {
     this.scene = scene;
     this.lamps = lamps;
     this.q = quality;
@@ -132,6 +136,23 @@ export class Lighting {
       this.nextLightning = Infinity;
       if (indoor.sky) this.hemiInSky.set(indoor.sky);
       if (indoor.ground) this.hemiInGround.set(indoor.ground);
+    }
+    this.day = day;
+    if (day) {
+      this.nextLightning = Infinity;
+      this.moonDir.set(...day.sunDir).normalize();
+      this.moon.position.copy(this.moonDir).multiplyScalar(60);
+      this.moonBase = day.sun ?? 2.6;
+      this.dayColor = new THREE.Color(day.sunColor ?? 0xfff0d8);
+      this.hemiOutSky.set(day.sky ?? 0xa9c6e8);
+      this.hemiOutGround.set(day.ground ?? 0xc2a47a);
+      // in the shade of the houses (indoor 1): the light that comes in through the doors and off the street
+      this.hemiInSky.set(day.shadeSky ?? 0x8f94a0);
+      this.hemiInGround.set(day.shadeGround ?? 0xa8865e);
+      this.hemiDarkSky.copy(this.hemiInSky);
+      this.hemiDarkGround.copy(this.hemiInGround);
+      this.hemiBase = day.hemi ?? 1;
+      ms.camera.far = 160; // (a high sun: the box's far end has to reach the ground under it)
     }
 
     // Lamp light pool
@@ -356,7 +377,8 @@ export class Lighting {
     }
     this.lightning = Math.max(flash, this.lightning - dt * 6);
     this.moon.intensity = this.moonBase + this.lightning * 9;
-    this.moon.color.setRGB(0.62 + this.lightning * 0.3, 0.7 + this.lightning * 0.25, 0.87 + this.lightning * 0.1);
+    if (this.day) this.moon.color.copy(this.dayColor);
+    else this.moon.color.setRGB(0.62 + this.lightning * 0.3, 0.7 + this.lightning * 0.25, 0.87 + this.lightning * 0.1);
     if (this.moonTint) this.moon.color.lerp(this.moonTint, this.moonTintK ?? 1); // game/events.js: the blood moon
     const ind = this.indoor;
     const pw = this.mains;

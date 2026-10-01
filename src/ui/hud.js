@@ -343,6 +343,7 @@ const HUD_HTML = `
 <div class="cf-pickup"></div>
 <div class="cf-pickup cf-interact"></div>
 <div class="cf-gadget cf-hide">${PULSE_SVG}<span class="cf-gd-t"><small>SHOCKWAVE</small><b>READY</b></span><span class="cf-key">X</span></div>
+<div class="cf-orders cf-hide"><span class="cf-gd-t"><small>FIRETEAM</small><b>HOLD</b></span><span class="cf-key">T</span></div>
 <div class="cf-vitals">
   <div class="cf-sil">${STAND_SVG}${CROUCH_SVG}<span class="cf-sp">SP</span></div>
   <div class="cf-vit-main">
@@ -418,8 +419,10 @@ export class HUD {
       radar: q('.cf-radar-cv'),
       round: q('.cf-round'),
       roundNum: q('.cf-round-num'),
+      roundLbl: q('.cf-round-lbl'),
       infected: q('.cf-infected'),
       infectedNum: q('.cf-infected b'),
+      infectedLbl: q('.cf-infected span'),
       banner: q('.cf-banner'),
       career: q('.cf-career'),
       bTitle: q('.cf-banner-title'),
@@ -447,6 +450,8 @@ export class HUD {
       pipeNum: q('.cf-pipe b'),
       gadget: q('.cf-gadget'),
       gadgetT: q('.cf-gadget b'),
+      orders: q('.cf-orders'),
+      ordersT: q('.cf-orders b'),
       barr: q('.cf-barr'),
       barrNum: q('.cf-barr b'),
       revive: q('.cf-revive'),
@@ -614,7 +619,9 @@ export class HUD {
       const w = Math.max(2, String(state.maxRounds ?? 0).length);
       // endless mode has no cap (maxRounds null)
       this._text($.roundNum, 'round', state.maxRounds == null ? `${pad(round, 2)}/∞` : `${pad(round, w)}/${pad(state.maxRounds, w)}`);
+      this._text($.roundLbl, 'roundLbl', state.roundLabel ?? 'ROUND'); // (a mission counts sectors)
     }
+    this._text($.infectedLbl, 'infLbl', state.enemiesLabel ?? 'INFECTED');
     const showInf = inRound && state.enemiesLeft != null;
     this._cls($.infected, 'on', 'infOn', showInf);
     if (showInf) this._text($.infectedNum, 'inf', String(Math.max(0, state.enemiesLeft | 0)));
@@ -688,6 +695,14 @@ export class HUD {
     if (gd) {
       this._cls($.gadget, 'used', 'gdUsed', !gd.ready);
       this._text($.gadgetT, 'gdT', gd.ready ? 'READY' : 'NEXT ROUND');
+    }
+    // the fireteam's orders (key T): holding its posts, or following you
+    const ord = state.orders;
+    this._cls($.orders, 'cf-hide', 'ordHide', !ord);
+    if (ord) {
+      this._text($.ordersT, 'ordT', ord === 'follow' ? 'ON ME' : 'HOLD');
+      this._cls($.orders, 'follow', 'ordFollow', ord === 'follow');
+      this._cls($.orders, 'high', 'ordHigh', !gd); // (no shockwave chip: it takes that spot)
     }
     const barr = Math.max(0, state.barricades | 0);
     this._cls($.barr, 'cf-hide', 'barrHide', !barr);

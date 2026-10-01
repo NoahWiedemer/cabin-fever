@@ -164,7 +164,7 @@ export class Projectiles {
     for (const { zombie } of game.zombies.inRadius(p.pos, r)) {
       if (zombie.alive && zombie.typeName !== 'stalker' && Math.abs(zombie.pos.y - p.pos.y) < 1.2) return true;
     }
-    for (const m of game.mercs?.list ?? []) {
+    for (const m of game.hostiles ?? game.mercs?.list ?? []) {
       if (m.alive && m.inPlay && m.root.visible && Math.hypot(m.pos.x - p.pos.x, m.pos.z - p.pos.z) < r && Math.abs(m.pos.y - p.pos.y) < 1.2) return true;
     }
     return false;

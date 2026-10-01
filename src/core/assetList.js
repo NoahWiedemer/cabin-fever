@@ -30,7 +30,7 @@ export const MODELS = {
   devotion: '/models/weapons/devotion.glb',
   sigma: '/models/weapons/sigma.glb',
   p90: '/models/weapons/p90.glb',
-  mg42: '/models/weapons/mg42.glb', // with its ammo box (tools/blender/weapons_import.py mg42)
+  mg42: '/models/weapons/mg42.glb', // its belt box built on (tools/blender/weapons_import.py mg42)
   mozambique: '/models/weapons/mozambique.glb',
   softball: '/models/weapons/softball.glb',
   molotov: '/models/weapons/molotov.glb',

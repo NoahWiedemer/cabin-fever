@@ -15,7 +15,7 @@ const _p = V(), _l = V(), _a = V(), _b = V(), _c = V(), _d = V(), _s = V();
 const FB = -3.2; // basement floor
 
 /** set the cutscene camera: position, look-at point, vertical fov, a faint handheld drift */
-function cam(g, pos, look, fov = 50, drift = 0) {
+export function cam(g, pos, look, fov = 50, drift = 0) {
   const c = g.camera;
   c.position.copy(pos);
   if (drift) c.position.add(_s.set(Math.sin(g.time * 1.3) * drift, Math.sin(g.time * 1.9 + 1) * drift * 0.7, Math.cos(g.time * 1.1) * drift));
@@ -29,7 +29,7 @@ function cam(g, pos, look, fov = 50, drift = 0) {
 }
 
 /** floor under (x, z) near height y (the yard, the porch deck, the basement) */
-function floorAt(g, x, z, y) {
+export function floorAt(g, x, z, y) {
   const h = g.world.groundHeight(x, z, 0.2, y + 0.7);
   return h > -50 && h > y - 1.5 ? h : y;
 }

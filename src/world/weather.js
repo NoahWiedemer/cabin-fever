@@ -307,6 +307,7 @@ function buildWindowShafts(windows, moonDir) {
 export class Weather {
   constructor(scene, level) {
     this.underground = !!level.indoor; // (world/hive.js: no sky, rain, splashes, fog banks or bolts: hidden below)
+    this.clearSky = !!level.daylight; // (world/desert.js: noon, no rain or storm clouds; the map brings its own sky)
     this.scene = scene;
     this.level = level;
     this.time = 0;
@@ -513,7 +514,7 @@ export class Weather {
       this.shafts = buildWindowShafts(level.windows, new THREE.Vector3(-0.55, 0.75, 0.35).normalize());
       scene.add(this.shafts);
     }
-    if (this.underground) for (const o of [this.sky, this.rain, this.splashes, this.fogBanks, this.bolt]) if (o) o.visible = false;
+    if (this.underground || this.clearSky) for (const o of [this.sky, this.rain, this.splashes, this.fogBanks, this.bolt]) if (o) o.visible = false;
   }
 
   _makeBolt() {

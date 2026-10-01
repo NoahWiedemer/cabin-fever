@@ -282,7 +282,7 @@ export class Biter extends Zombie {
     this._move(dt, ctx);
     const prev = this.phase;
     this.animate(dt);
-    if (Math.floor(prev / Math.PI) !== Math.floor(this.phase / Math.PI) && this.moveSpeed > 1 && Math.random() < 0.35) {
+    if (Math.floor(prev / Math.PI + 0.5) !== Math.floor(this.phase / Math.PI + 0.5) && this.moveSpeed > 1 && Math.random() < 0.35) {
       game.audio.play('zombie_footstep', { position: pos, volume: 0.18, pitch: 1.8 });
     }
   }
@@ -621,8 +621,8 @@ export class Biter extends Zombie {
     b.hips.rotation.set(0.05, s * 0.22 * moving + f.z * 0.2, c * 0.1 * moving + tw.z * 0.12);
     b.thighL.rotation.set(-crouch - s * amp, 0, 0.12);
     b.thighR.rotation.set(-crouch + s * amp, 0, -0.12);
-    b.shinL.rotation.set(crouch * 1.3 + Math.max(0, -c) * amp * 1.1, 0, 0);
-    b.shinR.rotation.set(crouch * 1.3 + Math.max(0, c) * amp * 1.1, 0, 0);
+    b.shinL.rotation.set(crouch * 1.3 + Math.max(0, c) * amp * 1.1, 0, 0);
+    b.shinR.rotation.set(crouch * 1.3 + Math.max(0, -c) * amp * 1.1, 0, 0);
     b.footL.rotation.set(-(b.thighL.rotation.x + b.shinL.rotation.x) * 0.8, 0, 0);
     b.footR.rotation.set(-(b.thighR.rotation.x + b.shinR.rotation.x) * 0.8, 0, 0);
     // the model is hunched already: a bit further at a sprint, the head tipped up to see ahead

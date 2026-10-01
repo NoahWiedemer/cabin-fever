@@ -17,7 +17,8 @@ let installed = false;
  * (centre, rotation, half extents: the turned barn) - both ends of the view ray go into its frame first
  * (the xz length inside is rotation invariant). A single rect is fine too.
  */
-export function installFogShader(insideRects = [HOUSE_FOG_RECT, BARN_INSIDE], labRect = [-12.5, 3.8, 2.9, 19.6]) {
+/** fogBase: the haze everywhere, per metre (the map's: world/maps.js; the farm's night 0.006) */
+export function installFogShader(insideRects = [HOUSE_FOG_RECT, BARN_INSIDE], labRect = [-12.5, 3.8, 2.9, 19.6], fogBase = 0.006) {
   if (installed) return;
   installed = true;
   const rects = typeof insideRects[0] === 'number' ? [insideRects] : insideRects;
@@ -106,7 +107,7 @@ export function installFogShader(insideRects = [HOUSE_FOG_RECT, BARN_INSIDE], la
       float hf = mix(exp(-hA * 0.22), exp(-hB * 0.22), 0.35);
       vec2 q = cfP.xz * 0.07 + vec2(cfTime * 0.035, cfTime * 0.012);
       float n = cfNoise(q) * 0.55 + cfNoise(q * 3.1 - cfTime * 0.05) * 0.3 + cfNoise(q * 8.3 + cfTime * 0.08) * 0.15;
-      float cfDens = 0.006 * cfDist + cfOut * outsideDist * (0.45 + 0.9 * n) * (0.3 + 0.7 * hf);
+      float cfDens = ${fogBase.toFixed(5)} * cfDist + cfOut * outsideDist * (0.45 + 0.9 * n) * (0.3 + 0.7 * hf);
     #endif
     float fogFactor = 1.0 - exp(-cfDens);
     gl_FragColor.rgb = mix(gl_FragColor.rgb, fogColor, fogFactor);

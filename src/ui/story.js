@@ -11,6 +11,9 @@ const SPEAKER_COLOR = {
   COMMAND: '#7fd4ff',
   PILOT: '#9ff0a8',
   NADJA: '#ff9fd6',
+  // Desert Thunder (game/desertMission.js): the colonel at headquarters, the sergeant on the UAV feed
+  COLEMAN: '#7fd4ff',
+  EVANS: '#ffc46b',
 };
 
 export class StoryUI {

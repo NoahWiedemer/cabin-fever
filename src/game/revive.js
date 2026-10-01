@@ -202,6 +202,13 @@ export class Revives {
       s.scale.setScalar(r.ch ? 0.42 : 0.36 + pulse * 0.07);
       s.material.opacity = r.ch ? 1 : left < 5 ? (Math.sin(time * 14) > 0 ? 0.95 : 0.25) : 0.7 + pulse * 0.3;
       s.material.color.setRGB(r.ch ? 0.75 : 1, 1, r.ch ? 0.8 : 1);
+      // in a heal cloud (healIn): brighter and bigger as it fills
+      if (r.healT > 0) {
+        r.healT -= dt;
+        s.material.color.setRGB(0.45, 1, 0.55);
+        s.material.opacity = 1;
+        s.scale.setScalar(0.36 + 0.18 * (r.heal ?? 0) + pulse * 0.05);
+      }
       // not over your own body (you're watching from it) nor right under your hands
       s.visible = !r.m.isPlayer && !r.ch?.by?.isPlayer;
     }
@@ -402,11 +409,17 @@ export class Revives {
     return true;
   }
 
-  /** A heal grenade's top level (game.js healCloud): whoever lies downed within `radius` m of `pos` gets up. */
-  reviveIn(pos, radius, by) {
+  /**
+   * A heal grenade's cloud (game.js _updateHeal, every `dt` s): each downed teammate in it gets back up once it has
+   * spent `dur` s in the cloud; its revive window doesn't run out meanwhile (the marker glows while it fills).
+   */
+  healIn(pos, radius, dt, dur, by) {
     for (const r of [...this.downed]) {
       if (Math.hypot(r.pos.x - pos.x, r.pos.z - pos.z) > radius || Math.abs(r.pos.y - pos.y) > 2) continue;
-      this._revive(r, by);
+      r.t = Math.max(0, r.t - dt); // (held: the cloud keeps them alive)
+      r.heal = (r.heal ?? 0) + dt / Math.max(0.5, dur);
+      r.healT = 0.4;
+      if (r.heal >= 1) this._revive(r, by);
     }
   }
 

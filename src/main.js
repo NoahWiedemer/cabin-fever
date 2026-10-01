@@ -18,7 +18,7 @@ import { WEAPONS } from './player/weaponDefs.js';
 
 // the map this page plays (world/maps.js): picking another one in the menu reloads the page
 const MAP = currentMap();
-installFogShader(MAP.fogRects, MAP.labRect);
+installFogShader(MAP.fogRects, MAP.labRect, MAP.fogBase);
 const LS_PENDING = 'cabinfever.pendingDeploy'; // (sessionStorage) a deploy that switched maps: resumed after the reload
 
 const container = document.getElementById('game');

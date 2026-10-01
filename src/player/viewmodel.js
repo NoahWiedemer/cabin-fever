@@ -16,7 +16,31 @@ import { clamp, damp, lerp, smoothstep } from '../core/utils.js';
 
 const _v = new THREE.Vector3();
 const _q = new THREE.Quaternion();
-const _edge = new THREE.Vector3(); // the MG 42 cover's rear edge (belt reload)
+const _edge = new THREE.Vector3(); // a belt-fed gun's cover edge (belt reload)
+const _feed = new THREE.Vector3();
+// (the MG 42: its belt box is built onto the feed) the support hand over the feed in the belt reload, from the cover's
+// latch (loadPort, root space): [f, x, y, z] keys. The cover flipped up, down to the box for the belt's end, the belt
+// laid in the tray, the cover's edge, slammed shut.
+const FEED_PATH = [
+  [0.0, 0, 0, 0],
+  [0.1, 0, 0, 0],
+  [0.15, 0, 0.035, 0.01],
+  [0.2, 0, 0.01, 0],
+  [0.3, -0.03, -0.12, -0.07],
+  [0.42, -0.035, -0.105, -0.07],
+  [0.54, -0.015, 0.01, -0.03],
+  [0.64, 0, 0.012, 0],
+  [0.69, 0, 0.03, 0.01],
+  [0.71, 0, -0.01, 0],
+  [1.0, 0, -0.01, 0],
+];
+function feedPath(f, out) {
+  let i = 0;
+  while (i < FEED_PATH.length - 2 && f > FEED_PATH[i + 1][0]) i++;
+  const a = FEED_PATH[i], b = FEED_PATH[i + 1];
+  const k = smoothstep(a[0], b[0], f);
+  return out.set(a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k, a[3] + (b[3] - a[3]) * k);
+}
 const _e = new THREE.Euler();
 const _adsArm = new THREE.Vector3();
 // full-sprint offsets [x, y, z, rx, ry, rz]: the gun drops and cants across the body (a def may bring its own)
@@ -534,9 +558,9 @@ export class Viewmodel {
       ry += o.ry;
       rz += o.rz;
     } else if (a && a.kind === 'belt' && st === 'reload') {
-      // belt-fed (the MG 42): the support hand flips the feed cover up, pulls the empty ammo box off (it falls
-      // free), hooks a fresh one on and lays the belt in the tray, slams the cover shut; then the right hand
-      // leaves the grip and racks the cocking handle
+      // belt-fed: the support hand flips the feed cover up, pulls the empty ammo box off (it falls free), hooks a
+      // fresh one on and lays the belt in the tray, slams the cover shut; then the right hand leaves the grip and racks
+      // the cocking handle. A gun whose box is built on (the MG 42: no cover or box parts) is worked at its loadPort.
       const f = clamp(a.t / a.dur, 0, 1);
       const tilt = pulse(f, 0.0, 0.1, 0.86, 1.0);
       rz -= tilt * 0.2; // roll right: the feed and the box on its left side come up into view
@@ -572,7 +596,9 @@ export class Viewmodel {
         L.quaternion.copy(m.leftHand ? m.leftHand.quaternion : _q.identity());
         const C = P.cover;
         const edge = C ? _edge.set(0, 0.015, 0.14).applyEuler(C.rotation).add(C.position) : null;
-        if (edge && (f < 0.13 || f > 0.62)) {
+        if (!C && !P.mag && m.loadPort) {
+          L.position.copy(m.loadPort).add(feedPath(f, _feed));
+        } else if (edge && (f < 0.13 || f > 0.62)) {
           L.position.copy(edge); // flips the latch and lifts the cover / pushes it back down
         } else if (P.mag && f < 0.54) {
           L.position.copy(P.mag.position);

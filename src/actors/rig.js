@@ -248,8 +248,11 @@ function buildBody(spec) {
   }
 
   // ---- neck & head
-  if (spec.head === 'soldier' || spec.head === 'merc') {
-    P.add(cyl(0.055, 0.062, 0.12, 12), B.neck, C(0x16171a), 0, { matrix: T(0, 0.04, 0), blend: { parent: B.chest, len: 0.05 }, dirt: 0 });
+  if (spec.head === 'soldier' || spec.head === 'merc' || spec.head === 'shemagh') {
+    const neck = spec.head === 'shemagh' ? C(spec.shemagh ?? 0xe8e4da) : C(0x16171a);
+    P.add(cyl(0.055, 0.062, 0.12, 12), B.neck, neck, 0, { matrix: T(0, 0.04, 0), blend: { parent: B.chest, len: 0.05 }, dirt: spec.head === 'shemagh' ? 0.25 : 0 });
+  } else if (spec.humanSkin) {
+    P.add(cyl(0.052, 0.06, 0.12, 12), B.neck, skin, 0, { matrix: T(0, 0.04, 0), blend: { parent: B.chest, len: 0.05 }, dirt: 0 });
   } else {
     P.add(cyl(0.052 * (brute ? 1.5 : 1), 0.06 * (brute ? 1.5 : 1), 0.12, 12), B.neck, skin, 1, { matrix: T(0, 0.04, 0), blend: { parent: B.chest, len: 0.05 }, dirt: 0 });
   }
@@ -272,13 +275,13 @@ function buildBody(spec) {
     // elbow
     P.add(sph(armR * 0.95, 10, 8), fa, top, topMat, { matrix: T(0, 0, 0), blend: { parent: ua, len: 0.05, fromTop: true } });
     const sleeve = spec.rolledSleeves ? skin : shirt;
-    const sleeveMat = spec.rolledSleeves ? 1 : 0;
+    const sleeveMat = spec.rolledSleeves && !spec.humanSkin ? 1 : 0;
     P.add(caps(armR * 0.85, 0.2), fa, sleeve, sleeveMat, { matrix: T(0, -0.13, 0), blend: { parent: ua, len: 0.06, fromTop: true }, blood, dirt: 0.1 });
     if (!spec.rolledSleeves) P.add(cyl(armR * 0.95, armR * 0.95, 0.04, 12), fa, dark, 0, { matrix: T(0, -0.22, 0) });
     // hand
     const gloves = spec.gloves != null;
     const hc = gloves ? C(spec.gloves) : skin;
-    const hm = gloves ? 0 : 1;
+    const hm = gloves || spec.humanSkin ? 0 : 1; // (humanSkin: the living, not the infected's flesh)
     const hs = brute ? 1.5 : female ? 0.9 : 1;
     P.add(rbox(0.075 * hs, 0.09 * hs, 0.035 * hs, 0.015), hd, hc, hm, { matrix: T(0, -0.045 * hs, 0), blend: { parent: fa, len: 0.03, fromTop: true }, blood: blood * 0.8 });
     // fingers (4) curled slightly + thumb
@@ -323,6 +326,51 @@ function buildHead(P, spec, skin, C) {
   const h = spec.head;
   const blood = spec.blood ?? 0.35;
   const white = C(0xd8d2b8);
+  const eyes = C(0x120c08);
+  if (h === 'shemagh') {
+    // the Sand Hog militia (actors/insurgent.js): a shemagh wound round the whole head, only the eyes showing; a band
+    // of its pattern round the brow and over the crown, the fold under the chin, the loose end down the back
+    const cloth = C(spec.shemagh ?? 0xe8e4da), band = C(spec.pattern ?? 0x9a2a22);
+    P.add(sph(0.112, 16, 12), B.head, cloth, 0, { matrix: TRS(0, 0.105, 0, 0, 0, 0, 1.04, 1.12, 1.08), dirt: 0.25 });
+    P.add(rbox(0.11, 0.03, 0.03, 0.01), B.head, skin, 0, { matrix: T(0, 0.125, 0.104), dirt: 0 });
+    for (const sx of [-1, 1]) P.add(sph(0.012, 8, 6), B.head, eyes, 0, { matrix: TRS(sx * 0.03, 0.126, 0.117, 0, 0, 0, 1, 0.7, 0.5) });
+    P.add(sph(0.1, 14, 10), B.head, cloth, 0, { matrix: TRS(0, 0.068, 0.038, 0, 0, 0, 1.0, 0.72, 0.95), dirt: 0.3 });
+    P.add(new THREE.TorusGeometry(0.113, 0.014, 6, 20), B.head, band, 0, { matrix: TRS(0, 0.16, 0.004, Math.PI / 2 + 0.12, 0, 0, 1.03, 1.08, 1) });
+    for (let i = -1; i <= 1; i++) P.add(rbox(0.012, 0.02, 0.2, 0.004), B.head, band, 0, { matrix: TRS(i * 0.045, 0.205, 0, 0.1, 0, 0) });
+    P.add(caps(0.034, 0.16, 8, 2), B.head, cloth, 0, { matrix: TRS(0.05, -0.02, -0.085, 0.5, 0, 0.35), dirt: 0.3 });
+    P.add(rbox(0.13, 0.12, 0.03, 0.02), B.neck, cloth, 0, { matrix: TRS(0, -0.02, 0.065, -0.3, 0, 0), dirt: 0.3 });
+    return;
+  }
+  if (h === 'hogScout') {
+    // the Sand Hog scout: a knit cap with goggles pushed up on it, a light scarf over the mouth and nose, the face
+    // between them bare
+    const cap = C(spec.cap ?? 0x2a2c24), scarf = C(spec.scarf ?? 0xb8a888);
+    P.add(sph(0.1, 16, 12), B.head, skin, 0, { matrix: TRS(0, 0.1, 0.01, 0, 0, 0, 0.97, 1.12, 1.04), dirt: 0 });
+    for (const sx of [-1, 1]) {
+      P.add(sph(0.013, 8, 6), B.head, eyes, 0, { matrix: TRS(sx * 0.032, 0.125, 0.093, 0, 0, 0, 1, 0.7, 0.5) });
+      P.add(caps(0.006, 0.03, 4, 2), B.head, C(0x1a120c), 0, { matrix: TRS(sx * 0.033, 0.142, 0.095, 0, 0, Math.PI / 2 + sx * 0.1) });
+      P.add(sph(0.022, 8, 6), B.head, skin, 0, { matrix: TRS(sx * 0.098, 0.105, 0, 0, 0, 0, 0.4, 1, 0.75) });
+    }
+    P.add(new THREE.SphereGeometry(0.108, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.5), B.head, cap, 0, { matrix: TRS(0, 0.14, 0, -0.1, 0, 0, 1, 1.05, 1.05), dirt: 0.2 });
+    P.add(cyl(0.108, 0.11, 0.035, 18), B.head, cap, 0, { matrix: TRS(0, 0.14, 0, -0.1, 0, 0) });
+    P.add(rbox(0.15, 0.04, 0.03, 0.012), B.head, C(0x151515), 0, { matrix: TRS(0, 0.19, 0.075, -0.6, 0, 0) });
+    for (const sx of [-1, 1]) P.add(cyl(0.022, 0.022, 0.018, 12), B.head, C(0x4a5a4a), 0, { matrix: TRS(sx * 0.036, 0.195, 0.09, Math.PI / 2 - 0.6, 0, 0) });
+    P.add(new THREE.TorusGeometry(0.105, 0.007, 4, 18), B.head, C(0x1a1a1a), 0, { matrix: TRS(0, 0.17, 0, Math.PI / 2 - 0.2, 0, 0) });
+    P.add(sph(0.098, 14, 10), B.head, scarf, 0, { matrix: TRS(0, 0.06, 0.03, 0, 0, 0, 1.02, 0.7, 1.0), dirt: 0.3 });
+    P.add(cyl(0.075, 0.085, 0.07, 14), B.neck, scarf, 0, { matrix: T(0, 0.02, 0.005), dirt: 0.3 });
+    return;
+  }
+  if (h === 'captive') {
+    // the Intelligence Bureau's operative (Desert Thunder: game/desertMission.js): bare head, short dark hair, a
+    // beaten face, a strip of dark cloth tied over the eyes
+    const hair = C(spec.hair ?? 0x1a120c), cloth = C(spec.blindfold ?? 0x2a2826);
+    P.add(sph(0.1, 16, 12), B.head, skin, 0, { matrix: TRS(0, 0.1, 0.01, 0, 0, 0, 0.97, 1.12, 1.04), blood: blood * 0.6, dirt: 0.2 });
+    for (const sx of [-1, 1]) P.add(sph(0.022, 8, 6), B.head, skin, 0, { matrix: TRS(sx * 0.098, 0.105, 0, 0, 0, 0, 0.4, 1, 0.75) });
+    P.add(new THREE.SphereGeometry(0.105, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.42), B.head, hair, 0, { matrix: TRS(0, 0.112, -0.006, -0.3, 0, 0, 1, 1.12, 1.06) });
+    P.add(new THREE.TorusGeometry(0.1, 0.022, 6, 20), B.head, cloth, 0, { matrix: TRS(0, 0.127, 0.008, Math.PI / 2 - 0.06, 0, 0, 1.0, 1.1, 1) });
+    P.add(caps(0.02, 0.09, 6, 2), B.head, cloth, 0, { matrix: TRS(0.02, 0.1, -0.11, 0.35, 0, 0.3) }); // (the knot's loose ends)
+    return;
+  }
   if (h === 'merc') {
     // the NOX cleanup operative (actors/merc.js): a full-face respirator under a low helmet, no skin showing.
     // Rubber hood, a moulded mask with two big round lenses (emissive: they glow red), a filter canister on
@@ -460,6 +508,15 @@ export const BODY_SPECS = {
   // the NOX cleanup squad (actors/merc.js): black fatigues, charcoal plate carriers, respirators with red lenses
   merc: { build: 'male', head: 'merc', shirt: 0x141619, pants: 0x17191c, vest: 0x25282c, boots: 0x0b0b0c, skin: 0x8a6a5a, blood: 0, gloves: 0x0a0a0b, helmet: 0x1a1c1f, dirtAmt: 0.05, armband: 0x8e1410 },
   soldier2: { build: 'male', head: 'soldier', shirt: 0x1d2024, pants: 0x25282c, vest: 0x2b2e33, boots: 0x121212, skin: 0x8a5a40, blood: 0, gloves: 0x0e0e0e, helmet: 0x23262a },
+  // the Sand Hog militia (Desert Thunder: actors/insurgent.js). Scouts in caps and goggles, patrols in white shemaghs,
+  // the royal guard in black armour and black shemaghs, the rushers in red ones with rolled sleeves
+  hogScout: { build: 'male', head: 'hogScout', humanSkin: true, shirt: 0x8a7a5c, pants: 0x4a4636, vest: 0x5b5a3e, boots: 0x2a2218, skin: 0x4a2f22, blood: 0, dirtAmt: 0.35, cap: 0x2a2c24, scarf: 0xb8a888 },
+  hogScout2: { build: 'male', head: 'hogScout', humanSkin: true, shirt: 0x5e6650, pants: 0x6b604a, vest: 0x4a4a36, boots: 0x201a14, skin: 0x3e271c, blood: 0, dirtAmt: 0.35, cap: 0x5a2420, scarf: 0x7a8a6a },
+  hogPatrol: { build: 'male', head: 'shemagh', humanSkin: true, shirt: 0xc8c0aa, pants: 0x5d5a50, vest: 0x6b5e45, boots: 0x3a2e22, skin: 0x4a2f22, blood: 0, dirtAmt: 0.3, shemagh: 0xe8e4da, pattern: 0x9a2a22 },
+  hogGuard: { build: 'male', head: 'shemagh', humanSkin: true, shirt: 0x151618, pants: 0x18191b, vest: 0x0e0f10, boots: 0x0b0b0c, skin: 0x3e271c, blood: 0, gloves: 0x0c0c0d, dirtAmt: 0.08, shemagh: 0x141416, pattern: 0x6a1a14 },
+  hogRusher: { build: 'male', head: 'shemagh', humanSkin: true, shirt: 0x6e2a22, pants: 0x3a3a34, vest: null, boots: 0x2a2018, skin: 0x4a2f22, blood: 0, rolledSleeves: true, dirtAmt: 0.4, shemagh: 0xb8322a, pattern: 0xe8e0d0 },
+  // their prisoner, the Intelligence Bureau's operative (the temple: game/desertMission.js): a dirty shirt, jeans, blindfolded
+  captive: { build: 'male', head: 'captive', humanSkin: true, shirt: 0xa39c8c, pants: 0x3a4252, vest: null, boots: 0x2a2018, skin: 0xb88a6a, blood: 0.5, dirtAmt: 0.55, hair: 0x1a120c, blindfold: 0x2a2826 },
 };
 
 const templates = new Map();
