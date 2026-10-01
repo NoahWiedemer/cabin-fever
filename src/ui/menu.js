@@ -56,7 +56,7 @@ const VIEWS = { home: 'title', play: 'lobby', career: 'interior', leaderboard: '
 
 const NAV = [
   ['play', 'PLAY', 'Map · mode · difficulty · fireteam'],
-  ['career', 'CAREER', 'Rank · weapon mastery · operators'],
+  ['career', 'LOADOUT', 'Rank · weapon mastery · operators'],
   ['leaderboard', 'LEADERBOARD', 'Your best runs'],
   ['settings', 'SETTINGS', 'Mouse · video · audio'],
   ['controls', 'CONTROLS', 'Keyboard & mouse'],
@@ -599,7 +599,7 @@ export class Menu {
       </button>`
     ).join('');
 
-    // the career panels: the rank, the operators, every weapon's mastery and camos (the CAREER view and the
+    // the career panels: the rank, the operators, every weapon's mastery and camos (the LOADOUT view and the
     // LOADOUT window of the play screen show the same thing)
     const carHtml = () => `
       <div class="cf-car">
@@ -648,7 +648,7 @@ export class Menu {
               <div class="cf-mm-sub"><i></i>FIRETEAM · ZOMBIE SURVIVAL<i></i></div>
             </div>
             <nav class="cf-mm-nav">${navHtml}</nav>
-            <button class="cf-mm-profile" data-sfx data-go="career" data-row title="Career"></button>
+            <button class="cf-mm-profile" data-sfx data-go="career" data-row title="Loadout"></button>
           </section>
 
           <section class="cf-mm-view cf-mm-play" data-view="play">
@@ -682,7 +682,7 @@ export class Menu {
           </section>
 
           <section class="cf-mm-view cf-mm-career" data-view="career">
-            ${head('CAREER', 'SERVICE RECORD')}
+            ${head('LOADOUT', 'SERVICE RECORD')}
             ${carHtml()}
           </section>
 
@@ -885,7 +885,7 @@ export class Menu {
   }
 
   _renderCareerInto(C) {
-    const compact = C.compact; // the loadout window: your rank, the operators, one camo per weapon (a select); the CAREER view has it all
+    const compact = C.compact; // the loadout window: your rank, the operators, one camo per weapon (a select); the LOADOUT view has it all
     const p = Progress.career();
     const r = Progress.rankOf();
     const pct = r.next ? r.into / r.span : 1;

@@ -581,10 +581,12 @@ export class Store {
     el.classList.toggle('equipped', !!on);
     el.classList.toggle('maxed', !s.act && item.kind === 'gear');
     el.classList.toggle('poor', !!s.act && !s.afford);
+    el.classList.toggle('locked', !!s.locked);
     const tag = el.querySelector('.cf-st-card-tag');
     let t;
     if (s.act?.cost) t = `<span class="cf-st-price">${s.act.label.startsWith('UPGRADE') ? UP_SVG : ''}${money(s.act.cost)}</span>`;
     else if (s.equipped) t = `<span class="cf-st-tag on">${s.where === PACK_SLOT ? 'BACKPACK' : 'EQUIPPED'}</span>`;
+    else if (s.locked) t = `<span class="cf-st-tag lock">${LOCK_SVG}LOCKED</span>`; // (not earned yet: the detail says how)
     else if (item.kind === 'weapon' || s.equip) t = '<span class="cf-st-tag">OWNED</span>'; // gear: owned, not worn
     else if (s.done === 'WORN') t = ''; // gear: its slot badge says WORN
     else t = `<span class="cf-st-tag on">${s.done || 'OWNED'}</span>`;
@@ -671,7 +673,9 @@ export class Store {
         ? `<button class="cf-st-buy${s.afford ? '' : ' poor'}" data-sfx data-act="buy">
           <span class="cf-st-buy-l">${a.label}</span>${a.slot ? `<span class="cf-st-buy-s">${slotIcon(a.slot)}${SLOT_LABEL[a.slot]}</span>` : ''}${a.cost ? `<span class="cf-st-buy-c">${money(a.cost)}</span>` : ''}<span class="cf-kc">ENTER</span>
         </button>`
-        : `<button class="cf-st-buy off" disabled><span class="cf-st-buy-l">${done}</span><svg class="cf-st-tick" viewBox="0 0 12 10" aria-hidden="true"><path d="M1 5.2L4.3 8.5L11 1.5" fill="none" stroke="currentColor" stroke-width="2"/></svg></button>`);
+        : s.locked
+          ? `<button class="cf-st-buy off lock" disabled><span class="cf-st-buy-l">${done}</span>${LOCK_SVG.replace('<svg ', '<svg class="cf-st-tick" ')}</button>` // (a lock, not the tick of a bought thing)
+          : `<button class="cf-st-buy off" disabled><span class="cf-st-buy-l">${done}</span><svg class="cf-st-tick" viewBox="0 0 12 10" aria-hidden="true"><path d="M1 5.2L4.3 8.5L11 1.5" fill="none" stroke="currentColor" stroke-width="2"/></svg></button>`);
     if (focused) $.act.querySelector('.cf-st-buy:not(:disabled)')?.focus();
     // one-shot feedback on the freshly rendered controls: denied shake / bought flash
     const fx = this._fx;

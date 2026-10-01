@@ -1,16 +1,16 @@
-// Jerry cans for the generator (world/power.js): two spots upstairs. They appear when the basement
-// opens (the generator burns fuel from then on). Walk over one to pick it up (carry up to POWER.canMax,
-// slot 6). A can poured into the generator comes back at the spot it was taken from at the start of the
-// round after next (POWER.canRespawn rounds later).
+// Jerry cans for the generator (world/power.js): two spots in the cellar, where the generator stands. They appear when the
+// basement opens (the generator burns fuel from then on). Walk over one to pick it up (carry up to POWER.canMax,
+// slot 6). A can poured into the generator comes back at the spot it was taken from at the start of the round after next
+// (POWER.canRespawn rounds later).
 import * as THREE from 'three';
 import { buildJerryCan } from '../player/gasCan.js';
 import { tex } from './textures.js';
 
-const UP = 3.45; // FLOOR.upper
-// the back bedroom (north-west, by the window-less wall) and the junk room behind the south-east room
+const CELLAR = -3.2; // FLOOR.basement
+// by the barrels in the north-west corner, and by the workbench in the south-east one
 export const CAN_SPOTS = [
-  { id: 'bedroom', where: 'the back bedroom', pos: [-6.75, UP, -7.38], rot: 0.35 },
-  { id: 'junkRoom', where: 'the junk room', pos: [11.22, UP, -7.25], rot: -1.2 },
+  { id: 'barrels', where: 'the cellar, by the barrels', pos: [-9.6, CELLAR, -6.55], rot: 0.35 },
+  { id: 'workbench', where: 'the cellar, by the workbench', pos: [1.05, CELLAR, 2.85], rot: -1.2 },
 ];
 
 export class GasCans {

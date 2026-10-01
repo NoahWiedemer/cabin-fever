@@ -14,7 +14,7 @@
 //     then it catches, unless the tank is dry;
 //   * out of fuel: it sputters and dies; pour a jerry can in (slot 6, hold LMB for POWER.refuelTime s,
 //     +POWER.refuel of the tank) and it starts again (a fault still needs the repair first).
-// Two cans wait upstairs (world/gasCans.js); a used can returns to its spot POWER.canRespawn rounds later.
+// Two cans wait in the cellar by the generator (world/gasCans.js); a used can returns to its spot POWER.canRespawn rounds later.
 import * as THREE from 'three';
 import { getMaterial } from './materials.js';
 import { buildGeneratorRig } from './generator.js';
@@ -213,7 +213,7 @@ export class Power {
     g.audio.play('gen_die', { position: at, volume: 1 });
     g.audio.play('power_out', { volume: 0.7 });
     g.shake?.add(0.04);
-    if (this.state === 'dry') g.hud?.banner('OUT OF FUEL', 'The generator is dry · bring a gas can from upstairs', 3.4, 'danger');
+    if (this.state === 'dry') g.hud?.banner('OUT OF FUEL', 'The generator is dry · look for a gas can in the cellar', 3.4, 'danger');
     else g.hud?.banner('THE GENERATOR IS DOWN', 'Lights out · hold F at the generator in the basement to fix it', 3.4, 'danger');
   }
 
@@ -271,7 +271,7 @@ export class Power {
         this.fuel = Math.max(0, this.fuel - dt / POWER.tankSecs);
         if (before >= POWER.lowFuel && this.fuel < POWER.lowFuel && !this.lowWarned) {
           this.lowWarned = true;
-          g.hud?.banner('GENERATOR LOW ON FUEL', 'Gas cans are upstairs · pour one in at the generator', 3, 'normal');
+          g.hud?.banner('GENERATOR LOW ON FUEL', 'Gas cans stand in the cellar · pour one in at the generator', 3, 'normal');
         }
         if (this.fuel <= 0) this._fail('fuel');
         else if (this.sinceStart > POWER.failCooldown && (g.roundTime ?? 0) > POWER.roundGrace && Math.random() < dt / POWER.failEvery) this._fail('fault');

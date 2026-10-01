@@ -555,6 +555,27 @@
 .cf-st-card.poor .cf-st-card-name {
   color: #7c848c;
 }
+.cf-st-card.locked .cf-st-card-pic img {
+  filter: grayscale(1) brightness(0.42) drop-shadow(0 calc(var(--u) * 6) calc(var(--u) * 6) rgba(0, 0, 0, 0.55));
+}
+.cf-st-card.locked .cf-st-card-name {
+  color: #6c747c;
+}
+.cf-st-card.locked:hover .cf-st-card-pic img {
+  filter: grayscale(1) brightness(0.55) drop-shadow(0 calc(var(--u) * 6) calc(var(--u) * 6) rgba(0, 0, 0, 0.55));
+}
+.cf-st-tag.lock {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--u) * 6);
+  border-color: rgba(200, 80, 60, 0.55);
+  background: rgba(200, 80, 60, 0.1);
+  color: #d98a7a;
+}
+.cf-st-tag.lock svg {
+  width: calc(var(--u) * 10);
+  height: calc(var(--u) * 11);
+}
 .cf-st-card.poor .cf-st-price,
 .cf-st-buy.poor .cf-st-buy-c,
 .cf-st-upg.poor .cf-st-upg-p {
@@ -694,6 +715,12 @@
   font-size: calc(var(--u) * 11);
   letter-spacing: 0.22em;
   color: #ff8a6e;
+}
+.cf-st-warn svg {
+  width: calc(var(--u) * 11);
+  height: calc(var(--u) * 13);
+  margin-right: calc(var(--u) * 6);
+  vertical-align: -0.16em;
 }
 
 /* stat bars: base (amber) + bought upgrades (cyan) + hovered upgrade preview (striped) */
@@ -1094,6 +1121,10 @@
 .cf-st-tick {
   width: calc(var(--u) * 20);
   height: calc(var(--u) * 17);
+}
+.cf-st-buy.off.lock {
+  border-color: rgba(200, 80, 60, 0.45);
+  color: #d98a7a;
 }
 @keyframes cf-st-stripes {
   to { background-position: 28px 0, 0 0; }
