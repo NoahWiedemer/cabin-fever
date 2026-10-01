@@ -20,6 +20,7 @@ export function makeCuller(group, { open, NX, NZ, PX0, PZ0, C }) {
     if (!o.isMesh || !o.userData.chunk || !o.geometry) return; // (the kit's chunks: lab.js Kit.build)
     if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
     box.copy(o.geometry.boundingBox).applyMatrix4(o.matrixWorld);
+    box.min.x -= 0.3; box.min.z -= 0.3; box.max.x += 0.3; box.max.z += 0.3; // (a wall is a thin plane on the line between two cells: both sides' cells count)
     const x0 = Math.max(0, Math.floor((box.min.x - PX0) / CELL)), x1 = Math.min(GX - 1, Math.floor((box.max.x - PX0) / CELL));
     const z0 = Math.max(0, Math.floor((box.min.z - PZ0) / CELL)), z1 = Math.min(GZ - 1, Math.floor((box.max.z - PZ0) / CELL));
     const n = (x1 - x0 + 1) * (z1 - z0 + 1);

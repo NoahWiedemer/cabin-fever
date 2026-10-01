@@ -855,7 +855,7 @@ export function stripTexture() {
 // ---------------------------------------------------------------- the label atlas
 /** text signs on demand: `label(text-or-lines, opts, w, h)` draws into a shared atlas and returns its rect */
 export class LabelAtlas {
-  constructor(W = 4096, H = 2048) {
+  constructor(W = 4096, H = 4096) {
     this.W = W;
     this.H = H;
     this.cv = document.createElement('canvas');
@@ -874,7 +874,7 @@ export class LabelAtlas {
   rect(text, o, w, h) {
     const key = JSON.stringify([text, o, Math.round(w * 100), Math.round(h * 100)]);
     if (this.cache.has(key)) return this.cache.get(key);
-    const pw = Math.max(24, Math.min(1024, Math.round(w * 300))), ph = Math.max(16, Math.min(512, Math.round(h * 300)));
+    const pw = Math.max(24, Math.min(1024, Math.round(w * 250))), ph = Math.max(16, Math.min(512, Math.round(h * 250)));
     if (this.x + pw > this.W) {
       this.x = 0;
       this.y += this.rowH;
@@ -883,6 +883,8 @@ export class LabelAtlas {
     if (this.y + ph > this.H) {
       if (!this.overflow) console.warn('[hive] label atlas full');
       this.overflow = true;
+      this.missed = (this.missed ?? 0) + 1;
+      this.missedArea = (this.missedArea ?? 0) + pw * ph;
       return [0, 0, 8, 8];
     }
     const r = [this.x, this.y, pw, ph];

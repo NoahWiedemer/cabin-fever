@@ -57,6 +57,10 @@ import * as DC from './hiveDressC.js';
 import * as F2 from './hiveFacility2.js';
 import * as DD from './hiveDressD.js';
 import * as TK from './hiveTech.js';
+import * as UP1 from './hiveUp1.js';
+import * as UP2 from './hiveUp2.js';
+import * as UP3 from './hiveUp3.js';
+import * as UP4 from './hiveUp4.js';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const COOL = [0.93, 0.97, 1.0];
@@ -753,6 +757,7 @@ export function buildHive() {
   const SH = shellMaterials();
   const F = shellFittings(); // (door leaves, ducts, plastic, rubber, brass)
   const labels = new LabelAtlas();
+  if (/[?&]dbg\b/.test(location.search)) window.__labels = labels;
   M.decal = hiveMat({ map: decalAtlas(), transparent: true, depthWrite: false, roughness: 0.85, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
   M.label = hiveMat({ map: labels.texture, roughness: 0.55 });
   M.aoStrip = new THREE.MeshBasicMaterial({ map: stripTexture(), transparent: true, depthWrite: false, opacity: 0.8, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
@@ -914,7 +919,7 @@ export function buildHive() {
   const c0 = at(FLOORS[0]), c2 = at(FLOORS[2]);
   const ctxOfFloor = (f) => (f === 0 ? c : at(f));
   // the furniture modules bring their own materials (EXTRA_MATS: plain params; EXTRA_GLOW: [colour, intensity])
-  const FURN = [PL, PF, DA, DB, DC, F2, DD, TK];
+  const FURN = [PL, PF, DA, DB, DC, F2, DD, TK, UP1, UP2, UP3, UP4];
   for (const m of FURN) {
     for (const [k, v] of Object.entries(m.EXTRA_MATS ?? {})) c.X[k] ??= hiveMat(v);
     for (const [k, v] of Object.entries(m.EXTRA_GLOW ?? {})) c.G[k] ??= glow(v[0], v[1]);
@@ -1475,30 +1480,8 @@ export function buildHive() {
   }
 
   // ------------------------------------------------ the rooms of the main floor
-  {
-    // the cafeteria, the big mess hall: rows of tables, the serving counter along the back, vending machines
-    const s = SPACE.cafe;
-    for (const x of [15, 19.5, 24]) for (const z of [5.4, 8.8, 12.2]) P.cafeTable(c, [x - 1.4, z - 0.4, x + 1.4, z + 0.4], { messy: rnd() < 0.8 });
-    P.cafeTable(c, [27.2 - 0.4, 6, 27.2 + 0.4, 9], { messy: true });
-    K.box(M.steel, s.x0 + 1, 0, s.z1 - 1.4, s.x1 - 4, 0.95, s.z1 - 0.7);
-    K.box(M.white, s.x0 + 1, 1.3, s.z1 - 1.4, s.x1 - 4, 1.34, s.z1 - 0.7);
-    for (let x = s.x0 + 1.4; x < s.x1 - 4.2; x += 1.6) K.cube(M.steel, x, 1.15, s.z1 - 1.05, 0.04, 0.3, 0.04);
-    world.add(s.x0 + 1, 0, s.z1 - 1.4, s.x1 - 4, 0.95, s.z1 - 0.7, SURF.metal);
-    P.vending(c, s.x1 - 0.5, 14.8, 'w');
-    P.vending(c, s.x1 - 0.5, 15.9, 'w', false);
-    P.vending(c, s.x1 - 0.5, 17.0, 'w');
-    P.gurney(c, 26.6, 13.6, 1.2, { tipped: true });
-    P.clutter(c, 19, 9, 14, 4);
-    sign('cafe', s.x0 + 9, 3.9, s.z1 - 0.04, 'n', 2.6);
-  }
-  {
-    const s = SPACE.lockers;
-    P.lockers(c, [s.x0 + 0.5, s.z1 - 0.5, s.x1 - 0.5, s.z1], 'n');
-    P.lockers(c, [s.x0 + 1.2, 5.2, s.x1 - 1.2, 5.7], 's');
-    P.lockers(c, [s.x0 + 1.2, 5.7, s.x1 - 1.2, 6.2], 'n');
-    K.box(M.wood, s.x0 + 1.2, 0.42, 3.6, s.x1 - 1.2, 0.47, 3.95);
-    world.add(s.x0 + 1.2, 0, 3.6, s.x1 - 1.2, 0.47, 3.95, SURF.wood);
-  }
+  // the cafeteria and the locker room are dressCafe2 / dressLockers2's (hiveUp4.js); the cafeteria's sign stays here
+  sign('cafe', SPACE.cafe.x0 + 9, 3.9, SPACE.cafe.z1 - 0.04, 'n', 2.6);
   // the specimen hall's tubes (a zombie in each; one smashed): the rest of the hall is dressSpecimen's
   for (const [x, z, o] of [
     [-15.5, -17.5, { kind: 'normal', pose: 'limp', yaw: 2.6 }],
@@ -1545,10 +1528,22 @@ export function buildHive() {
       maint: TK.dressMaint,
       stores: TK.dressStores,
       archive: TK.dressArchive,
+      cafe: UP4.dressCafe2,
+      lockers: UP4.dressLockers2,
+      ulabC: UP1.dressUlab,
+      ulabD: UP1.dressUlab,
+      uvir: UP1.dressVirology,
+      umon: UP2.dressMonitor,
+      ubio: UP2.dressBiobank,
+      urec: UP2.dressRecords,
+      uarch: UP2.dressUarch,
+      uoff: UP3.dressUoff,
+      uward: UP3.dressWard,
+      uws: UP3.dressElevatorHall,
     };
     const dbg = /[?&]dbg\b/.test(location.search);
     for (const sp of SPACES) {
-      const fn = sp.kind === 'corridor' && sp.level !== 0 ? DD.dressCorridor : DRESS[sp.id];
+      const fn = DRESS[sp.id] ?? (sp.kind === 'corridor' && sp.level !== 0 ? DD.dressCorridor : null);
       if (!fn) continue;
       const f = floorOf(sp);
       const cs = ctxOfFloor(f);
@@ -1580,93 +1575,13 @@ export function buildHive() {
     }
   }
 
-  // ------------------------------------------------ level 5's rooms
+  // ------------------------------------------------ level 5's tubes (the rest of the rooms is dressUlab, dressMonitor ... in hiveUp1-3.js)
   for (const id of ['ulabC', 'ulabD']) {
     const s = SPACE[id];
     const cx = (s.x0 + s.x1) / 2;
-    // incubators and a glovebox line on the back wall, two benches, a centrifuge bench
-    P.fumeHood(c2, [s.x0 + 0.7, s.z0, s.x0 + 2.5, s.z0 + 0.85], 's');
-    P.freezer(c2, [s.x0 + 2.8, s.z0, s.x0 + 4.0, s.z0 + 0.9], 's');
-    P.freezer(c2, [s.x1 - 1.3, s.z0, s.x1 - 0.1, s.z0 + 0.9], 's');
-    P.bench(c2, [cx - 2.8, -8.4, cx - 0.6, -7.2]);
-    P.bench(c2, [cx + 0.6, -8.4, cx + 2.8, -7.2], { riser: false, gear: 3 });
-    P.bench(c2, [cx - 2.8, -5.6, cx + 0.2, -4.8], { riser: false });
     T.tube({ x: cx + 2.2, z: -5.0, r: 0.45, h: 2.2, floor: FLOORS[2], kind: id === 'ulabC' ? 'worker' : 'woman', pose: 'limp', yaw: 1.2, broken: id === 'ulabD', ceil: s.h });
-    P.cabinet(c2, [s.x0, s.z1 - 2.6, s.x0 + 0.5, s.z1 - 1.2], 'e', { h: 1.9, mat: M.white, drawers: 3 });
-    P.whiteboard(c2, s.x1 - 0.01, -8.4, 'w', 2.0);
-    P.gurney(c2, cx - 1.5, -3.3, 0.4, { tipped: id === 'ulabC' });
-    P.clutter(c2, cx, -6, 7, 2.2);
   }
-  {
-    // the monitoring room: desks of screens facing its window on the gallery, a server rack, chairs knocked over
-    const s = SPACE.umon;
-    P.desk(c2, [s.x1 - 1.1, -6.8, s.x1 - 0.4, -4.0], 'e', { mess: true });
-    for (let i = 0; i < 3; i++) c.screen(s.x1 - 0.8, FLOORS[2] + 1.25, -6.3 + i * 0.95, Math.PI / 2, 0.8, 0.45, rnd() < 0.8);
-    for (let i = 0; i < 4; i++) c.screen(s.x0 + 0.03, FLOORS[2] + 1.9, -7.2 + i * 1.1, Math.PI / 2, 0.95, 0.55, rnd() < 0.6);
-    for (let i = 0; i < 4; i++) K.box(M.black, s.x0, FLOORS[2] + 1.58, -7.72 + i * 1.1, s.x0 + 0.02, FLOORS[2] + 2.22, -6.68 + i * 1.1);
-    P.serverRacks(c2, [s.x0, -3.9, s.x0 + 0.8, -2.6], 'e');
-    P.clutter(c2, -12.5, -5, 6, 1.2);
-  }
-  {
-    const s = SPACE.ubio;
-    for (let i = 0; i < 6; i++) P.freezer(c2, [s.x0 + 0.1, s.z0 + 0.9 + i * 1.45, s.x0 + 1.0, s.z0 + 2.2 + i * 1.45], 'e');
-    for (let i = 0; i < 3; i++) P.freezer(c2, [s.x1 - 0.9, s.z0 + 1.6 + i * 1.6, s.x1, s.z0 + 2.9 + i * 1.6], 'w');
-    for (const [x, z] of [[-25.4, 6], [-24.6, 6.8], [-25.9, 9.1], [-24.3, 10.4]]) P.dewar(c2, x, z);
-    P.bench(c2, [-26.2, 11.4, -23.6, 12.2], { riser: false, gear: 3 });
-  }
-  {
-    const s = SPACE.urec;
-    for (const z of [4.6, 6.8, 9.0]) P.shelf(c2, [s.x0 + 0.8, z, s.x1 - 1.6, z + 0.6], { fill: 'boxes', h: 2.4, levels: 5 });
-    P.desk(c2, [s.x1 - 1.3, 3.2, s.x1 - 0.5, 5.0], 'w', { mess: true });
-    P.cabinet(c2, [s.x1 - 0.5, 7.0, s.x1, 8.4], 'w', { h: 1.3, mat: M.grey, drawers: 4 });
-    P.clutter(c2, -18.5, 8, 10, 2.5);
-  }
-  {
-    const s = SPACE.uoff;
-    P.desk(c2, [13.2, -8.9, 15.4, -8.1], 's', { mess: true });
-    P.desk(c2, [16.6, -8.9, 18.8, -8.1], 's', { mess: true });
-    P.confTable(c2, [13.6, -6.0, 18.4, -4.6]);
-    P.cabinet(c2, [s.x1 - 0.5, -9.8, s.x1, -8.4], 'w', { h: 1.9, mat: M.dark, drawers: 2 });
-    P.whiteboard(c2, 16, s.z0 + 0.01, 's', 2.4);
-    P.clutter(c2, 16, -3.8, 8, 2);
-  }
-  {
-    const s = SPACE.uvir;
-    for (const [x, broken, kind, pose] of [[21.8, false, 'gasmask', 'spread'], [23.6, true, 'normal', 'limp'], [25.4, false, 'smoker', 'curl'], [27.2, false, 'survivor', 'reach']]) T.tube({ x, z: -8.9, r: 0.5, h: 2.4, floor: FLOORS[2], kind, pose, yaw: 2.9, broken, ceil: s.h });
-    P.bench(c2, [21.2, -6.2, 27.8, -5.4], { riser: true });
-    P.fumeHood(c2, [s.x1 - 0.85, -4.6, s.x1, -2.8], 'w');
-    P.gasCylinder(c2, 21.0, -3.1, M.green);
-    P.gasCylinder(c2, 21.3, -3.0, M.dark);
-    P.clutter(c2, 24.5, -4, 8, 2);
-  }
-  {
-    const s = SPACE.uarch;
-    for (const x of [30.4, 32.4, 34.4, 36.4]) P.shelf(c2, [x, -11.2, x + 0.7, -4.2], { fill: 'boxes', h: 2.4, levels: 5 });
-    P.shelf(c2, [s.x1 - 0.7, -11.5, s.x1, -3.2], { fill: 'boxes', h: 2.4, levels: 5 });
-    P.clutter(c2, 34, -3.2, 10, 1.5);
-  }
-  {
-    // the isolation ward: glass cells along both sides (their fronts smashed out), gurneys, the nurses' station
-    const s = SPACE.uward;
-    for (let i = 0; i < 4; i++) {
-      for (const [z0, z1, face] of [[s.z0, s.z0 + 3.2, 's'], [s.z1 - 3.2, s.z1, 'n']]) {
-        const x0 = 3.2 + i * 3.1, x1 = x0 + 2.8;
-        const zf = face === 's' ? z1 : z0;
-        K.box(M.white, x0 - 0.05, FLOORS[2], z0, x0 + 0.05, FLOORS[2] + 2.9, z1);
-        c.col(x0 - 0.05, FLOORS[2], z0, x0 + 0.05, FLOORS[2] + 2.9, z1, SURF.plaster);
-        K.box(M.steelDark, x0, FLOORS[2] + 2.8, zf - 0.04, x1, FLOORS[2] + 2.9, zf + 0.04);
-        if (i % 2 === 0) {
-          // what's left of the glass front: shards at the frame
-          K.box(U.glass, x0 + 0.05, FLOORS[2] + 1.9, zf - 0.02, x0 + 0.9, FLOORS[2] + 2.8, zf + 0.02);
-          K.box(U.glass, x1 - 0.6, FLOORS[2], zf - 0.02, x1 - 0.05, FLOORS[2] + 0.7, zf + 0.02);
-        }
-        P.gurney(c2, (x0 + x1) / 2, (z0 + z1) / 2, rnd() * 0.6 - 0.3 + Math.PI / 2, { bag: rnd() < 0.5, tipped: rnd() < 0.3 });
-      }
-    }
-    K.box(M.white, 15.9, FLOORS[2], s.z0, 16, FLOORS[2] + 2.9, s.z1);
-    P.desk(c2, [3.0, -23.8, 4.2, -21.2], 'e', { mess: true });
-    for (const z of [-19, -26]) c2.light(9, 2.6, z, 0.6, 3, SICK, null, 9);
-  }
+  for (const [x, broken, kind, pose] of [[21.8, false, 'gasmask', 'spread'], [23.6, true, 'normal', 'limp'], [25.4, false, 'smoker', 'curl'], [27.2, false, 'survivor', 'reach']]) T.tube({ x, z: -8.9, r: 0.5, h: 2.4, floor: FLOORS[2], kind, pose, yaw: 2.9, broken, ceil: SPACE.uvir.h });
 
   // ------------------------------------------------ Nadja's lab: the farm lab of part one itself, from inside
   // (world/lab.js buildLab: moved whole, walkable, her counter standing free in the hall, the vault door open on the
