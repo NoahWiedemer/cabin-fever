@@ -479,11 +479,13 @@ export function makeTanks({ group, updates, K, M, U, c }) {
   };
 
   // ---- a specimen tube (the hall, the labs): a smaller glass cylinder with a zombie in it
-  const tube = ({ x, z, r = 0.6, h = 2.7, kind = 'normal', pose = 'limp', yaw = 0, broken = false, ceil = null, sc = null }) => {
-    const y0 = 0.4, y1 = y0 + h, yl = y1 - 0.3;
-    K.cyl(M.steel, x, 0, z, r + 0.14, r + 0.14, 0.18, 32);
-    K.cyl(M.dark, x, 0.18, z, r + 0.1, r + 0.1, 0.1, 32);
-    K.cyl(M.steel, x, 0.28, z, r + 0.05, r + 0.05, 0.1, 32);
+  const tube = ({ x, z, r = 0.6, h = 2.7, kind = 'normal', pose = 'limp', yaw = 0, broken = false, ceil: ceilRel = null, sc = null, floor: B = 0 }) => {
+    // (B: the floor it stands on, ceil: its height over that floor)
+    const ceil = ceilRel == null ? null : ceilRel + B;
+    const y0 = B + 0.4, y1 = y0 + h, yl = y1 - 0.3;
+    K.cyl(M.steel, x, B, z, r + 0.14, r + 0.14, 0.18, 32);
+    K.cyl(M.dark, x, B + 0.18, z, r + 0.1, r + 0.1, 0.1, 32);
+    K.cyl(M.steel, x, B + 0.28, z, r + 0.05, r + 0.05, 0.1, 32);
     for (let i = 0; i < 4; i++) {
       const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
       K.cyl(M.steel, x + Math.cos(a) * (r + 0.07), y0, z + Math.sin(a) * (r + 0.07), 0.022, 0.022, h, 8);
@@ -492,8 +494,8 @@ export function makeTanks({ group, updates, K, M, U, c }) {
     K.cyl(M.dark, x, y1 + 0.06, z, r + 0.13, r + 0.13, 0.16, 32);
     K.cyl(M.steel, x, y1 + 0.22, z, r * 0.6, r * 0.7, 0.2, 24);
     // a pressure gauge and a status light on the collar, cables and a pipe up to the ceiling
-    K.plane(M.signs, 0.13, 0.13, x + r + 0.02, 0.16, z, [0, Math.PI / 2, 0], SIGN.gauge, 1024, 1024);
-    K.cyl(pulse, x, 0.26, z + r + 0.052, 0.018, 0.018, 0.02, 8, [Math.PI / 2, 0, 0]);
+    K.plane(M.signs, 0.13, 0.13, x + r + 0.02, B + 0.16, z, [0, Math.PI / 2, 0], SIGN.gauge, 1024, 1024);
+    K.cyl(pulse, x, B + 0.26, z + r + 0.052, 0.018, 0.018, 0.02, 8, [Math.PI / 2, 0, 0]);
     if (ceil) {
       K.cyl(M.steel, x, y1 + 0.4, z, 0.05, 0.05, ceil - y1 - 0.4, 10);
       K.cyl(M.blue, x + 0.14, y1 + 0.3, z + 0.05, 0.028, 0.028, ceil - y1 - 0.3, 8);
@@ -511,7 +513,7 @@ export function makeTanks({ group, updates, K, M, U, c }) {
       const st = bubbles({ x, z, r, y0: y0 + 0.08, y1: yl, n: 70, nozzles: 2, mouth: s ? mouthOf(s) : null, big: 0.03 });
       if (s) s.stream = st;
       c.light(x, y0 + h * 0.5, z, 0.55, 1.8, [0.3, 1.0, 0.5], null, 4.5);
-      c.col(x - r - 0.14, 0, z - r - 0.14, x + r + 0.14, y1 + 0.6, z + r + 0.14, SURF.glass);
+      c.col(x - r - 0.14, B, z - r - 0.14, x + r + 0.14, y1 + 0.6, z + r + 0.14, SURF.glass);
     } else {
       // smashed: jagged shards leaning at the base, the murk drained across the floor, the body gone (or slumped)
       for (let k = 0; k < 9; k++) {
@@ -520,9 +522,9 @@ export function makeTanks({ group, updates, K, M, U, c }) {
       }
       const g = new THREE.CircleGeometry(r * 3.0, 28);
       g.rotateX(-Math.PI / 2);
-      g.translate(x + 0.5, 0.006, z + 0.35);
+      g.translate(x + 0.5, B + 0.006, z + 0.35);
       K.put(U.murk, g);
-      c.col(x - r - 0.14, 0, z - r - 0.14, x + r + 0.14, 0.45, z + r + 0.14, SURF.metal);
+      c.col(x - r - 0.14, B, z - r - 0.14, x + r + 0.14, B + 0.45, z + r + 0.14, SURF.metal);
     }
   };
 

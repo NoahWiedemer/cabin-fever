@@ -36,13 +36,15 @@ export function shellFittings() {
  * A door leaf standing open flat against the wall beside each doorway (they have no collider: the opening stays clear),
  * a lever, hinges, a kick plate, a vision panel, a card reader with its LED; a few doors have lost their leaf.
  */
-export function doorLeaves(c, { doorInfo, spaceAt, F }) {
-  const { K, M, U, rnd } = c;
+export function doorLeaves(ctxOf, { doorInfo, spaceAt, F }) {
   const T = 0.045;
   for (const d of doorInfo) {
     if (d.kind !== 'door') continue;
-    const A = d.alongX ? spaceAt(d.cx, d.z0 - 0.3) : spaceAt(d.x0 - 0.3, d.cz);
-    const B = d.alongX ? spaceAt(d.cx, d.z1 + 0.3) : spaceAt(d.x1 + 0.3, d.cz);
+    const c = ctxOf(d.f ?? 0); // (the floor it stands on: the context is moved up to it)
+    const { K, M, U, rnd } = c;
+    const y = (d.f ?? 0) + 0.5;
+    const A = d.alongX ? spaceAt(d.cx, d.z0 - 0.3, y) : spaceAt(d.x0 - 0.3, d.cz, y);
+    const B = d.alongX ? spaceAt(d.cx, d.z1 + 0.3, y) : spaceAt(d.x1 + 0.3, d.cz, y);
     if (!A || !B) continue;
     const public_ = (s) => s.kind === 'corridor' || s.kind === 'hub';
     // which room the door swings into (a room, not the corridor)
@@ -115,7 +117,13 @@ export function doorLeaves(c, { doorInfo, spaceAt, F }) {
  * Sprinkler heads, return-air grilles, smoke detectors, speakers; exposed ducts under the concrete ceilings;
  * exit signs over the corridor ends. `spaces` with their finish, `panelGrid(s)` the light panels' lattice.
  */
-export function ceilingFixtures(c, { spaces, finOf, F }) {
+export function ceilingFixtures(ctxOf, { spaces, finOf, F, floorOf = () => 0, skip = () => false }) {
+  for (const s of spaces) {
+    if (skip(s)) continue;
+    fixturesOf(ctxOf(floorOf(s)), s, finOf, F);
+  }
+}
+function fixturesOf(c, s, finOf, F) {
   const { K, M, U, rnd } = c;
   const sprinkler = (x, y, z) => {
     K.cyl(M.steel, x, y - 0.035, z, 0.011, 0.011, 0.035, 6);
@@ -155,8 +163,7 @@ export function ceilingFixtures(c, { spaces, finOf, F }) {
       }
     }
   };
-  for (const s of spaces) {
-    if (s.kind === 'hub') continue;
+  {
     const fin = finOf(s);
     const w = s.x1 - s.x0, d = s.z1 - s.z0, corridor = s.kind === 'corridor';
     const exposed = fin.ceil === 'concrete' || fin.ceil === 'concreteDark';
@@ -182,7 +189,7 @@ export function ceilingFixtures(c, { spaces, finOf, F }) {
         if (alongX) duct(s.x0 + 0.3, dz, s.x1 - 0.3, dz, s.h - 0.2, 0.55, 0.38, F.duct);
         else duct(dz, s.z0 + 0.3, dz, s.z1 - 0.3, s.h - 0.2, 0.55, 0.38, F.duct);
       }
-      continue;
+      return;
     }
     const nx = Math.max(1, Math.round(w / 3.6)), nz = Math.max(1, Math.round(d / 3.6));
     let k = 0;
@@ -226,11 +233,13 @@ export function ceilingFixtures(c, { spaces, finOf, F }) {
  * Wear and story on floors and walls, from the plan: traffic scuffs in every doorway, dirt in the corners, leaks and mold
  * (more in the ring and the plant rooms), blood trails through doors, dropped papers and glass.
  */
-export function grimePass(c, { spaces, doorInfo, spaceAt }) {
-  const { rnd } = c;
+export function grimePass(ctxOf, { spaces, doorInfo, spaceAt, floorOf = () => 0, skip = () => false }) {
+  const rnd = ctxOf(0).rnd;
   const ring = (s) => s.zone === 'ring';
   // doorways: scuffs on both sides, a dirty threshold
   for (const d of doorInfo) {
+    if (d.kind === 'balcony' || d.kind === 'fwindow' || d.kind === 'opening') continue;
+    const c = ctxOf(d.f ?? 0);
     const along = d.alongX ? d.x1 - d.x0 : d.z1 - d.z0;
     for (const t of [-1, 1]) {
       const x = d.alongX ? d.cx : d.cx + t * 0.9, z = d.alongX ? d.cz + t * 0.9 : d.cz;
@@ -239,6 +248,8 @@ export function grimePass(c, { spaces, doorInfo, spaceAt }) {
     if (rnd() < 0.35) c.decal('grime', d.cx + (rnd() - 0.5) * 0.8, d.cz + (rnd() - 0.5) * 0.8, 1.6, rnd() * 6);
   }
   for (const s of spaces) {
+    if (skip(s)) continue;
+    const c = ctxOf(floorOf(s));
     const w = s.x1 - s.x0, d = s.z1 - s.z0;
     const wear = ring(s) ? 1.8 : s.kind === 'maint' || s.kind === 'waste' || s.kind === 'stores' || s.kind === 'holding' ? 1.4 : 0.9;
     const area = w * d;

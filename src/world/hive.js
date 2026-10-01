@@ -44,6 +44,19 @@ import { WEAPONS } from '../player/weaponDefs.js';
 import { SpriteParticles } from '../fx/particles.js';
 import * as Progress from '../game/progress.js';
 import * as P from './hiveProps.js';
+import { makeTanks, causticsDisc, tankFloorTexture } from './hiveTank.js';
+import { shellMaterials, hiveMat, decalAtlas, decalUV, blobTexture, stripTexture, LabelAtlas } from './hiveTex.js';
+import { shellFittings, doorLeaves, ceilingFixtures, grimePass } from './hiveShell.js';
+import { atriumDress } from './hiveHub.js';
+import { makeCuller } from './hiveCull.js';
+import * as PL from './hiveLabs.js';
+import * as PF from './hiveFacility.js';
+import * as DA from './hiveDressA.js';
+import * as DB from './hiveDressB.js';
+import * as DC from './hiveDressC.js';
+import * as F2 from './hiveFacility2.js';
+import * as DD from './hiveDressD.js';
+import * as TK from './hiveTech.js';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const COOL = [0.93, 0.97, 1.0];
@@ -122,6 +135,15 @@ const SPACES = [
   S('maint', 1, 20, -36, 34, -26, 4.0, 'maint', 'ring', { sector: 'ring', name: 'maintenance' }),
   S('morgue', 1, -40, -30, -34.5, -12.5, 3.2, 'morgue', 'ring', { sector: 'ring', name: 'the morgue' }),
   S('archive', 1, 34.5, -30, 40, -12.5, 3.2, 'archive', 'ring', { sector: 'ring', name: 'the archive' }),
+  // behind the labs and the offices: sequencing, the infirmary, the isolation ward, the containment cells (round 4, from the
+  // specimen hall), the director's office, the sleeping quarters and operations (round 4, from the server room)
+  S('genomics', 1, -34, -20.5, -26.5, -12.5, 3.4, 'genomics', 'start', { sector: 'west', name: 'the sequencing lab' }),
+  S('holding', 1, -34, -28.5, -26.5, -21, 4.0, 'holding', 'north', { sector: 'north', name: 'the containment cells' }),
+  S('infirmary', 1, -26, -21, -18.5, -12.5, 3.2, 'infirmary', 'start', { sector: 'west', name: 'the infirmary' }),
+  S('isolation', 1, -26, -28.5, -18.5, -21.5, 3.0, 'isolation', 'start', { sector: 'west', name: 'the isolation wing' }),
+  S('director', 1, 25.5, -22.5, 34, -12.5, 3.0, 'director', 'start', { sector: 'east', name: 'the director’s office' }),
+  S('quarters', 1, 16.5, -14.5, 25, -10.5, 2.8, 'quarters', 'start', { sector: 'east', name: 'the sleeping quarters' }),
+  S('ops', 1, 16.5, -25.5, 25, -15, 3.4, 'ops', 'north', { sector: 'north', name: 'operations' }),
   // Nadja's lab (the safe zone): the corridor from the atrium to its gallery, the armory past its far door
   S('labc', 1, 7.5, 10.5, 10, 21, 3.0, 'labCorridor', 'safe', { name: 'the lab corridor' }),
   S('armory', 0, -13.5, 28, -7.75, 35, 3.4, 'armory', 'safe', { f: -2.8, name: 'the armory' }),
@@ -205,6 +227,19 @@ const DOORS = [
   D(1, 25, -36.5, 28, -36, 2.8, 'door', { sign: ['maint', 'n'] }),
   D(1, -40.5, -22, -40, -20, 2.4, 'door', { sign: ['morgue', 'w'] }),
   D(1, 40, -22, 40.5, -20, 2.4, 'door', { sign: ['archive', 'e'] }),
+  // the rooms behind the labs and the offices
+  D(1, -31, -12.5, -28.5, -12, 2.6, 'door', { sign: ['genomics', 's'] }),
+  D(1, -23.5, -12.5, -21, -12, 2.6, 'door', { sign: ['infirmary', 's'] }),
+  D(1, -31, -21, -29, -20.5, 2.6, 'blast', { unlock: 'north', sign: ['holding', 's'] }),
+  D(1, -26.5, -27, -26, -24.5, 2.6, 'blast', { unlock: 'north' }),
+  D(1, -23.5, -21.5, -21, -21, 2.6, 'door', { sign: ['isolation', 's'] }),
+  D(1, -18.5, -26, -18, -23.5, 2.6, 'blast', { unlock: 'north' }),
+  D(1, 16, -22, 16.5, -19.5, 2.6, 'door', { sign: ['ops', 'w'] }),
+  D(1, 17, -10.5, 19, -10, 2.4, 'door', { sign: ['quarters', 's'] }),
+  D(1, 22, -10.5, 24, -10, 2.4, 'door'),
+  D(1, 18, -15, 20.5, -14.5, 2.6, 'blast', { unlock: 'north' }),
+  D(1, 31, -12.5, 33, -12, 2.6, 'door', { sign: ['director', 's'] }),
+  D(1, 25, -20, 25.5, -18, 2.6, 'blast', { unlock: 'north' }),
   // the stairs down to sublevel 5 (round 7), off both wings
   D(1, -38.5, 2, -35.5, 2.5, 2.8, 'blast', { unlock: 'deep', sign: ['deep', 'n'] }),
   D(1, 35.5, 2, 38.5, 2.5, 2.8, 'blast', { unlock: 'deep', sign: ['deep', 'n'] }),
@@ -272,7 +307,7 @@ const REQUESTS = [
   { name: 'THE ANTIVIRAL VIALS', thanks: 'You might need these one day.' },
 ];
 // the rooms her things lie about in (not the corridors, the atrium or her lab)
-const REQUEST_KINDS = new Set(['lab', 'ulab', 'cryo', 'stores', 'office', 'conf', 'cafe', 'lockers', 'specimen', 'server', 'security', 'maint', 'morgue', 'archive', 'monitor', 'biobank', 'records', 'ward', 'decon', 'bighall']);
+const REQUEST_KINDS = new Set(['genomics', 'infirmary', 'director', 'ops', 'lab', 'ulab', 'cryo', 'stores', 'office', 'conf', 'cafe', 'lockers', 'specimen', 'server', 'security', 'maint', 'morgue', 'archive', 'monitor', 'biobank', 'records', 'ward', 'decon', 'bighall']);
 
 // ---------------------------------------------------------------- the columns
 function makePlan() {
@@ -472,6 +507,13 @@ const SIGN_LIST = [
   ['maint', 'MAINTENANCE', 256, '#d6a31a'],
   ['morgue', 'MORGUE', 256, '#8a949c'],
   ['archive', 'ARCHIVE', 256, '#8a949c'],
+  ['genomics', 'SEQUENCING', 256, '#3fbf6a'],
+  ['holding', 'CONTAINMENT', 256, '#c63a2e'],
+  ['infirmary', 'INFIRMARY', 256, '#3fbf6a'],
+  ['isolation', 'ISOLATION WING', 256, '#d6a31a'],
+  ['director', 'DIRECTOR', 256, '#2f7ad0'],
+  ['quarters', 'QUARTERS', 256, '#2f7ad0'],
+  ['ops', 'OPERATIONS', 256, '#3aa6d6'],
   ['armory', 'ARMORY', 256, '#c63a2e'],
   ['ring', 'OUTER RING', 256, '#d6a31a', 'hazard'],
   ['pump', 'PUMP HALL', 256, '#d6a31a'],
@@ -707,34 +749,100 @@ export function buildHive() {
     sickGreen: new THREE.MeshBasicMaterial({ color: new THREE.Color(1.0, 2.6, 0.9) }),
   };
   const liquids = [U.blue, U.green, U.amber, U.magenta, U.cyan];
-  const STYLE = {
-    white: { wall: M.wall, floor: M.floor, ceil: M.ceil },
-    old: { wall: M.wallOld, floor: M.floor, ceil: M.ceil },
-    dark: { wall: M.wallDark, floor: M.floorDark, ceil: M.ceilDark },
-    hall: { wall: M.concrete, floor: M.floorDark, ceil: M.ceilDark },
-    flooded: { wall: M.wallTeal, floor: M.floorDark, ceil: M.ceilDark },
+  // The surfaces: painted / tiled / carpeted per kind of room (hiveTex.js), decals, text labels, soft shadows.
+  const SH = shellMaterials();
+  const F = shellFittings(); // (door leaves, ducts, plastic, rubber, brass)
+  const labels = new LabelAtlas();
+  M.decal = hiveMat({ map: decalAtlas(), transparent: true, depthWrite: false, roughness: 0.85, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+  M.label = hiveMat({ map: labels.texture, roughness: 0.55 });
+  M.aoStrip = new THREE.MeshBasicMaterial({ map: stripTexture(), transparent: true, depthWrite: false, opacity: 0.8, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+  M.aoStrip.map.wrapS = THREE.RepeatWrapping;
+  M.tankFloor = bakeMat({ map: tankFloorTexture(), roughness: 0.45, metalness: 0.25, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+  // three circuits of guttering ceiling tubes: their emissive stutters (the baked light stays)
+  U.flick = [0, 1, 2].map(() => new THREE.MeshBasicMaterial({ color: new THREE.Color(4.4, 4.6, 5.0) }));
+  // finishes per kind of room: the wall paint, the wainscot (and its height), the floor, the ceiling
+  const FIN_RING = { paint: 'concrete', wain: 'steelDark', wh: 1.2, floor: 'concreteDark', ceil: 'concreteDark' };
+  const FIN_DEEP = { paint: 'concrete', wain: 'steelDark', wh: 1.2, floor: 'concreteDark', ceil: 'concreteDark' };
+  const FIN_FLOODED = { paint: 'green', wain: 'tileGreen', wh: 2.1, floor: 'vinylGreen', ceil: 'concreteDark' };
+  const FIN_HALL = { paint: 'concrete', wain: 'steelDark', wh: 1.6, floor: 'concreteDark', ceil: 'concreteDark' };
+  const FIN = {
+    hub: { paint: 'concrete', wain: 'steel', wh: 1.2, floor: 'terrazzo', ceil: 'concrete' },
+    gallery: { paint: 'concrete', wain: 'steel', wh: 1.0, floor: 'epoxyDark', ceil: 'concrete' },
+    corridor: { paint: 'white', wain: 'band', wh: 1.1, floor: 'epoxy', ceil: 'tile' },
+    labCorridor: { paint: 'white', wain: 'steel', wh: 1.2, floor: 'epoxy', ceil: 'tile' },
+    armory: { paint: 'sand', wain: 'wood', wh: 1.1, floor: 'epoxyDark', ceil: 'tile' },
+    lab: { paint: 'white', wain: 'tile', wh: 1.4, floor: 'epoxy', ceil: 'tile' },
+    genomics: { paint: 'white', wain: 'tileBlue', wh: 1.3, floor: 'vinyl', ceil: 'tile' },
+    decon: { paint: 'green', wain: 'tileGreen', wh: 3.0, floor: 'vinylGreen', ceil: 'concrete' },
+    cryo: { paint: 'blue', wain: 'steel', wh: 1.3, floor: 'epoxyDark', ceil: 'concrete' },
+    stores: { paint: 'sand', wain: 'band', wh: 1.1, floor: 'concrete', ceil: 'concrete' },
+    office: { paint: 'cream', wain: 'band', wh: 0.95, floor: 'carpetGrey', ceil: 'tile' },
+    conf: { paint: 'grey', wain: 'wood', wh: 1.2, floor: 'carpetBlue', ceil: 'tileWarm' },
+    cafe: { paint: 'yellow', wain: 'tileCream', wh: 1.3, floor: 'checker', ceil: 'tile' },
+    lockers: { paint: 'grey', wain: 'band', wh: 1.1, floor: 'vinyl', ceil: 'tile' },
+    quarters: { paint: 'sand', wain: 'wood', wh: 1.0, floor: 'carpetBrown', ceil: 'tileWarm' },
+    director: { paint: 'cream', wain: 'wood', wh: 1.6, floor: 'parquet', ceil: 'tileWarm' },
+    ops: { paint: 'dark', wain: 'steelDark', wh: 1.0, floor: 'carpetBlue', ceil: 'concreteDark' },
+    server: { paint: 'blue', wain: 'steelDark', wh: 1.1, floor: 'raised', ceil: 'concreteDark' },
+    security: { paint: 'grey', wain: 'band', wh: 1.1, floor: 'epoxyDark', ceil: 'tile' },
+    maint: { paint: 'yellow', wain: 'steelDark', wh: 1.2, floor: 'concreteDark', ceil: 'concreteDark' },
+    morgue: { paint: 'green', wain: 'tileGreen', wh: 2.2, floor: 'vinylGreen', ceil: 'tile' },
+    archive: { paint: 'sand', wain: 'band', wh: 1.0, floor: 'carpetGrey', ceil: 'tile' },
+    specimen: { paint: 'green', wain: 'steelDark', wh: 1.4, floor: 'epoxyDark', ceil: 'concreteDark' },
+    holding: { paint: 'concrete', wain: 'steelDark', wh: 1.2, floor: 'concreteDark', ceil: 'concreteDark' },
+    infirmary: { paint: 'white', wain: 'tileGreen', wh: 1.3, floor: 'vinylGreen', ceil: 'tile' },
+    isolation: { paint: 'cream', wain: 'tileCream', wh: 1.3, floor: 'vinyl', ceil: 'tileWarm' },
+    // level 5: older, warmer
+    ulab: { paint: 'sand', wain: 'tileCream', wh: 1.3, floor: 'vinyl', ceil: 'tileWarm' },
+    monitor: { paint: 'dark', wain: 'steelDark', wh: 1.0, floor: 'carpetBlue', ceil: 'concreteDark' },
+    biobank: { paint: 'blue', wain: 'steel', wh: 1.3, floor: 'epoxyDark', ceil: 'concrete' },
+    records: { paint: 'sand', wain: 'band', wh: 1.0, floor: 'carpetGrey', ceil: 'tileWarm' },
+    ward: { paint: 'cream', wain: 'tileGreen', wh: 1.3, floor: 'vinylGreen', ceil: 'tile' },
+    shaft: { paint: 'concrete', wain: 'steelDark', wh: 1.0, floor: 'concreteDark', ceil: 'concreteDark' },
+    stair: { paint: 'concrete', wain: 'steelDark', wh: 1.0, floor: 'concreteDark', ceil: 'concreteDark' },
   };
-  // (level 5 has older, cream panels; sublevel 5 the dark ones)
-  const styleOf = (s) => STYLE[s.style ?? (s.level === 0 ? 'dark' : s.level === 2 && !s.deck ? 'old' : 'white')];
-  const ownerStyle = (o) => {
-    if (o >= 0) return styleOf(SPACES[o]);
-    const d = DOORS[-2 - o];
-    return STYLE[d?.style ?? (d?.level === 0 ? 'dark' : d?.level === 2 ? 'old' : 'white')] ?? STYLE.white;
+  const finOf = (s) => {
+    if (s.style === 'flooded') return FIN_FLOODED;
+    if (s.style === 'hall') return FIN_HALL;
+    if (s.kind === 'corridor') {
+      if (s.zone === 'ring') return FIN_RING;
+      if (s.level === 2) return { paint: 'sand', wain: 'bandGreen', wh: 1.1, floor: 'vinyl', ceil: 'tileWarm' };
+    }
+    if (s.level === 2 && s.kind === 'office') return { paint: 'cream', wain: 'wood', wh: 1.4, floor: 'carpetBrown', ceil: 'tileWarm' };
+    if (s.kind === 'deepcorr') return FIN_DEEP;
+    if (s.kind === 'fcorr') return FIN_FLOODED;
+    return FIN[s.kind] ?? (s.level === 0 ? FIN_DEEP : FIN.lab);
   };
+  const FLOOR_MPR = { epoxy: 3, epoxyDark: 3, vinyl: 1.2, vinylGreen: 1.2, checker: 1.8, carpetBlue: 1, carpetGrey: 1, carpetBrown: 1, carpetRed: 1, concrete: 3, concreteDark: 3, terrazzo: 3, raised: 1.2, plate: 0.6, parquet: 1.2 };
+  const MPR = new Map([[M.grate, 0.6], [M.grateUnder, 0.6], [M.stairs, 0.6], [M.concrete, 3.0]]);
+  for (const [k, m] of Object.entries(SH.floors)) MPR.set(m, FLOOR_MPR[k] ?? 2);
+  const mprOf = (m) => MPR.get(m) ?? 2.4;
+  const ownerFin = (o) => (o >= 0 ? finOf(SPACES[o]) : FIN_RING);
   const isWindow = (o) => o < -1 && (DOORS[-2 - o].y0 > 0.1);
-  const wallMat = (o) => ownerStyle(o).wall;
-  const floorMat = (o, deckTop) => (deckTop ? M.grate : isWindow(o) ? ownerStyle(o).wall : ownerStyle(o).floor);
-  const ceilMat = (o, deckUnder) => (deckUnder ? M.grateUnder : o < -1 ? ownerStyle(o).wall : ownerStyle(o).ceil);
-  const mprOf = (m) => (m === M.grate || m === M.grateUnder || m === M.stairs ? 0.6 : m === M.concrete ? 3.0 : m === M.floor || m === M.floorDark ? 2 : 2.4);
+  const wallMat = (o) => SH.paints[ownerFin(o).paint];
+  const floorMat = (o, deckTop) => (deckTop ? M.grate : isWindow(o) ? wallMat(o) : o < 0 ? SH.floors.plate : SH.floors[ownerFin(o).floor]);
+  const ceilMat = (o, deckUnder) => (deckUnder ? M.grateUnder : o < -1 ? wallMat(o) : SH.ceils[ownerFin(o).ceil]);
 
   // ------------------------------------------------ the build context (hiveProps.js)
   const lights = [];
   const updates = [];
+  updates.push((dt, t) => {
+    U.flick.forEach((m, i) => {
+      const x = t * (6 + i * 2.7) + i * 9.1;
+      const v = Math.sin(x) * Math.sin(x * 2.3 + 1) * Math.sin(x * 5.1);
+      const f = v > 0.32 ? 0.06 + (v - 0.32) * 0.5 : 1;
+      m.color.setRGB(4.4 * f, 4.6 * f, 5.0 * f);
+    });
+  });
   const c = {
     K,
     M,
     U,
     rnd,
+    X: {}, // the furniture modules' extra materials (their EXTRA_MATS / EXTRA_GLOW)
+    G: {},
+    dyn,
+    updates,
     col: (x0, y0, z0, x1, y1, z1, surf = SURF.metal, flags = 0, tag = null) => world.add(x0, y0, z0, x1, y1, z1, surf, flags, tag),
     light: (x, y, z, i, r, rgb = COOL, dir = null, range = null) => lights.push({ x, y, z, i, r, c: rgb, dir, range: range ?? r * 3.4 }),
     // (level: the floor it lights, for the slot choice: lighting.js prefers the camera's floor)
@@ -745,6 +853,37 @@ export function buildHive() {
       else K.plane(M.black, w, h, x, y, z, [0, yaw, 0]);
     },
   };
+  // decals (blood, grime, paper …), text labels and soft shadow strips: flat planes the props drop anywhere; dy: the floor
+  const NORM = { s: [0, 1], n: [0, -1], e: [1, 0], w: [-1, 0] };
+  const uvRect = (g, [u0, v0, u1, v1]) => {
+    const uv = g.attributes.uv;
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, u0 + (u1 - u0) * uv.getX(i), v0 + (v1 - v0) * uv.getY(i));
+    return g;
+  };
+  let decalN = 0;
+  const mkDeco = (dy) => ({
+    decal: (kind, x, z, size, rot = 0, o = {}) => {
+      const g = uvRect(new THREE.PlaneGeometry(size, size * (o.aspect ?? 1)), decalUV(kind));
+      g.rotateX(-Math.PI / 2);
+      g.rotateY(rot);
+      g.translate(x, dy + 0.004 + (decalN++ % 6) * 0.0003, z);
+      K.put(M.decal, g);
+    },
+    wallDecal: (kind, x, y, z, face, w, h) => {
+      const g = uvRect(new THREE.PlaneGeometry(w, h), decalUV(kind));
+      g.rotateY(P.FACE_YAW[face]);
+      const [nx, nz] = NORM[face];
+      g.translate(x + nx * (0.014 + (decalN++ % 6) * 0.0003), y + dy, z + nz * (0.014 + (decalN % 6) * 0.0003));
+      K.put(M.decal, g);
+    },
+    label: (text, x, y, z, face, w, h, o = {}) => {
+      const r = labels.rect(o.lines ?? text, o, w, h);
+      if (face === 'up') return K.plane(M.label, w, h, x, y + dy, z, [-Math.PI / 2, o.yaw ?? 0, 0, 'YXZ'], r, labels.W, labels.H); // (lying on the floor)
+      const [nx, nz] = NORM[face];
+      K.plane(M.label, w, h, x + nx * 0.02, y + dy, z + nz * 0.02, [0, P.FACE_YAW[face], 0], r, labels.W, labels.H);
+    },
+  });
+  Object.assign(c, mkDeco(0));
   /** the context moved dy up (the props build on y 0: a lower or upper floor) */
   const ctxCache = new Map();
   const at = (dy) => {
@@ -767,11 +906,30 @@ export function buildHive() {
       light: (x, y, z, ...r) => c.light(x, y + dy, z, ...r),
       lamp: (o) => c.lamp({ level: levelOf(dy + 0.3), ...o, pos: o.pos.clone().setY(o.pos.y + dy) }),
       screen: (x, y, z, ...r) => c.screen(x, y + dy, z, ...r),
+      ...mkDeco(dy),
     };
     ctxCache.set(dy, cc);
     return cc;
   };
   const c0 = at(FLOORS[0]), c2 = at(FLOORS[2]);
+  const ctxOfFloor = (f) => (f === 0 ? c : at(f));
+  // the furniture modules bring their own materials (EXTRA_MATS: plain params; EXTRA_GLOW: [colour, intensity])
+  const FURN = [PL, PF, DA, DB, DC, F2, DD, TK];
+  for (const m of FURN) {
+    for (const [k, v] of Object.entries(m.EXTRA_MATS ?? {})) c.X[k] ??= hiveMat(v);
+    for (const [k, v] of Object.entries(m.EXTRA_GLOW ?? {})) c.G[k] ??= glow(v[0], v[1]);
+  }
+  /** a soft shadow strip (AO): len x wd, centred (cx, y, cz), turned yaw, facing up (floor) or down (ceiling) */
+  const strip = (mat, len, wd, cx, y, cz, yaw, up) => {
+    const g = new THREE.PlaneGeometry(len, wd);
+    g.rotateX(up ? -Math.PI / 2 : Math.PI / 2);
+    g.rotateY(yaw);
+    g.translate(cx, y, cz);
+    K.put(mat, g);
+  };
+  const YAW_FLOOR = { n: 0, s: Math.PI, w: Math.PI / 2, e: -Math.PI / 2 };
+  const YAW_CEIL = { n: Math.PI, s: 0, w: -Math.PI / 2, e: Math.PI / 2 };
+  const T = makeTanks({ group, updates, K, M, U, c });
   /** a sign from the atlas: centre (x, y, z), facing `face`, w m wide (its height follows the atlas region) */
   const sign = (key, x, y, z, face, w = null) => {
     const r = sg.rects[key];
@@ -1033,6 +1191,68 @@ export function buildHive() {
     }
   }
 
+  // ------------------------------------------------ wainscots, cap rails and soft shadows along every room's walls
+  {
+    const CAP = { tile: M.white, tileGreen: M.white, tileBlue: M.white, tileCream: M.white, wood: M.wood, steel: M.dark, steelDark: M.dark, band: M.dark, bandGreen: M.dark, bandBlue: M.dark };
+    const WAIN_MPR = { tile: 1.2, tileGreen: 1.2, tileBlue: 1.2, tileCream: 1.2, wood: 1.2, steel: 1.2, steelDark: 1.2, band: 2.4, bandGreen: 2.4, bandBlue: 2.4 };
+    for (const s of SPACES) {
+      if (s.sealed || s.kind === 'stair' || s.kind === 'shaft' || s.style === 'hall' || s.kind === 'catwalk' || s.kind === 'flooded') continue;
+      const f = floorOf(s), fin = finOf(s);
+      const wain = SH.wains[fin.wain], cap = CAP[fin.wain];
+      const edges = [
+        { a0: s.x0, a1: s.x1, fixed: s.z0, out: -1, alongX: true, side: 'n' },
+        { a0: s.x0, a1: s.x1, fixed: s.z1, out: 1, alongX: true, side: 's' },
+        { a0: s.z0, a1: s.z1, fixed: s.x0, out: -1, alongX: false, side: 'w' },
+        { a0: s.z0, a1: s.z1, fixed: s.x1, out: 1, alongX: false, side: 'e' },
+      ];
+      for (const e of edges) {
+        let run0 = null, top = 0;
+        const inward = -e.out;
+        const face = e.alongX ? (e.out < 0 ? 'pz' : 'nz') : e.out < 0 ? 'px' : 'nx';
+        const flush = (a) => {
+          if (run0 === null) return;
+          const b0 = run0, b1 = a;
+          run0 = null;
+          if (b1 - b0 < 0.2) return;
+          const wh = Math.min(fin.wh, top - f - 0.15);
+          const plane = (mat, y0, y1, off, mpr) => {
+            const o = e.fixed + off * inward;
+            if (e.alongX) K.box(mat, b0, f + y0, o, b1, f + y1, o, { faces: [face], seg: 1.0, mpr });
+            else K.box(mat, o, f + y0, b0, o, f + y1, b1, { faces: [face], seg: 1.0, mpr });
+          };
+          if (wh > 0.4) {
+            plane(wain, 0.1, wh, 0.008, WAIN_MPR[fin.wain]);
+            if (wh < 2.6) {
+              const t = 0.028 * inward;
+              if (e.alongX) K.box(cap, b0, f + wh - 0.014, Math.min(e.fixed, e.fixed + t), b1, f + wh + 0.024, Math.max(e.fixed, e.fixed + t), { faces: [face, 'py', 'ny'] });
+              else K.box(cap, Math.min(e.fixed, e.fixed + t), f + wh - 0.014, b0, Math.max(e.fixed, e.fixed + t), f + wh + 0.024, b1, { faces: [face, 'py', 'ny'] });
+            }
+          }
+          // contact shadows on the floor along the wall and on the ceiling
+          const len = b1 - b0, mid = (b0 + b1) / 2;
+          strip(M.aoStrip, len, 0.6, e.alongX ? mid : e.fixed + inward * 0.3, f + 0.007, e.alongX ? e.fixed + inward * 0.3 : mid, YAW_FLOOR[e.side], true);
+          if (!s.deck) strip(M.aoStrip, len, 0.5, e.alongX ? mid : e.fixed + inward * 0.25, top - 0.006, e.alongX ? e.fixed + inward * 0.25 : mid, YAW_CEIL[e.side], false);
+        };
+        for (let a = e.a0; a < e.a1 - 1e-6; a += C) {
+          const m = a + C / 2;
+          const px = e.alongX ? m : e.fixed + e.out * 0.1, pz = e.alongX ? e.fixed + e.out * 0.1 : m;
+          const inner = plan.at(e.alongX ? m : e.fixed - e.out * 0.1, e.alongX ? e.fixed - e.out * 0.1 : m);
+          const outer = plan.at(px, pz);
+          const seg = segAt(inner, f + 0.2);
+          const wh = Math.min(fin.wh, (seg ? seg[1] : f + s.h) - f - 0.15);
+          const solid = seg && !openAt(outer, f + 0.2) && !openAt(outer, f + wh - 0.05) && !(outer >= 0 && ext[outer]);
+          if (solid) {
+            if (run0 === null) {
+              run0 = a;
+              top = seg[1];
+            }
+          } else flush(a);
+        }
+        flush(e.a1);
+      }
+    }
+  }
+
   // ------------------------------------------------ door frames and the signs over them
   const doorInfo = DOORS.map((d) => ({ ...d, alongX: d.x1 - d.x0 > d.z1 - d.z0, cx: (d.x0 + d.x1) / 2, cz: (d.z0 + d.z1) / 2, f: floorOf(d) }));
   for (const d of doorInfo) {
@@ -1096,7 +1316,7 @@ export function buildHive() {
     decon: { i: 0.55, broken: 0.1, rgb: [0.9, 1.0, 0.8], lamp: 0xe8ffd0 },
     cryo: { i: 0.6, broken: 0.1, rgb: [0.8, 0.92, 1.0], lamp: 0xcfe6ff },
     stores: { i: 0.5, broken: 0.2, rgb: WARM, lamp: 0xffd2a0 },
-    office: { i: 0.5, broken: 0.22, dim: 0.2, rgb: [1.0, 0.95, 0.86], lamp: 0xfff0dc },
+    office: { i: 0.62, broken: 0.2, dim: 0.16, rgb: [1.0, 0.95, 0.86], lamp: 0xfff0dc },
     conf: { i: 0.48, broken: 0.25, rgb: [1.0, 0.95, 0.86], lamp: 0xfff0dc },
     cafe: { i: 0.62, broken: 0.14, rgb: [1.0, 0.95, 0.86], lamp: 0xfff0dc },
     lockers: { i: 0.45, broken: 0.3, rgb: COOL, lamp: 0xdde6ff },
@@ -1110,6 +1330,13 @@ export function buildHive() {
     maint: { i: 0.6, broken: 0.2, rgb: WARM, lamp: 0xffb060 },
     morgue: { i: 0.45, broken: 0.35, rgb: COLD, lamp: 0xc0d8ff },
     archive: { i: 0.42, broken: 0.3, rgb: WARM, lamp: 0xffd2a0 },
+    genomics: { i: 0.66, broken: 0.06, rgb: [0.85, 1.0, 0.95], lamp: 0xd8fff0 },
+    holding: { i: 0.5, broken: 0.35, rgb: [0.8, 1.0, 0.8], lamp: 0xb8ffc0 },
+    infirmary: { i: 0.7, broken: 0.1, rgb: [0.95, 1.0, 0.98], lamp: 0xeafff4 },
+    isolation: { i: 0.5, broken: 0.25, rgb: [1.0, 0.9, 0.7], lamp: 0xffe0b0 },
+    director: { i: 0.42, broken: 0.15, rgb: [1.0, 0.86, 0.66], lamp: 0xffd8a8 },
+    quarters: { i: 0.36, broken: 0.3, dim: 0.3, rgb: [1.0, 0.88, 0.7], lamp: 0xffd6a0 },
+    ops: { i: 0.36, broken: 0.2, rgb: BLUE, lamp: 0x9cc0ff },
     labCorridor: { i: 0.75, broken: 0, rgb: COOL, lamp: 0xdde6ff },
     armory: { i: 0.55, broken: 0, rgb: WARM, lamp: 0xffd2a0 },
     stair: { i: 0.45, broken: 0.2, rgb: WARM, lamp: 0xffa860, emergency: 'amber' },
@@ -1137,7 +1364,7 @@ export function buildHive() {
         const x = alongX ? u : (s.x0 + s.x1) / 2, z = alongX ? (s.z0 + s.z1) / 2 : u;
         const r = rnd();
         const broken = r < md.broken, dim = !broken && r < md.broken + (md.dim ?? 0);
-        P.panel(cs, x, z, s.h, { len: 1.3, alongX, broken, dim, i: md.i, r: 3.0, color: md.rgb });
+        P.panel(cs, x, z, s.h, { len: 1.3, alongX, broken, dim, flick: !broken && !dim && rnd() < md.broken * 0.4 ? 1 + Math.floor(rnd() * 3) : 0, i: md.i, r: 3.0, color: md.rgb });
         if (!broken && i % 3 === 1 && !md.emergency) cs.lamp({ pos: V(x, s.h - 0.12, z), color: md.lamp, flicker: rnd() < 0.3 ? 0.35 : 0, room: roomRect(s, 1.5) });
       }
       if (md.emergency) {
@@ -1158,7 +1385,7 @@ export function buildHive() {
           const x = s.x0 + (w * (a + 0.5)) / nx, z = s.z0 + (d * (b + 0.5)) / nz;
           const r = rnd();
           const broken = r < md.broken, dim = !broken && r < md.broken + (md.dim ?? 0);
-          P.panel(cs, x, z, s.h, { len: 1.2, alongX: true, broken, dim, i: md.i, r: s.h > 4.5 ? 4.4 : 3.0, color: md.rgb });
+          P.panel(cs, x, z, s.h, { len: 1.2, alongX: true, broken, dim, flick: !broken && !dim && rnd() < md.broken * 0.4 ? 1 + Math.floor(rnd() * 3) : 0, i: md.i, r: s.h > 4.5 ? 4.4 : 3.0, color: md.rgb });
         }
       }
       cs.lamp({ pos: V((s.x0 + s.x1) / 2, s.h - 0.12, (s.z0 + s.z1) / 2), color: md.lamp, intensity: s.h > 4.5 ? 50 : 24, distance: s.h > 4.5 ? 14 : 10, flicker: md.broken > 0.2 ? 0.3 : 0, room: roomRect(s) });
@@ -1177,27 +1404,17 @@ export function buildHive() {
       }
     }
     for (const [x, z] of [[-5, -5], [5, -5], [-5, 5], [5, 5]]) c.lamp({ pos: V(x, H - 0.2, z), intensity: 48, distance: 15, angle: 1.2, room: roomRect(SPACE.hub, 1) });
-    // the column: a steel plinth, a glass tube of green murk with a shape in it, a cap with pipes to the ceiling
-    const R = 1.6;
-    K.cyl(M.steel, 0, 0, 0, 2.3, 2.3, 0.5, 40);
-    K.cyl(M.dark, 0, 0.5, 0, 2.0, 2.0, 0.08, 40);
-    K.cyl(U.glass, 0, 0.58, 0, R, R, 4.2, 40, null, true);
-    K.cyl(U.murk, 0, 0.58, 0, R - 0.03, R - 0.03, 3.9, 32);
-    K.cyl(M.steel, 0, 4.78, 0, R + 0.2, R + 0.25, 0.5, 40);
-    K.cyl(M.dark, 0, 5.28, 0, 0.9, 1.2, 0.3, 24);
-    for (let k = 0; k < 6; k++) {
-      const a = (k / 6) * Math.PI * 2;
-      K.cyl(k % 2 ? M.steel : M.blue, Math.cos(a) * 0.7, 5.5, Math.sin(a) * 0.7, 0.09, 0.09, H - 5.5, 10);
+    // the tank: a Crusher adrift in green murk, bubbles rising, a lit inlay in the floor and rippling caustics round it
+    T.tank({ x: 0, z: 0, H });
+    {
+      const ring = new THREE.RingGeometry(3.12, 6.4, 96, 3);
+      ring.rotateX(-Math.PI / 2);
+      ring.translate(0, 0.004, 0);
+      K.put(M.tankFloor, ring);
+      group.add(causticsDisc(0, 0, 6.6));
     }
-    K.add(U.skin, new THREE.SphereGeometry(0.34, 14, 10), 0.15, 3.55, 0.1, null, [0.9, 1.1, 0.85]);
-    K.add(U.skin, new THREE.CapsuleGeometry(0.42, 1.0, 4, 12), 0, 2.6, 0, [0.25, 0.3, 0.05]);
-    for (const s of [-1, 1]) {
-      K.add(U.skin, new THREE.CapsuleGeometry(0.13, 1.1, 4, 8), s * 0.52, 2.2, 0.15, [0.1, 0, s * 0.18]);
-      K.add(U.skin, new THREE.CapsuleGeometry(0.16, 0.9, 4, 8), s * 0.25, 1.35, -0.05, [-0.25, 0, s * 0.08]);
-    }
-    for (const y of [1.2, 2.5, 3.8]) c.light(0, y, 0, 0.7, 2.6, [0.3, 1.0, 0.45], null, 9);
-    world.add(-2.3, 0, -1.65, 2.3, 5.3, 1.65, SURF.glass);
-    world.add(-1.65, 0, -2.3, 1.65, 5.3, 2.3, SURF.glass);
+    for (const [y, k] of [[0.8, 0.9], [1.9, 0.9], [3.0, 0.75], [4.1, 0.4]]) c.light(0, y, 0, k, 3.2, [0.3, 1.0, 0.5], null, 11);
+    c.light(0, 0.9, 0, 1.4, 4.5, [0.25, 0.9, 0.5], [0, 1, 0], 9);
     for (const [x, z, face] of [[0, -3.2, 'n'], [0, 3.2, 's'], [-3.2, 0, 'w'], [3.2, 0, 'e']]) {
       const alongX = face === 'n' || face === 's';
       const r = alongX ? [x - 0.9, z - 0.35, x + 0.9, z + 0.35] : [x - 0.35, z - 0.9, x + 0.35, z + 0.9];
@@ -1218,22 +1435,14 @@ export function buildHive() {
     P.crates(c2, 8.8, 8.9, 0.9, 1, { wood: true });
     P.crates(c2, 8.8, -8.8, 0.8, 1);
     P.crates(c2, -8.8, 8.8, 0.8, 1, { wood: true });
+    // the observation windows above the gallery, pilasters under it, the roof's beams and ducts, wayfinding (hiveHub.js)
     const strips = [
       [-9, -9.99, -2.8, -9.97], [2.8, -9.99, 9, -9.97], // north (the blast door between)
       [-9, 9.97, 9, 9.99], // south
       [-9.99, 2.8, -9.97, 9], // west (the monitoring room's window and the door in the rest)
       [9.97, -9, 9.99, -2.8], [9.97, 2.8, 9.99, 9], // east
     ];
-    for (const [x0, z0, x1, z1] of strips) {
-      const alongX = z1 - z0 < 0.1;
-      const L = alongX ? x1 - x0 : z1 - z0;
-      const n = Math.max(1, Math.round(L / 3.6));
-      for (let i = 0; i < n; i++) {
-        const t0 = i / n + 0.02, t1 = (i + 1) / n - 0.02;
-        if (alongX) K.box(M.black, x0 + (x1 - x0) * t0, 4.3, z0, x0 + (x1 - x0) * t1, 5.3, z1);
-        else K.box(M.black, x0, 4.3, z0 + (z1 - z0) * t0, x1, 5.3, z0 + (z1 - z0) * t1);
-      }
-    }
+    atriumDress(c, { SH, F, H, P, strips, deckTop: FLOORS[2] });
     sign('atrium', 0, 6.2, -9.96, 's', 5.2);
     sign('logo', 0, 6.2, 9.96, 'n', 3.6);
     sign('sub4', -9.96, 6.4, 5.8, 'e', 2.4);
@@ -1264,101 +1473,8 @@ export function buildHive() {
       P.cableTray(cs, s.x1 - 0.35, s.z0 + 0.2, s.x1 - 0.35, s.z1 - 0.2, s.h - 0.3);
     }
   }
-  P.gurney(c, -24, 1.2, Math.PI / 2 + 0.2, { bag: true });
-  P.crates(c, -33.5, -1.2, 0.8, 2);
-  P.drum(c, -39, -1.3, { down: true });
-  P.extinguisher(c, -16, -1.99, 's');
-  P.vending(c, -21.3, 1.55, 'n');
-  P.clutter(c, -30, 0, 7, 1.6);
-  P.vending(c, 20.3, -1.55, 's');
-  P.vending(c, 21.4, -1.55, 's', false);
-  P.crates(c, 34.2, 1.1, 0.8, 1, { wood: true });
-  P.gurney(c, 29.5, -0.6, -Math.PI / 2 + 0.3, { tipped: true });
-  P.extinguisher(c, 27.8, 1.99, 'n');
-  P.clutter(c, 18, 0, 6, 1.5);
-  P.extinguisher(c, 1.99, -24, 'w');
-  P.crates(c, -1.1, -31.5, 0.8, 2);
-  P.clutter(c, 0, -22, 6, 1.4);
-  P.drum(c, -42.6, -24, { down: true });
-  P.crates(c, -42.3, -8, 0.8, 1);
-  P.crates(c, 42.4, -30, 0.9, 2);
-  P.gurney(c, 12, -38.2, Math.PI / 2, { bag: true });
-  P.clutter(c, -20, -38.2, 8, 1.5);
-  P.clutter(c, 30, -38.2, 6, 1.5);
-  // level 5's corridors: a knocked-over cart, a trolley of files, bodies under sheets
-  P.gurney(c2, -35, 0.8, Math.PI / 2 - 0.25, { bag: true });
-  P.crates(c2, -17, -1.2, 0.7, 2, { wood: true });
-  P.clutter(c2, -24, 0, 8, 1.5);
-  P.gurney(c2, 24, -0.9, -Math.PI / 2 + 0.2, { tipped: true });
-  P.clutter(c2, 30, 0, 8, 1.5);
-  P.crates(c2, 38.2, 1.0, 0.8, 1);
-  P.extinguisher(c2, -12, -1.99, 's');
-  P.extinguisher(c2, 18, 1.99, 'n');
-  P.gurney(c2, -30, 12, 0.1, { bag: true });
-  P.clutter(c2, -30, 8, 5, 1);
-  P.clutter(c2, 0, -24, 6, 1.4);
 
   // ------------------------------------------------ the rooms of the main floor
-  for (const id of ['labA', 'labB']) {
-    const s = SPACE[id];
-    const cx = (s.x0 + s.x1) / 2;
-    P.bench(c, [cx - 2.6, -8.2, cx - 0.8, -6.6]);
-    P.bench(c, [cx + 0.8, -8.2, cx + 2.6, -6.6]);
-    P.bench(c, [cx - 2.6, -5.4, cx + 2.6, -4.6], { riser: false });
-    P.fumeHood(c, [s.x0 + 0.7, s.z0, s.x0 + 2.5, s.z0 + 0.85], 's');
-    P.fumeHood(c, [s.x1 - 2.5, s.z0, s.x1 - 0.7, s.z0 + 0.85], 's');
-    P.shelf(c, [cx - 1.2, s.z0, cx + 1.2, s.z0 + 0.5], { fill: 'bottles' });
-    P.gasCylinder(c, s.x0 + 0.3, s.z1 - 0.5, M.green);
-    P.gasCylinder(c, s.x0 + 0.6, s.z1 - 0.45, M.blue);
-    P.cabinet(c, [s.x1 - 0.5, s.z1 - 2.4, s.x1, s.z1 - 1.2], 'w', { h: 1.9, mat: M.white, drawers: 3 });
-    P.whiteboard(c, s.x1 - 0.01, -8.6, 'w', 2.2);
-    P.clutter(c, cx, -3.4, 6, 1.5);
-  }
-  {
-    const s = SPACE.decon;
-    for (const z of [-7, -5.5, -4]) {
-      K.cyl(M.steel, s.x0 + 0.1, 2.2, z, 0.02, 0.02, 0.6, 8, [0, 0, Math.PI / 2]);
-      K.cyl(M.steel, s.x0 + 0.6, 2.1, z, 0.08, 0.1, 0.06, 12);
-    }
-    K.box(M.steel, s.x1 - 0.6, 0.42, s.z0 + 0.4, s.x1 - 0.2, 0.46, s.z1 - 0.8);
-    world.add(s.x1 - 0.6, 0, s.z0 + 0.4, s.x1 - 0.2, 0.46, s.z1 - 0.8, SURF.metal);
-    K.box(M.yellow, s.x0 + 1.4, 1.0, s.z0 + 0.02, s.x0 + 2.0, 1.9, s.z0 + 0.12);
-  }
-  {
-    const s = SPACE.cryo;
-    for (let i = 0; i < 6; i++) P.freezer(c, [s.x0 + 0.6 + i * 1.5, s.z1 - 0.9, s.x0 + 1.9 + i * 1.5, s.z1], 'n');
-    for (let i = 0; i < 4; i++) P.freezer(c, [s.x0, s.z0 + 2.2 + i * 1.5, s.x0 + 0.9, s.z0 + 3.5 + i * 1.5], 'e');
-    for (const [x, z] of [[-27.5, 6], [-26.6, 6.8], [-25.5, 5.8], [-27.2, 8.6]]) P.dewar(c, x, z);
-    P.bench(c, [-31.5, 5.2, -29.8, 8.8], { riser: false, gear: 3 });
-  }
-  {
-    const s = SPACE.stores;
-    for (const z of [5, 7.6]) P.shelf(c, [s.x0 + 0.8, z, s.x1 - 1.8, z + 0.7], { fill: 'boxes' });
-    P.shelf(c, [s.x0, s.z1 - 0.7, s.x1 - 1.5, s.z1], { fill: 'boxes' });
-    P.crates(c, s.x1 - 0.8, 4, 0.9, 2, { wood: true });
-    P.crates(c, s.x1 - 0.9, 9.8, 0.8, 3);
-    P.drum(c, s.x0 + 0.5, 3.2);
-    P.drum(c, s.x0 + 1.2, 3.1, { mat: M.red });
-  }
-  for (const id of ['office1', 'office2']) {
-    const s = SPACE[id];
-    const cx = (s.x0 + s.x1) / 2;
-    P.desk(c, [cx - 2.6, -8.9, cx - 1.0, -8.1], 's');
-    P.desk(c, [cx + 1.0, -8.9, cx + 2.6, -8.1], 's');
-    P.desk(c, [cx - 2.6, -6.0, cx - 1.0, -5.2], 'n');
-    P.desk(c, [cx + 1.0, -6.0, cx + 2.6, -5.2], 'n');
-    P.cabinet(c, [s.x0, -4.4, s.x0 + 0.5, -3.2], 'e');
-    P.cabinet(c, [s.x1 - 0.5, -4.4, s.x1, -3.2], 'w');
-    P.whiteboard(c, cx, s.z0 + 0.01, 's', 2.0);
-    P.clutter(c, cx, -4, 8, 2);
-  }
-  {
-    const s = SPACE.conf;
-    P.confTable(c, [31, -8.4, 38, -6.2]);
-    K.box(M.white, 30.5, 0.9, s.z0 + 0.03, 38.5, 2.6, s.z0 + 0.06);
-    P.cabinet(c, [s.x1 - 0.5, -5, s.x1, -3.2], 'w', { h: 0.9 });
-    P.clutter(c, 34, -4.2, 6, 1.6);
-  }
   {
     // the cafeteria, the big mess hall: rows of tables, the serving counter along the back, vending machines
     const s = SPACE.cafe;
@@ -1383,57 +1499,85 @@ export function buildHive() {
     K.box(M.wood, s.x0 + 1.2, 0.42, 3.6, s.x1 - 1.2, 0.47, 3.95);
     world.add(s.x0 + 1.2, 0, 3.6, s.x1 - 1.2, 0.47, 3.95, SURF.wood);
   }
+  // the specimen hall's tubes (a zombie in each; one smashed): the rest of the hall is dressSpecimen's
+  for (const [x, z, o] of [
+    [-15.5, -17.5, { kind: 'normal', pose: 'limp', yaw: 2.6 }],
+    [-12.5, -17.5, { broken: true }],
+    [-9.5, -17.5, { kind: 'woman', pose: 'curl', yaw: 3.3 }],
+    [-6.5, -17.5, { kind: 'worker', pose: 'reach', yaw: 2.9 }],
+  ]) T.tube({ x, z, r: 0.62, h: 2.9, ceil: SPACE.specimen.h, ...o });
+
+  // ------------------------------------------------ every room's dress function (hiveLabs.js, hiveDress*.js, hiveFacility2.js, hiveTech.js)
   {
-    const s = SPACE.specimen;
-    for (const [x, z] of [[-15.2, -28.2], [-11.2, -28.2], [-7.2, -28.2]]) P.vat(c, x, z, 1.2, s.h);
-    for (const [x, z, broken] of [[-15.5, -17.5, false], [-12.5, -17.5, true], [-9.5, -17.5, false], [-6.5, -17.5, false]]) P.specimenTube(c, x, z, { broken });
-    P.bench(c, [-15.5, -23.4, -10.5, -22.6], { riser: true });
-    P.bench(c, [-9, -23.4, -5, -22.6], { riser: false });
-    P.shelf(c, [s.x0, -26, s.x0 + 0.6, -20], { fill: 'bottles', h: 2.4 });
-    P.pipeRun(c, s.x0 + 0.3, -30.6, s.x1 - 0.3, -30.6, s.h - 0.5, 4, 0);
-    P.gurney(c, -4.4, -24.5, 0.3, { bag: true });
-    P.clutter(c, -10, -20, 8, 3);
-  }
-  {
-    const s = SPACE.server;
-    for (const x of [5.5, 8.5, 11.5]) P.serverRacks(c, [x, -27.5, x + 0.9, -18.5], 'e');
-    P.serverRacks(c, [14.4, -27.5, 15.5, -18.5], 'w');
-    P.desk(c, [4, -16.6, 6.4, -15.8], 's', { mess: false });
-    P.cableTray(c, 4, -29.5, 4, -15.5, s.h - 0.3);
-  }
-  {
-    const s = SPACE.security;
-    P.desk(c, [-31, -33.4, -28, -32.4], 'n', { mess: true });
-    P.desk(c, [-27, -33.4, -25, -32.4], 'n', { mess: true });
-    for (let i = 0; i < 6; i++) c.screen(-32.9 + i * 1.05, 2.0, s.z0 + 0.03, 0, 0.95, 0.55, rnd() < 0.7);
-    for (let i = 0; i < 6; i++) K.box(M.black, -33.4 + i * 1.05, 1.68, s.z0, -32.4 + i * 1.05, 2.32, s.z0 + 0.02);
-    P.cabinet(c, [s.x1 - 0.6, -35, s.x1, -31.5], 'w', { h: 2.0, mat: M.dark, drawers: 2 });
-    P.lockers(c, [s.x0, -34, s.x0 + 0.5, -30.4], 'e');
-  }
-  {
-    const s = SPACE.maint;
-    P.plant(c, [22, -34, 25.5, -31], 'gen');
-    P.plant(c, [28, -34.5, 32.5, -31.5], 'pump');
-    P.plant(c, [28.5, -29.5, 33, -27], 'pump');
-    P.pipeRun(c, s.x0 + 0.3, s.z1 - 0.4, s.x1 - 0.3, s.z1 - 0.4, s.h - 0.6, 5, 0);
-    P.drum(c, 21, -27.5);
-    P.drum(c, 21.8, -27.2, { mat: M.red });
-    P.drum(c, 23.5, -27.4, { down: true });
-    P.shelf(c, [s.x0, -33, s.x0 + 0.6, -28], { fill: 'boxes' });
-  }
-  {
-    const s = SPACE.morgue;
-    P.coldChambers(c, [s.x0, s.z0 + 1, s.x0 + 0.9, s.z1 - 2], 'e');
-    P.autopsyTable(c, -36.2, -24, 0);
-    P.autopsyTable(c, -36.2, -17.5, 0);
-    P.gurney(c, -35.4, -28, 0.8, { bag: true });
-    P.clutter(c, -36.5, -21, 5, 1.2);
-  }
-  {
-    const s = SPACE.archive;
-    for (const x of [35.8, 37.5]) P.shelf(c, [x, -28.5, x + 0.8, -15], { fill: 'boxes', h: 2.4, levels: 5 });
-    P.shelf(c, [s.x1 - 0.7, -28.5, s.x1, -14.5], { fill: 'boxes', h: 2.4, levels: 5 });
-    P.clutter(c, 36.5, -13.5, 8, 1.2);
+    const doorsAt = (level) => doorInfo.filter((d) => d.level === level);
+    const ctxFor = (level) => {
+      const doors = doorsAt(level);
+      return {
+        S: SPACE,
+        doors,
+        doorsOf: (id) => {
+          const sp = SPACE[id];
+          return doors.filter((d) => d.x1 >= sp.x0 - 0.01 && d.x0 <= sp.x1 + 0.01 && d.z1 >= sp.z0 - 0.01 && d.z0 <= sp.z1 + 0.01);
+        },
+        V,
+        anchor: {},
+      };
+    };
+    const DRESS = {
+      labA: PL.dressLabA,
+      labB: PL.dressLabB,
+      genomics: DA.dressGenomics,
+      decon: DA.dressDecon,
+      cryo: DA.dressCryo,
+      infirmary: DA.dressInfirmary,
+      isolation: DB.dressIsolation,
+      holding: DB.dressHolding,
+      morgue: DB.dressMorgue,
+      specimen: DC.dressSpecimen,
+      office1: DD.dressOffice1,
+      office2: DD.dressOffice2,
+      conf: DD.dressConf,
+      director: DD.dressDirector,
+      quarters: F2.dressQuarters,
+      server: TK.dressServer,
+      ops: TK.dressOps,
+      security: TK.dressSecurity,
+      maint: TK.dressMaint,
+      stores: TK.dressStores,
+      archive: TK.dressArchive,
+    };
+    const dbg = /[?&]dbg\b/.test(location.search);
+    for (const sp of SPACES) {
+      const fn = sp.kind === 'corridor' && sp.level !== 0 ? DD.dressCorridor : DRESS[sp.id];
+      if (!fn) continue;
+      const f = floorOf(sp);
+      const cs = ctxOfFloor(f);
+      // (?dbg: check what the dress function built against the room: nothing over the ceiling, under the floor or outside)
+      let box = null;
+      const put = K.put.bind(K);
+      if (dbg) {
+        box = new THREE.Box3();
+        const bb = new THREE.Box3();
+        K.put = (m, g) => {
+          g.computeBoundingBox();
+          if (m !== M.decal && m !== M.label && m !== M.aoStrip) {
+            bb.copy(g.boundingBox);
+            if (bb.max.y - bb.min.y < 6 && !m.transparent) box.union(bb);
+          }
+          return put(m, g);
+        };
+      }
+      fn(cs, sp, ctxFor(sp.level));
+      if (dbg) {
+        K.put = put;
+        const e = 0.06;
+        const bad = [];
+        if (box.max.y > f + sp.h + e) bad.push('over the ceiling by ' + (box.max.y - f - sp.h).toFixed(2));
+        if (box.min.y < f - 0.05) bad.push('under the floor by ' + (f - box.min.y).toFixed(2));
+        if (box.min.x < sp.x0 - e || box.max.x > sp.x1 + e || box.min.z < sp.z0 - e || box.max.z > sp.z1 + e) bad.push(`outside the room: x ${box.min.x.toFixed(2)}..${box.max.x.toFixed(2)} z ${box.min.z.toFixed(2)}..${box.max.z.toFixed(2)}`);
+        if (bad.length) console.warn('[hive dress] ' + sp.id + ': ' + bad.join('; '));
+      }
+    }
   }
 
   // ------------------------------------------------ level 5's rooms
@@ -1447,7 +1591,7 @@ export function buildHive() {
     P.bench(c2, [cx - 2.8, -8.4, cx - 0.6, -7.2]);
     P.bench(c2, [cx + 0.6, -8.4, cx + 2.8, -7.2], { riser: false, gear: 3 });
     P.bench(c2, [cx - 2.8, -5.6, cx + 0.2, -4.8], { riser: false });
-    P.specimenTube(c2, cx + 2.2, -5.0, { r: 0.45, h: 2.2, broken: id === 'ulabD' });
+    T.tube({ x: cx + 2.2, z: -5.0, r: 0.45, h: 2.2, floor: FLOORS[2], kind: id === 'ulabC' ? 'worker' : 'woman', pose: 'limp', yaw: 1.2, broken: id === 'ulabD', ceil: s.h });
     P.cabinet(c2, [s.x0, s.z1 - 2.6, s.x0 + 0.5, s.z1 - 1.2], 'e', { h: 1.9, mat: M.white, drawers: 3 });
     P.whiteboard(c2, s.x1 - 0.01, -8.4, 'w', 2.0);
     P.gurney(c2, cx - 1.5, -3.3, 0.4, { tipped: id === 'ulabC' });
@@ -1488,7 +1632,7 @@ export function buildHive() {
   }
   {
     const s = SPACE.uvir;
-    for (const [x, broken] of [[21.8, false], [23.6, true], [25.4, false], [27.2, false]]) P.specimenTube(c2, x, -8.9, { r: 0.5, h: 2.4, broken });
+    for (const [x, broken, kind, pose] of [[21.8, false, 'gasmask', 'spread'], [23.6, true, 'normal', 'limp'], [25.4, false, 'smoker', 'curl'], [27.2, false, 'survivor', 'reach']]) T.tube({ x, z: -8.9, r: 0.5, h: 2.4, floor: FLOORS[2], kind, pose, yaw: 2.9, broken, ceil: s.h });
     P.bench(c2, [21.2, -6.2, 27.8, -5.4], { riser: true });
     P.fumeHood(c2, [s.x1 - 0.85, -4.6, s.x1, -2.8], 'w');
     P.gasCylinder(c2, 21.0, -3.1, M.green);
@@ -1670,6 +1814,36 @@ export function buildHive() {
   const drips = [];
   for (const [x, z, h] of [[-37, 13, 3.0], [-36.6, 26, 3.0], [37.3, 15, 3.0], [36.8, 30, 3.0], [-24, 41.5, 3.0], [-9, 42.6, 3.0], [6, 41.2, 3.0], [21, 42.8, 3.0], [31, 41.6, 3.0], [0.8, 46.4, 3.0], [1.2, 57, 2.95], [-1.1, 63, 2.95], [0.9, 67.6, 2.95], [-33.2, 15.9, 9.7]]) drips.push([x, FLOORS[0] + h - 0.05, z, FLOORS[0]]);
 
+  // ------------------------------------------------ the building's own fittings: doors, ceilings, grime
+  const spaceAt = (x, z, y) => {
+    const cc = plan.at(x, z);
+    if (cc < 0) return null;
+    const o = ownerAt(cc, y);
+    return o >= 0 ? SPACES[o] : null;
+  };
+  {
+    // (not the atrium, the decks, the sealed labs, the stairs, the shaft, the catwalks, the pump hall)
+    const noFit = (s) => s.kind === 'hub' || s.deck || s.sealed || s.kind === 'stair' || s.kind === 'shaft' || s.kind === 'catwalk' || s.style === 'hall' || s.kind === 'flooded';
+    doorLeaves(ctxOfFloor, { doorInfo, spaceAt, F });
+    ceilingFixtures(ctxOfFloor, { spaces: SPACES, finOf, F, floorOf, skip: noFit });
+    grimePass(ctxOfFloor, { spaces: SPACES, doorInfo, spaceAt, floorOf, skip: (s) => noFit(s) && s.kind !== 'hub' });
+  }
+
+  // ------------------------------------------------ contact shadows under everything that stands on a floor
+  {
+    const pad = 0.3;
+    const onFloor = (y) => FLOORS.some((f) => Math.abs(y - f) < 0.07) || Math.abs(y - ARMORY_F) < 0.07;
+    for (const b of world.boxes) {
+      const w = b.maxX - b.minX, d = b.maxZ - b.minZ;
+      if (b.surface === SURF.concrete || b.tag || b.flags & (FLAG_STAIR | FLAG_NOBULLET) || !onFloor(b.minY) || b.maxY - b.minY < 0.3 || w > 7 || d > 7 || w < 0.2 || d < 0.2) continue;
+      const cx = (b.minX + b.maxX) / 2, cz = (b.minZ + b.maxZ) / 2, y = b.minY + 0.0065;
+      strip(M.aoStrip, w + pad * 2, pad, cx, y, b.minZ - pad / 2, YAW_FLOOR.s, true);
+      strip(M.aoStrip, w + pad * 2, pad, cx, y, b.maxZ + pad / 2, YAW_FLOOR.n, true);
+      strip(M.aoStrip, d, pad, b.minX - pad / 2, y, cz, YAW_FLOOR.e, true);
+      strip(M.aoStrip, d, pad, b.maxX + pad / 2, y, cz, YAW_FLOOR.w, true);
+    }
+  }
+
   // ------------------------------------------------ blast doors and the safe door: the leaves (their own Kit: they move)
   const leaves = [];
   const unlockables = {};
@@ -1742,7 +1916,8 @@ export function buildHive() {
 
   // ------------------------------------------------ bake and build
   const bake = makeHiveBaker(lights, plan);
-  K.build(group, bake);
+  T.finish();
+  K.build(group, bake, 12);
   for (const L of leaves) {
     L.KL.build(L.leaf, bake);
     L.KL = null;
@@ -1750,6 +1925,19 @@ export function buildHive() {
   group.traverse((o) => {
     if (o.isMesh) o.userData.noBatch = true;
   });
+  // rooms behind walls are not drawn (hiveCull.js): the plan seen from above, any floor open, the other builds' insides
+  // (the lab, the basement) open too; a probe that renders nothing hands the culler the camera
+  const flatOpen = new Uint8Array(NX * NZ);
+  for (let cell = 0; cell < NX * NZ; cell++) flatOpen[cell] = sc[cell] > 0 || ext[cell] ? 1 : 0;
+  const culler = makeCuller(group, { open: flatOpen, NX, NZ, PX0, PZ0, C });
+  {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(9), 3));
+    const probe = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }));
+    probe.frustumCulled = false;
+    probe.onBeforeRender = (renderer, scene, camera) => culler.update(camera.position);
+    group.add(probe);
+  }
 
   // ------------------------------------------------ gameplay data
   // where the infected come from: every open space but the atrium, the safe zone, the stairs, the decks, the sealed
@@ -2011,6 +2199,11 @@ export function buildHive() {
       g?.audio?.play('vault_open', { position: V(d.cx, d.f + 1.5, d.cz), volume: 1 });
     }
   };
+  /** the main menu's shots run only the animations (the tank's zombie and bubbles, the flickering tubes), not the doors */
+  const menuUpdate = (dt) => {
+    time += dt;
+    for (const u of updates) u(dt, time);
+  };
   const resetDoors = (g) => {
     for (const L of leaves) {
       if (L === safeLeaf || !L.open) continue;
@@ -2213,6 +2406,8 @@ export function buildHive() {
       },
     ],
     resetDoors,
+    menuUpdate,
+    culler,
     onRoundStart,
     onRoundEnd,
     spawnAt,
@@ -2234,6 +2429,8 @@ export function buildHive() {
     inHouse: () => false,
     drips,
     decor: {
+      density: 0.16, // (the rooms carry their own grime and stories: a few of the game's splats on top)
+      walls: 7,
       rooms: [
         [-38, -12, -1.6, 1.6, 0],
         [12, 38, -1.6, 1.6, 0],
@@ -2241,6 +2438,13 @@ export function buildHive() {
         [13, 19, -9.5, -3, 0],
         [15, 27, 5, 11, 0],
         [-9, 9, -9, -6, 0],
+        [-33, -27, -20, -13, 0], // the rooms behind the labs and the offices
+        [-25, -19, -20, -13, 0],
+        [-25, -19, -28, -22, 0],
+        [-33, -27, -28, -22, 0],
+        [17, 24, -25, -16, 0],
+        [26, 33, -22, -13, 0],
+        [17, 24, -14, -11, 0],
         [-17, -9, -30, -22, 0],
         [-1.6, 1.6, -34, -12, 0],
         [-5.5, 5.5, 11.5, 17.5, 0],
