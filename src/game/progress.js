@@ -181,7 +181,7 @@ let RUN = null;
 
 /** a run begins: { mode, difficulty } */
 export function runStart({ mode, difficulty }) {
-  RUN = { mode, difficulty, key: mode === 'gauntlet' ? 'gauntlet' : difficulty, xp: 0, parts: { kills: 0, heads: 0, rounds: 0, win: 0 }, rank0: rankOf().index, mastery0: {}, weapons: {}, won: false };
+  RUN = { mode, difficulty, key: mode === 'gauntlet' ? 'gauntlet' : difficulty, xp: 0, parts: { kills: 0, heads: 0, rounds: 0, objectives: 0, win: 0 }, rank0: rankOf().index, mastery0: {}, weapons: {}, won: false };
 }
 
 const mult = () => XP_RULES.mult[RUN?.key] ?? 1;
@@ -226,6 +226,11 @@ export function round(n) {
   const rank = addXp(XP_RULES.round[0] + XP_RULES.round[1] * n, 'rounds');
   if (RUN) save(); // (what the run has earned so far survives a closed tab)
   return { rank };
+}
+
+/** an objective done (the Hive: one of Nadja's requests brought in): n xp */
+export function objective(n) {
+  return { rank: addXp(n, 'objectives') };
 }
 
 /** the run won */

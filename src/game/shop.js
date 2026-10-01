@@ -87,11 +87,11 @@ export const SHOP_EQUIPMENT = [
       level: (g) => g.weapons.healLevel ?? 0,
       value: (lv) => {
         const L = WEAPONS.healnade.levels[Math.min(lv, 2)];
-        return L.revive ? 'REVIVES' : `${L.hps} HP/s`;
+        return `${L.hps} HP/s`;
       },
       desc: (lv) => {
         const L = WEAPONS.healnade.levels[Math.min(lv, 2)];
-        return `${L.radius} m · ${L.hps} HP/s${L.aps ? ` · +${L.aps} AP/s` : ''} · ${L.dur} s${L.revive ? ' · GETS THE DOWNED UP' : ''}`;
+        return `${L.radius} m · ${L.hps} HP/s${L.aps ? ` · +${L.aps} AP/s` : ''} · ${L.dur} s · A DOWNED MATE UP IN ${L.reviveT} S · YOUR DAMAGE −${Math.round((1 - WEAPONS.healnade.debuff) * 100)} % IN IT`;
       },
       apply: (g) => { g.weapons.healLevel = Math.min(2, (g.weapons.healLevel ?? 0) + 1); },
     },

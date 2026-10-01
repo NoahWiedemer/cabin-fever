@@ -771,7 +771,7 @@ export class Stalker extends Zombie {
     this.fwd = vel.x * Math.sin(this.yaw) + vel.z * Math.cos(this.yaw); // < 0: backing off
     const prev = this.phase;
     this.animate(dt);
-    if (this.moveSpeed > 0.7 && Math.floor(prev / Math.PI) !== Math.floor(this.phase / Math.PI)) {
+    if (this.moveSpeed > 0.7 && Math.floor(prev / Math.PI + 0.5) !== Math.floor(this.phase / Math.PI + 0.5)) {
       // bare feet: slapping outside, booming on the floorboards indoors; barely a sound at a walk
       const indoor = this.game.level.isSheltered(pos.x, pos.y + 1, pos.z);
       this.game.audio.play(indoor ? 'stalker_stomp' : 'stalker_step', { position: pos, volume: this.moveSpeed > 3 ? this.stepVol : 0.2 });
@@ -909,8 +909,8 @@ export class Stalker extends Zombie {
     b.hips.rotation.set(0, s * (0.1 + run * 0.12) * moving, c * 0.05 * moving);
     b.thighL.rotation.set(-s * amp - run * 0.3, 0, 0.05);
     b.thighR.rotation.set(s * amp - run * 0.3, 0, -0.05);
-    b.shinL.rotation.set(Math.max(0, -c) * amp * 1.9 + 0.1 + run * 0.45, 0, 0);
-    b.shinR.rotation.set(Math.max(0, c) * amp * 1.9 + 0.1 + run * 0.45, 0, 0);
+    b.shinL.rotation.set(Math.max(0, c) * amp * 1.9 + 0.1 + run * 0.45, 0, 0);
+    b.shinR.rotation.set(Math.max(0, -c) * amp * 1.9 + 0.1 + run * 0.45, 0, 0);
     b.footL.rotation.set(-(b.thighL.rotation.x + b.shinL.rotation.x) * 0.55, 0, 0);
     b.footR.rotation.set(-(b.thighR.rotation.x + b.shinR.rotation.x) * 0.55, 0, 0);
     b.spine.rotation.set(lean, -s * 0.14 * moving, 0);
@@ -1060,6 +1060,7 @@ export class StalkerDirector {
    * the next close of the gun shop's store is the jumpscare
    */
   force(kind = 'attack') {
+    if (this.game.level?.stalker === false) return null;
     if (kind === 'scare') {
       this.forceScare = true;
       return kind;
@@ -1074,6 +1075,10 @@ export class StalkerDirector {
 
   onRoundStart(round) {
     const S = STALKER;
+    if (this.game.level?.stalker === false) {
+      this.on = false; // (a map it doesn't belong on: world/hive.js)
+      return;
+    }
     this.on = round >= (S.firstRound[this.game.config?.difficulty] ?? 3);
     // killed: gone for good, but now and then, some rounds later, it's back for a round
     if (this.dead) this.on = round - this.killedRound > S.back.after && Math.random() < S.back.chance;
@@ -1115,6 +1120,7 @@ export class StalkerDirector {
   shopScare() {
     const g = this.game, S = STALKER.scare;
     if (this.z || !g.player.alive || g.state !== 'shop') return false;
+    if (g.level?.stalker === false) return false;
     const forced = this.forceScare;
     this.forceScare = false;
     if (!forced && (this.dead || this.shown < S.seen || g.round - this.scareRound < S.gap || Math.random() >= S.chance)) return false;

@@ -197,7 +197,7 @@ export const ASSETS = [
   ['molotov_raw.glb', 'weapons/molotov.glb', 1024],
   ['sigma_raw.glb', 'weapons/sigma.glb', 2048], // AI scan decimated to 90k tris
   ['p90_raw.glb', 'weapons/p90.glb', 2048], // textured scan decimated to 190k tris, normals re-projected
-  ['mg42_raw.glb', 'weapons/mg42.glb', 2048], // AI scan decimated to 75k tris + its ammo box (30k); cover, cocking handle and box split out
+  ['mg42_raw.glb', 'weapons/mg42.glb', 2048, { reduce: { ratio: 0.15, error: 0.01 } }], // Meshy scan with the belt box built on, 612k tris -> 90k (meshopt); cocking handle split out
   ['g36c_raw.glb', 'weapons/g36c.glb', 2048, { reduce: { ratio: 0.232, error: 0.01 } }], // AI scan, 388k tris -> 90k (meshopt: far fewer dents than Blender's collapse), mag split out
   ['awm_raw.glb', 'weapons/awm.glb', 2048], // AI scan (38.5k tris kept, base colour only), levelled on its barrel; mag and the deployed bipod split out
   ['axmc_raw.glb', 'weapons/axmc.glb', 2048, { reduce: { ratio: 0.778, error: 0.01 } }], // AI scan, 116k tris -> 90k (meshopt), mag split out

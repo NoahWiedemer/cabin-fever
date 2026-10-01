@@ -7,7 +7,7 @@
 
 import './menu.css';
 import { ensureUiFonts, esc, weaponSvg, weaponKind } from './hud.js';
-import { MODE_LIST, MODES, DIFFICULTIES } from '../game/modes.js';
+import { MODE_LIST, MODES, DIFFICULTIES, modeAllowed } from '../game/modes.js';
 import { FIRETEAM, FIRETEAM_BY_ID, LEGACY_LINEUPS, MAX_BOTS, DEFAULT_TEAM, normalizeFireteam } from '../actors/fireteam.js';
 import * as LB from './leaderboard.js';
 import * as Progress from '../game/progress.js';
@@ -24,6 +24,8 @@ const MAP_EMBLEMS = {
   appenweier: '<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 27h26M5 27V15l7-4 7 4v12M19 27V17h9v10"/><path d="M9 3h6v8M9 7h6M8.5 20h3v4h-3zM21 20h5M21 23h5"/></svg>',
   // the Hive: a hexagon (NOX Biosystems) over a shaft going down
   hive: '<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M16 3l9 5v10l-9 5-9-5V8z"/><path d="M12 17V9l8 8V9M16 23v6M11 29h10"/></svg>',
+  // Desert Thunder: the sun over flat-roofed houses and the temple's dome
+  desert: '<svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><circle cx="24" cy="8" r="3.5"/><path d="M3 28h26M5 28V18h7v10M12 28V15a5 5 0 0 1 10 0v13M22 28V20h6v8"/><path d="M17 10V7"/></svg>',
 };
 
 const LS_SETTINGS = 'cabinfever.settings.v1';
@@ -73,8 +75,9 @@ const CONTROLS = [
   [['R'], 'Reload'],
   [['1', '–', '5', '/', 'WHEEL'], 'Switch weapon'],
   [['1'], 'Again: primary ↔ backpack gun (weapon backpack)'],
-  [['4'], 'Again: frag → Molotov → mine → pipe bomb'],
+  [['4'], 'Again: frag → Molotov → mine → pipe bomb → heal grenade'],
   [['X'], 'Shockwave emitter (store gear, once a round)'],
+  [['T'], 'Fireteam: follow me ↔ hold the posts'],
   [['5'], 'Barricade kit · hold Mouse 1 at a doorway'],
   [['Q'], 'Last weapon'],
   [['G'], 'Quick throw'],
@@ -125,6 +128,9 @@ const EMBLEMS = {
   // the Gauntlet: three cards fanned out, a skull on the front one
   gauntlet:
     '<svg viewBox="0 0 64 64" aria-hidden="true"><g fill="currentColor"><path d="M5 18L22 11L32 50L15 57Z" opacity=".45"/><path d="M42 11L59 18L49 57L32 50Z" opacity=".45"/><path fill-rule="evenodd" d="M21 6H43V56H21ZM32 18C26.5 18 23.5 21.5 23.5 26C23.5 29 25 31 27 32.2V36H37V32.2C39 31 40.5 29 40.5 26C40.5 21.5 37.5 18 32 18ZM28.5 25.5a2.5 2.5 0 1 0 0.01 0ZM35.5 25.5a2.5 2.5 0 1 0 0.01 0ZM26 44H38V47H26Z"/></g></svg>',
+  // the mission: a target reticle over a map pin
+  mission:
+    '<svg viewBox="0 0 64 64" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="5"><circle cx="32" cy="32" r="20"/><path d="M32 4v14M32 46v14M4 32h14M46 32h14"/></g><circle cx="32" cy="32" r="5" fill="currentColor"/></svg>',
 };
 
 // the career screen: every weapon that levels up (not the tools), and the ones that take a camo
@@ -470,7 +476,7 @@ export class Menu {
       }, 900);
       E.cInto.textContent = c.next ? `${fmtNum(c.into)} / ${fmtNum(c.span)} XP · NEXT: ${c.next.name.toUpperCase()}` : 'GENERAL OF THE ARMY · THE TOP';
       const P = c.parts ?? {};
-      E.cParts.innerHTML = [['KILLS', P.kills], ['HEADSHOTS', P.heads], ['ROUNDS', P.rounds], ['WIN', P.win]]
+      E.cParts.innerHTML = [['KILLS', P.kills], ['HEADSHOTS', P.heads], ['ROUNDS', P.rounds], ['OBJECTIVES', P.objectives], ['WIN', P.win]]
         .filter(([, v]) => v > 0)
         .map(([k, v]) => `<span><small>${k}</small>+${fmtNum(v)}</span>`)
         .join('');
@@ -1497,10 +1503,13 @@ export class Menu {
   _syncConfig() {
     const M = this.$main;
     const c = this.config;
-    const mode = MODES[c.mode] || MODES.cabinfever;
-    const dId = mode.difficulty ?? c.difficulty; // (the Gauntlet: always Extreme)
     if (!MAPS[c.map]) c.map = this.loadedMap.id;
     const map = MAPS[c.map];
+    // (a map with modes of its own: Desert Thunder has the mission only, and the mission no other map)
+    if (!modeAllowed(c.mode, map)) c.mode = map.modes?.[0] ?? 'cabinfever';
+    for (const o of M.sels.mode.list.querySelectorAll('[data-opt]')) o.hidden = !modeAllowed(o.dataset.opt, map);
+    const mode = MODES[c.mode] || MODES.cabinfever;
+    const dId = mode.difficulty ?? c.difficulty; // (the Gauntlet: always Extreme)
     this._fillSelect('map', map.id, MAP_EMBLEMS[map.id], map.name);
     this._fillSelect('mode', mode.id, EMBLEMS[mode.id], mode.name);
     for (const b of M.diffs) {

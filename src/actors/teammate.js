@@ -12,6 +12,7 @@ import { FIRETEAM } from './fireteam.js';
 const _v = new THREE.Vector3();
 const _d = new THREE.Vector3();
 const _steer = { dirX: 0, dirZ: 0, portal: null, portalTo: null, dist: 0 };
+const _fw = { x: 0, z: 0, speed: 0 };
 const DEG = Math.PI / 180;
 
 // Signature guns: rpm, burst size, wind-up, pellets, mags and reloads come from weaponDefs.js; damage
@@ -358,11 +359,12 @@ export class Teammate {
         bd = score;
         best = z;
       }
-      // the NOX squad (actors/merc.js) shoots back: it comes first
-      for (const m of game.mercs?.list ?? []) {
+      // the NOX squad and the militia (actors/merc.js, actors/insurgent.js) shoot back: they come first
+      for (const m of game.hostiles ?? game.mercs?.list ?? []) {
         if (m === this || !m.alive || !m.inPlay) continue;
         const d = m.pos.distanceTo(pos);
-        if (d > range + 6 || d * 0.55 >= bd || Math.abs(m.pos.y - pos.y) > 2.5) continue;
+        // (the militia's snipers and gunners up on balconies and roofs are fair game from the street)
+        if (d > range + 6 || d * 0.55 >= bd || Math.abs(m.pos.y - pos.y) > (m.post ? 9 : 2.5)) continue;
         if (!game.world.lineOfSight(pos.x, pos.y + 1.5, pos.z, m.pos.x, m.pos.y + 1.2, m.pos.z)) continue;
         bd = d * 0.55;
         best = m;
@@ -371,11 +373,20 @@ export class Teammate {
     }
     if (this.target && !this.target.alive) this.target = null;
 
-    // ---- post selection & movement
-    this.postT -= dt;
-    if (!this.post || this.postT <= 0) this._choosePost();
+    // ---- movement: holding a post near you (the default), or following you round (key T: game.botOrders)
     let wantX = 0, wantZ = 0, speed = 0;
-    if (this.post) {
+    const follow = game.botOrders === 'follow' && game.player.alive;
+    if (follow) {
+      const fw = this._follow(dt);
+      wantX = fw.x;
+      wantZ = fw.z;
+      speed = fw.speed;
+    } else {
+      this.postT -= dt;
+      if (!this.post || this.postT <= 0) this._choosePost();
+      this.settled = false;
+    }
+    if (this.post && !follow) {
       const dx = this.post.pos.x - pos.x, dz = this.post.pos.z - pos.z;
       const dist = Math.hypot(dx, dz);
       const tooClose = this.target && this.target.pos.distanceTo(pos) < 3.2;
@@ -403,7 +414,7 @@ export class Teammate {
         }
         if (this.portalTo) {
           this.portalT += dt;
-          if (this.level === this.portalTo.level || this.portalT > 8) this.portalTo = null;
+          if (this._portalDone() || this.portalT > 8) this.portalTo = null;
           else {
             wantX = this.portalTo.x - pos.x;
             wantZ = this.portalTo.z - pos.z;
@@ -445,7 +456,9 @@ export class Teammate {
       faceYaw = Math.atan2(tp.x - pos.x, tp.z - pos.z);
       const hd = Math.hypot(tp.x - pos.x, tp.z - pos.z);
       wantPitch = Math.atan2(aimY - (pos.y + 1.45), hd);
-    } else if (this.post && Math.hypot(this.post.pos.x - pos.x, this.post.pos.z - pos.z) < 1) {
+    } else if (follow && this.settled && this.slotYaw != null) {
+      faceYaw = this.slotYaw + Math.sin(game.time * 0.3 + this.index) * 0.5; // (watching its side, away from you)
+    } else if (!follow && this.post && Math.hypot(this.post.pos.x - pos.x, this.post.pos.z - pos.z) < 1) {
       faceYaw = this.post.face + Math.sin(game.time * 0.3 + this.index) * 0.6;
     } else if (Math.hypot(wantX, wantZ) > 0.1) {
       faceYaw = Math.atan2(wantX, wantZ);
@@ -482,6 +495,89 @@ export class Teammate {
     this.crouch = damp(this.crouch, this.target && this.moveSpeed < 0.5 && this.index % 2 === 0 ? 1 : 0, 4, dt);
     this.recoil = damp(this.recoil, 0, 14, dt);
     this._animate(dt);
+  }
+
+  /**
+   * Following you (game.botOrders 'follow'): each bot keeps to a ring round you, 2.2 to 7 m off, on its own side
+   * (it walks toward the ring point on its side of you, not onto you). In a clear line on your floor it walks
+   * there straight; otherwise it takes the follow field toward you (game.js _updateFollow; stairs too), and
+   * never into a place the nav keeps it out of (it waits at the nearest spot). In the ring it stands and covers
+   * its side, until you've walked on. Something in its face: it backs off first. Returns { x, z (unit), speed }.
+   */
+  _follow(dt) {
+    const game = this.game, nav = game.nav, pos = this.pos, P = game.player.pos;
+    const out = _fw;
+    out.x = out.z = out.speed = 0;
+    if (this.target && this.target.pos.distanceTo(pos) < 3.2) {
+      _v.copy(pos).sub(this.target.pos).setY(0).normalize();
+      out.x = _v.x;
+      out.z = _v.z;
+      out.speed = 3.0;
+      this.settled = false;
+      return out;
+    }
+    const same = this.level === levelOf(P.y + 0.3);
+    const dx = pos.x - P.x, dz = pos.z - P.z;
+    const d = Math.hypot(dx, dz);
+    // (a clear line to you, checked every ~0.3 s)
+    if ((this.clearT = (this.clearT ?? 0) - dt) <= 0) {
+      this.clearT = 0.3;
+      this.clearToYou = same && d < 16 && nav.lineClear(this.level, pos.x, pos.z, P.x, P.z, 1);
+    }
+    if (this.clearToYou && d > 1e-3) {
+      this.portalTo = null;
+      this.slotYaw = Math.atan2(dx, dz); // (in the ring: it faces away from you, covering its side)
+      if (d >= 2.2 && d <= (this.settled ? 7 : 4.6)) {
+        this.settled = true;
+        return out;
+      }
+      this.settled = false;
+      // too close: a step back out; too far: to the ring point on its side of you
+      const want = d < 2.2 ? 3.2 : 3.8;
+      const tx = P.x + (dx / d) * want - pos.x, tz = P.z + (dz / d) * want - pos.z;
+      const l = Math.hypot(tx, tz) || 1;
+      out.x = tx / l;
+      out.z = tz / l;
+      out.speed = d < 2.2 ? 1.8 : this.target ? 2.4 : l > 4 ? 4.2 : 2.8;
+      return out;
+    }
+    const st = game.followField?.ready ? game.followField.steer(this.level, pos.x, pos.z, _steer) : null;
+    // near you round a corner or a desk (a short way on your floor): that's close enough, stand
+    if (same && d < (this.settled ? 4.5 : 3.6) && st && st.dist < 12) {
+      this.settled = true;
+      this.slotYaw = Math.atan2(dx, dz);
+      return out;
+    }
+    this.settled = false;
+    // (on a flight of stairs the field has no value under it: a bot already on its way up or down keeps going for
+    // the far end, else it would stop on the steps)
+    if (!st && !this.portalTo) return out; // (no way from here yet, or the field isn't in: wait)
+    if (st?.portal?.ladder) return out; // (bots don't climb: it waits at the ladder for you to come back)
+    if (st?.portal && !this.portalTo) {
+      this.portalTo = st.portalTo;
+      this.portalT = 0;
+    }
+    let x = st?.dirX ?? 0, z = st?.dirZ ?? 0;
+    if (this.portalTo) {
+      this.portalT += dt;
+      if (this._portalDone() || this.portalT > 8) this.portalTo = null;
+      else {
+        x = this.portalTo.x - pos.x;
+        z = this.portalTo.z - pos.z;
+      }
+    }
+    const l = Math.hypot(x, z);
+    if (l < 1e-3) return out; // (as close to you as the nav goes: e.g. you're in the Hive's lab)
+    out.x = x / l;
+    out.z = z / l;
+    out.speed = this.target ? 2.6 : 4.4;
+    return out;
+  }
+
+  /** a flight taken (stairs, the ladder): on its far end's floor and close to it (mid-flight the floor below can read as either) */
+  _portalDone() {
+    const t = this.portalTo, p = this.pos;
+    return this.level === t.level && Math.hypot(t.x - p.x, t.z - p.z) < 1.1;
   }
 
   /** delay to the next round of a trigger pull: burst gap, wound-up LMG rate or the plain rpm */
@@ -633,8 +729,9 @@ export class Teammate {
     b.hips.rotation.set(0, 0.35 + s * 0.1 * moving * cf, c * 0.05 * moving + sway * 0.035 * idle);
     b.thighL.rotation.set(-sL * cf - bend - cr * 1.3, -0.3, Math.max(0.02, 0.07 + 0.02 * idle + sL * sf * 0.6));
     b.thighR.rotation.set(-sR * cf - bend - cr * 0.2, -0.3, Math.min(-0.02, -0.07 - 0.02 * idle + sR * sf * 0.6));
-    b.shinL.rotation.set(Math.max(0, -c) * amp * 1.45 + 0.08 + bend * 2 + cr * 1.6 + run * 0.1, 0, 0);
-    b.shinR.rotation.set(Math.max(0, c) * amp * 1.45 + 0.08 + bend * 2 + cr * 1.9 + run * 0.1, 0, 0);
+    // (each knee bends while its foot swings the way it goes: sL rising, cos > 0 for the left)
+    b.shinL.rotation.set(Math.max(0, c) * amp * 1.45 + 0.08 + bend * 2 + cr * 1.6 + run * 0.1, 0, 0);
+    b.shinR.rotation.set(Math.max(0, -c) * amp * 1.45 + 0.08 + bend * 2 + cr * 1.9 + run * 0.1, 0, 0);
     b.footL.rotation.set(-(b.thighL.rotation.x + b.shinL.rotation.x) * 0.75, 0, -b.thighL.rotation.z * 0.8);
     b.footR.rotation.set(-(b.thighR.rotation.x + b.shinR.rotation.x) * 0.75 + cr * 0.3, 0, -b.thighR.rotation.z * 0.8);
 

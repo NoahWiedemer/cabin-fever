@@ -195,7 +195,7 @@ export class Crusher extends Zombie {
     if (this.chargeRun > C.dist || this.cT > C.t || passed) this._set('recover');
     const prev = this.phase;
     this.animate(dt);
-    if (Math.floor(prev / Math.PI) !== Math.floor(this.phase / Math.PI)) {
+    if (Math.floor(prev / Math.PI + 0.5) !== Math.floor(this.phase / Math.PI + 0.5)) {
       g.audio.play('crusher_step', { position: pos, volume: 1 });
       if (g.player?.alive) g.shake.add(clamp(0.3 - g.player.pos.distanceTo(pos) / 35, 0, 0.25));
     }
@@ -272,7 +272,9 @@ export class Crusher extends Zombie {
 
   // ---------------------------------------------------------------- animation
   _pose(dt) {
-    if (!this.alive || this.cstate === 'walk') return super._pose(dt);
+    if (this.alive && this.cstate === 'walk') return this._poseWalk(dt);
+    this.bones.hips.position.x = 0; // (the walk's sway)
+    if (!this.alive) return super._pose(dt);
     const b = this.bones;
     const t = (this.phase2 = (this.phase2 ?? 0) + dt);
     this.flinchVel.addScaledVector(this.flinch, -120 * dt);
@@ -286,6 +288,96 @@ export class Crusher extends Zombie {
     else if (this.cstate === 'charge') this._poseCharge(b, t, dt);
     else this._poseDazed(b, t);
     b.spine.rotation.x += this.flinch.x * 0.3;
+  }
+
+  /**
+   * Its walk: heavy, rolling from foot to foot. Each knee bends while its foot swings forward, a step covers the
+   * ground it moves (the planted foot stays put), the body drops into every footfall and leans over the planted leg,
+   * the shoulders counter the hips, the heavy arms swing a beat behind, the head stays level. The pace follows a
+   * smoothed speed (the measured one jitters in a crowd and round corners). The slam is Zombie's.
+   */
+  _poseWalk(dt) {
+    const b = this.bones;
+    const t = (this.phase2 = (this.phase2 ?? 0) + dt);
+    this.flinchVel.addScaledVector(this.flinch, -120 * dt);
+    this.flinchVel.multiplyScalar(Math.exp(-10 * dt));
+    this.flinch.addScaledVector(this.flinchVel, dt);
+    this.twitchT -= dt;
+    if (this.twitchT <= 0) {
+      this.twitchT = rand(0.8, 2.6);
+      this.twitch.set(rand(-0.15, 0.15), rand(-0.35, 0.35), 0);
+    }
+    this.gaitSp = damp(this.gaitSp ?? 0, this.moveSpeed, 4, dt);
+    const sp = this.gaitSp;
+    const run = smoothstep(1.9, 3.3, sp);
+    const moving = smoothstep(0.08, 0.6, sp);
+    // a step: short ones slow, long ones fast (world m; the phase goes π per step)
+    const step = clamp(sp * 0.7, 0.35, 1.0 + 0.2 * run) * (this.scale / 1.4);
+    this.phase += dt * (sp / step) * Math.PI;
+    const ph = this.phase, s = Math.sin(ph), c = Math.cos(ph);
+    const f = this.flinch;
+    // each foot from its footfall (u = 0: the left's at sin = 1, the right's at sin = -1): planted for u < π,
+    // going back under the body at the body's own speed (so it stays put on the ground), then swung forward
+    const TAU = Math.PI * 2;
+    const uL = (((ph - Math.PI / 2) % TAU) + TAU) % TAU, uR = (uL + Math.PI) % TAU;
+    const d = ((step / 2) * moving) / this.scale; // (the rig's units)
+    const LEG = 0.78; // hip to ankle
+    const reach = (u) => {
+      if (u < Math.PI) return 1 - (2 * u) / Math.PI;
+      const w = (u - Math.PI) / Math.PI; // (the swing: meets the stance's speed at both ends)
+      return -8 * w * w * w + 12 * w * w - 2 * w - 1;
+    };
+    const thL = Math.asin(clamp((d * reach(uL)) / LEG, -0.9, 0.9)), thR = Math.asin(clamp((d * reach(uR)) / LEG, -0.9, 0.9));
+    // (the knee most bent mid-swing, where the foot passes under the body)
+    const kneeL = uL < Math.PI ? 0 : Math.pow(Math.sin(uL - Math.PI), 3), kneeR = uR < Math.PI ? 0 : Math.pow(Math.sin(uR - Math.PI), 3);
+    // a footfall: `hit` jolts in there and dies away over the step
+    const since = Math.min(uL, uR) / Math.PI;
+    const hit = Math.exp(-since * 7) * moving;
+    const lift = lerp(0.7, 1.05, run) * clamp(d / 0.3, 0.4, 1.1);
+    const idle = 1 - moving;
+
+    // hips: carried on the planted leg (straight: they sink as it leans), over it, the swinging side dips
+    const planted = uL < Math.PI ? thL : thR;
+    b.hips.position.y = 0.95 - LEG * (1 - Math.cos(planted)) - 0.018 * hit - run * 0.05 + Math.sin(t * 1.7) * 0.004 * idle;
+    b.hips.position.x = -0.035 * c * moving;
+    b.hips.rotation.set(0.04 * run, -s * 0.11 * moving + f.z * 0.2, -c * 0.06 * moving);
+    // legs (a wide stance), the planted foot flat, the swinging one toes down
+    b.thighL.rotation.set(-thL - run * 0.12, 0, 0.07);
+    b.thighR.rotation.set(-thR - run * 0.12, 0, -0.07);
+    b.shinL.rotation.set(0.1 + kneeL * lift + run * 0.15, 0, 0);
+    b.shinR.rotation.set(0.1 + kneeR * lift + run * 0.15, 0, 0);
+    b.footL.rotation.set(-(b.thighL.rotation.x + b.shinL.rotation.x) * (1 - 0.45 * kneeL) - 0.12 * kneeL, 0, -0.05);
+    b.footR.rotation.set(-(b.thighR.rotation.x + b.shinR.rotation.x) * (1 - 0.45 * kneeR) - 0.12 * kneeR, 0, 0.05);
+    // torso: bent forward, over the planted leg, the shoulders turning against the hips; heavy breathing standing
+    const lean = 0.24 + run * 0.14;
+    b.spine.rotation.set(lean + 0.05 * hit + f.x * 0.5, s * 0.08 * moving + f.z * 0.4, c * 0.07 * moving);
+    b.chest.rotation.set(0.06 + f.x * 0.4 + Math.sin(t * 1.7) * 0.035 * idle, s * 0.1 * moving, c * 0.03 * moving);
+    b.neck.rotation.set(0.12 + f.y * 0.3, -s * 0.05 * moving + this.twitch.y * 0.2, 0);
+    b.head.rotation.set(-0.34 + 0.05 * hit + this.twitch.x * 0.15 - f.y * 0.5, -s * 0.03 * moving + this.twitch.y * 0.25, -c * 0.04 * moving);
+    // arms: hanging out from the bulk, a beat behind the legs, the forearm curling as it comes forward
+    const sw = Math.sin(ph - 0.45) * lerp(0.26, 0.42, run) * moving;
+    b.shoulderL.rotation.set(0, 0, 0);
+    b.shoulderR.rotation.set(0, 0, 0);
+    b.upperArmL.rotation.set(-0.3 + sw, 0, 0.38 + 0.04 * hit);
+    b.upperArmR.rotation.set(-0.3 - sw, 0, -0.38 - 0.04 * hit);
+    b.foreArmL.rotation.set(-0.45 - 0.25 * Math.max(0, -sw) - 0.08 * hit, 0, 0);
+    b.foreArmR.rotation.set(-0.45 - 0.25 * Math.max(0, sw) - 0.08 * hit, 0, 0);
+    b.handL.rotation.set(0.3, 0, 0);
+    b.handR.rotation.set(0.3, 0, 0);
+    // the overhead double-fist slam (as Zombie._pose has it)
+    if (this.attackT >= 0) {
+      const a = this.attackT;
+      const up = a < 0.5 ? a / 0.5 : 1 - (a - 0.5) / 0.5;
+      const slam = a < 0.5 ? 0 : Math.min(1, (a - 0.5) / 0.15);
+      const armX = lerp(-0.4, -2.9, up) + slam * 1.2;
+      b.upperArmL.rotation.set(armX, 0, 0.2);
+      b.upperArmR.rotation.set(armX, 0, -0.2);
+      b.foreArmL.rotation.set(-0.6 * up, 0, 0);
+      b.foreArmR.rotation.set(-0.6 * up, 0, 0);
+      b.spine.rotation.x = lean - 0.25 * up + 0.5 * slam * (1 - up);
+    }
+    b.upperArmL.rotation.x += f.x * 0.3;
+    b.upperArmR.rotation.x += f.x * 0.3;
   }
 
   /** the wind-up: sinking into a crouch, arms flung wide and back, head down, the right foot stamping, trembling */
@@ -321,8 +413,8 @@ export class Crusher extends Zombie {
     b.hips.rotation.set(0, s * 0.18, c * 0.06);
     b.thighL.rotation.set(-s * amp - 0.25, 0, 0.06);
     b.thighR.rotation.set(s * amp - 0.25, 0, -0.06);
-    b.shinL.rotation.set(Math.max(0, -c) * amp * 1.6 + 0.25, 0, 0);
-    b.shinR.rotation.set(Math.max(0, c) * amp * 1.6 + 0.25, 0, 0);
+    b.shinL.rotation.set(Math.max(0, c) * amp * 1.6 + 0.25, 0, 0);
+    b.shinR.rotation.set(Math.max(0, -c) * amp * 1.6 + 0.25, 0, 0);
     b.footL.rotation.set(-(b.thighL.rotation.x + b.shinL.rotation.x) * 0.5, 0, 0);
     b.footR.rotation.set(-(b.thighR.rotation.x + b.shinR.rotation.x) * 0.5, 0, 0);
     b.spine.rotation.set(0.6, -s * 0.12, 0);

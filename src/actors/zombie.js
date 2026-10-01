@@ -33,11 +33,11 @@ export const ZOMBIE_TYPES = {
   // rare: a survivalist who didn't make it, a little tougher; loot: it drops something useful (game.onZombieKilled)
   survivor: { name: 'Survivalist', body: ['survivor'], hp: 190, walk: 1.1, run: 3.7, dmg: 12, reach: 1.25, attackTime: 1.0, radius: 0.34, scale: 1.0, score: 250, mass: 1.1, loot: true },
   charger: { name: 'Boomer', body: ['boomer'], hp: 110, walk: 1.35, run: 4.5, dmg: 0, reach: 1.9, attackTime: 0.9, radius: 0.32, scale: 1.0, score: 150, mass: 1, explodes: true },
-  striker: { name: 'Striker', body: ['bomber'], hp: 170, walk: 1.53, run: 5.31, dmg: 13, reach: 1.25, attackTime: 0.7, radius: 0.3, scale: 0.97, score: 200, mass: 0.8, leap: { min: 2.5, max: 6.5, vy: 5.2, t: 0.6, cd: [3, 5], snd: 'striker_shriek', pitch: 1.1 } },
+  striker: { name: 'Striker', body: ['bomber'], hp: 170, walk: 1.4, run: 4.6, dmg: 13, reach: 1.25, attackTime: 0.7, radius: 0.3, scale: 0.97, score: 200, mass: 0.8, leap: { min: 2.5, max: 6.5, vy: 5.2, t: 0.6, cd: [3, 5], snd: 'striker_shriek', pitch: 1.1 } },
   // the boss (crusher.js: the Crusher class with its slam, charge and rage). partMult: its armoured skull takes
   // headshots x1.5 instead of PART_MULT's x4; blast: share of explosion damage (game.explode); buckshot: of
   // shotgun pellets (game.hitscan: up close they tear its hide); more hp per fireteam member (CRUSHER.team)
-  crusher: { name: 'Crusher', body: ['tank'], hp: 2800, walk: 1.35, run: 2.52, dmg: 34, reach: 1.9, attackTime: 1.5, radius: 0.55, scale: 1.4, score: 800, mass: 4, turn: 4, partMult: { head: 1.5 }, blast: 0.6, buckshot: 1.6 },
+  crusher: { name: 'Crusher', body: ['tank'], hp: 2800, walk: 1.35, run: 2.52, dmg: 34, reach: 1.9, attackTime: 1.5, radius: 0.55, scale: 1.4, score: 800, mass: 4, turn: 4, partMult: { head: 1.5 }, sniperHead: 3.2, blast: 0.6, buckshot: 1.35 },
   dog: { name: 'Mutant Dog', body: ['dog'], hp: 90, walk: 1.375, run: 4.73, dmg: 8, reach: 1.1, attackTime: 0.55, radius: 0.36, scale: 1.0, score: 120, mass: 0.7, turn: 14, height: 1.0, eye: 0.75, pitch: 1.55, lunge: 0.6, hitAt: 0.5, leap: { min: 1.8, max: 4.5, vy: 3.4, t: 0.45, cd: [2.2, 3.8], snd: 'zombie_attack', pitch: 1.6 } },
   // small feral kid in packs: ~42 % of a Mauler's hp, 1.3x its run; pounces and latches on (biter.js: the
   // Biter class, its AI, pose and the latch). dmg / reach are its claw swipe when it can't pounce.
@@ -494,9 +494,13 @@ export class Zombie {
     // footsteps
     const prevPhase = this.phase;
     this.animate(dt);
-    if (Math.floor(prevPhase / Math.PI) !== Math.floor(this.phase / Math.PI) && this.moveSpeed > 0.8) {
-      if (this.typeName === 'crusher') game.audio.play('crusher_step', { position: pos, volume: 0.8 });
-      else if (this.quad) {
+    // (a footfall at every sin(phase) = ±1)
+    if (Math.floor(prevPhase / Math.PI + 0.5) !== Math.floor(this.phase / Math.PI + 0.5) && this.moveSpeed > 0.8) {
+      if (this.typeName === 'crusher') {
+        game.audio.play('crusher_step', { position: pos, volume: 0.8 });
+        const d = game.player?.alive ? game.player.pos.distanceTo(pos) : 99;
+        if (d < 9) game.shake.add(0.07 * (1 - d / 9)); // (the floor feels it)
+      } else if (this.quad) {
         if (Math.random() < 0.3) game.audio.play('zombie_footstep', { position: pos, volume: 0.2, pitch: 1.7 });
       } else if (Math.random() < 0.4) game.audio.play('zombie_footstep', { position: pos, volume: 0.35 });
     }
@@ -634,6 +638,7 @@ export class Zombie {
           this.portalT = 0;
           this.portalChk = 0.5;
           this.portalDist = field ? field.dist : null;
+          this.dropHop = false;
         }
         const raw = this.rawT > 0 && !st.portal;
         this.wpx = raw ? st.fx : st.wx;
@@ -695,6 +700,18 @@ export class Zombie {
     if (this.portalWait) {
       if (hd < 0.3) w.x = w.z = 0;
       return;
+    }
+    if (p.drop && !this.dropHop && t2 === p.b && this.body.onGround && levelOf(pos.y + 0.3) === p.a.level) {
+      // a drop (world/hive.js: the gallery's torn railing): a hop off the edge once it's there, its run carries
+      // it down (the edge is 0.9 m past a)
+      const vx = p.b.x - p.a.x, vz = p.b.z - p.a.z, L2 = vx * vx + vz * vz;
+      if (((pos.x - p.a.x) * vx + (pos.z - p.a.z) * vz) / L2 > 0.22) {
+        const L = Math.sqrt(L2), v = Math.max(2.4, Math.hypot(this.body.vel.x, this.body.vel.z));
+        this.dropHop = true;
+        this.body.vel.set((vx / L) * v, 2.6, (vz / L) * v);
+        this.body.onGround = false;
+        if (Math.random() < 0.4) this.game?.audio?.play('zombie_alert', { position: pos, volume: 0.8 });
+      }
     }
     if ((hd < 0.45 && levelOf(pos.y + 0.3) === t2.level) || this.portalT > 8) {
       this.portal = null;
@@ -903,8 +920,9 @@ export class Zombie {
     const limp = plain && this.id % 3 === 0 ? 0.6 : 1;
     b.thighL.rotation.set(-s * amp - run * 0.15, 0, 0.03);
     b.thighR.rotation.set(s * amp * limp - run * 0.15, 0, -0.03);
-    b.shinL.rotation.set(Math.max(0, -c) * amp * 1.5 + 0.08 + run * 0.25, 0, 0);
-    b.shinR.rotation.set(Math.max(0, c) * amp * 1.5 * limp + 0.08 + run * 0.25, 0, 0);
+    // (each knee bends while its foot swings forward: the left while cos > 0, the right while cos < 0)
+    b.shinL.rotation.set(Math.max(0, c) * amp * 1.5 + 0.08 + run * 0.25, 0, 0);
+    b.shinR.rotation.set(Math.max(0, -c) * amp * 1.5 * limp + 0.08 + run * 0.25, 0, 0);
     b.footL.rotation.set(-(b.thighL.rotation.x + b.shinL.rotation.x) * 0.6, 0, 0);
     b.footR.rotation.set(-(b.thighR.rotation.x + b.shinR.rotation.x) * 0.6, 0, 0);
 

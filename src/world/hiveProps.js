@@ -632,3 +632,172 @@ export function whiteboard(c, x, z, face, w = 1.8) {
   K.cube(M.steel, x + fx * 0.015, 1.5, z + fz * 0.015, along ? 0.03 : w + 0.06, 1.06, along ? w + 0.06 : 0.03);
   K.cube(M.board, x + fx * 0.032, 1.5, z + fz * 0.032, along ? 0.004 : w, 1.0, along ? w : 0.004);
 }
+
+// ---------------------------------------------------------------- sublevel 5 and the rest of the multi-level Hive
+
+/**
+ * A giant pressure vessel in the pump hall: on its plinth, banded, a dome, a caged service ladder, a pipe up to the
+ * ceiling (ceil: the ceiling over the floor) and elbows to the wall side, a status panel. Round-ish collider.
+ */
+export function reactor(c, x, z, R, H, ceil, face = 's') {
+  const { K, M, U, rnd } = c;
+  const top = H - R * 0.45;
+  K.cyl(M.dark, x, 0, z, R + 0.45, R + 0.5, 0.45, 40);
+  K.cyl(M.hazard, x, 0.45, z, R + 0.02, R + 0.02, 0.35, 40, null, true);
+  K.cyl(M.steelDark, x, 0.45, z, R, R, top - 0.45, 44);
+  K.add(M.steelDark, new THREE.SphereGeometry(R, 44, 12, 0, Math.PI * 2, 0, Math.PI / 2), x, top, z, null, [1, 0.45, 1]);
+  for (let y = 1.4; y < top - 0.3; y += 1.7) K.add(M.dark, new THREE.TorusGeometry(R + 0.025, 0.06, 6, 56), x, y, z, [Math.PI / 2, 0, 0]);
+  // rivet seams
+  for (let k = 0; k < 12; k++) {
+    const a = (k / 12) * Math.PI * 2;
+    K.box(M.dark, x + Math.cos(a) * (R + 0.005) - 0.015, 0.8, z + Math.sin(a) * (R + 0.005) - 0.015, x + Math.cos(a) * (R + 0.005) + 0.015, top - 0.2, z + Math.sin(a) * (R + 0.005) + 0.015);
+  }
+  // the pipe up from the dome, a manifold ring
+  K.cyl(M.steel, x, H - 0.1, z, 0.42, 0.42, Math.max(0.2, ceil - H + 0.1), 18);
+  K.add(M.dark, new THREE.TorusGeometry(0.55, 0.08, 8, 24), x, H + 0.6, z, [Math.PI / 2, 0, 0]);
+  // two side outlets with flanges, down into the floor
+  for (const s of [-1, 1]) {
+    const ox = x + s * (R + 0.6);
+    K.rod(M.steel, V(x + s * (R - 0.1), 2.2, z), V(ox, 2.2, z), 0.22, 14);
+    K.cyl(M.dark, ox - s * 0.06, 2.2, z, 0.3, 0.3, 0.12, 16, [0, 0, Math.PI / 2]);
+    K.cyl(M.steel, ox, 0, z, 0.22, 0.22, 2.2, 14);
+  }
+  // service ladder on the front with its cage
+  const f = FACE_YAW[face], fx = Math.sin(f), fz = Math.cos(f), px = Math.cos(f), pz = -Math.sin(f);
+  const lx = x + fx * (R + 0.18), lz = z + fz * (R + 0.18);
+  for (const s of [-0.22, 0.22]) K.rod(M.steel, V(lx + px * s, 0.45, lz + pz * s), V(lx + px * s, top - 0.2, lz + pz * s), 0.025, 6);
+  for (let y = 0.7; y < top - 0.3; y += 0.3) K.rod(M.steel, V(lx - px * 0.22, y, lz - pz * 0.22), V(lx + px * 0.22, y, lz + pz * 0.22), 0.018, 6);
+  // the status panel
+  const sx = x + fx * (R + 0.04), sz = z + fz * (R + 0.04);
+  K.cube(M.black, sx + px * 0.8, 1.5, sz + pz * 0.8, Math.abs(px) > 0.5 ? 0.5 : 0.06, 0.5, Math.abs(px) > 0.5 ? 0.06 : 0.5, 0);
+  const led = rnd() < 0.5 ? U.ledR : U.ledA;
+  K.cube(led, sx + px * 0.8 + fx * 0.04, 1.62, sz + pz * 0.8 + fz * 0.04, 0.08, 0.08, 0.08);
+  c.light(sx + px * 0.8 + fx * 0.4, 1.6, sz + pz * 0.8 + fz * 0.4, 0.25, 1.2, led === U.ledR ? [1, 0.2, 0.1] : [1, 0.6, 0.2], null, 3);
+  c.col(x - R, 0, z - R * 0.72, x + R, H, z + R * 0.72, SURF.metal);
+  c.col(x - R * 0.72, 0, z - R, x + R * 0.72, H, z + R, SURF.metal);
+}
+
+/**
+ * A railing along a drop-off edge from (ax, az) to (bx, bz) at floor height y: posts, a top and a mid rail, a yellow
+ * toe board. Its collider stops bodies (and the nav) but not bullets (FLAG_NOBULLET).
+ */
+export function railing(c, ax, az, bx, bz, y) {
+  const { K, M } = c;
+  const L = Math.hypot(bx - ax, bz - az);
+  if (L < 0.2) return;
+  K.rod(M.steel, V(ax, y + 1.05, az), V(bx, y + 1.05, bz), 0.024, 8);
+  K.rod(M.steel, V(ax, y + 0.55, az), V(bx, y + 0.55, bz), 0.014, 6);
+  const alongX = Math.abs(bx - ax) > Math.abs(bz - az);
+  if (alongX) K.box(M.yellow, Math.min(ax, bx), y, az - 0.006, Math.max(ax, bx), y + 0.1, az + 0.006);
+  else K.box(M.yellow, ax - 0.006, y, Math.min(az, bz), ax + 0.006, y + 0.1, Math.max(az, bz));
+  const n = Math.max(1, Math.round(L / 1.25));
+  for (let i = 0; i <= n; i++) K.cyl(M.steel, ax + ((bx - ax) * i) / n, y, az + ((bz - az) * i) / n, 0.02, 0.02, 1.05, 8);
+  if (alongX) c.col(Math.min(ax, bx), y, az - 0.05, Math.max(ax, bx), y + 1.1, az + 0.05, SURF.metal, FLAG_NOBULLET);
+  else c.col(ax - 0.05, y, Math.min(az, bz), ax + 0.05, y + 1.1, Math.max(az, bz), SURF.metal, FLAG_NOBULLET);
+}
+
+/**
+ * A straight flight of steel stairs over x0..x1 × z0..z1, climbing along `along` ('x' | 'z') from the `low` end
+ * ('x0' | 'x1' | 'z0' | 'z1') at yb to yt in n steps: solid steps (FLAG_STAIR colliders: the nav takes the flight by a
+ * portal), yellow nosing, side stringers.
+ */
+export function stairFlight(c, { x0, x1, z0, z1, along, low, yb, yt, n }, FLAG_STAIR = 1) {
+  const { K, M } = c;
+  const L = along === 'x' ? x1 - x0 : z1 - z0;
+  const run = L / n, rise = (yt - yb) / n;
+  const start = low === 'x0' ? x0 : low === 'x1' ? x1 : low === 'z0' ? z0 : z1;
+  const dir = low === 'x0' || low === 'z0' ? 1 : -1;
+  for (let i = 0; i < n; i++) {
+    const a = start + dir * run * i, b = start + dir * run * (i + 1);
+    const s0 = Math.min(a, b), s1 = Math.max(a, b);
+    const top = yb + rise * (i + 1);
+    const riser = dir > 0 ? (along === 'x' ? 'nx' : 'nz') : along === 'x' ? 'px' : 'pz';
+    if (along === 'x') {
+      K.box(M.stairs, s0, yb, z0, s1, top, z1, { faces: ['py', riser] });
+      K.box(M.steelDark, s0, yb, z0, s1, top, z1, { faces: ['pz', 'nz'] });
+      const e = dir > 0 ? s0 : s1;
+      K.box(M.yellow, e - 0.03, top - 0.004, z0, e + 0.03, top + 0.002, z1, { faces: ['py'] });
+      c.col(s0, yb, z0, s1, top, z1, SURF.metal, FLAG_STAIR);
+    } else {
+      K.box(M.stairs, x0, yb, s0, x1, top, s1, { faces: ['py', riser] });
+      K.box(M.steelDark, x0, yb, s0, x1, top, s1, { faces: ['px', 'nx'] });
+      const e = dir > 0 ? s0 : s1;
+      K.box(M.yellow, x0, top - 0.004, e - 0.03, x1, top + 0.002, e + 0.03, { faces: ['py'] });
+      c.col(x0, yb, s0, x1, top, s1, SURF.metal, FLAG_STAIR);
+    }
+  }
+  // the back of the top step, down to the floor (seen from under the landing the flight meets)
+  const back = dir > 0 ? (along === 'x' ? 'px' : 'pz') : along === 'x' ? 'nx' : 'nz';
+  K.box(M.steelDark, x0, yb, z0, x1, yt, z1, { faces: [back] });
+}
+
+/** a drowned body floating at (x, y, z), turned yaw, tipped `pitch` (face down: ~pi/2), limbs adrift */
+export function drowned(c, x, y, z, yaw, pitch = 1.4) {
+  const { K, U, rnd } = c;
+  const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(pitch, yaw, rnd() * 0.6 - 0.3, 'YXZ'));
+  const at = (lx, ly, lz) => new THREE.Vector3(lx, ly, lz).applyQuaternion(q).add(new THREE.Vector3(x, y, z));
+  const put = (geo, lx, ly, lz, rx = 0, rz = 0) => {
+    const p = at(lx, ly, lz);
+    const m = new THREE.Matrix4().compose(p, q.clone().multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, 0, rz))), new THREE.Vector3(1, 1, 1));
+    K.addMatrix(U.drowned, geo, m);
+  };
+  put(new THREE.CapsuleGeometry(0.17, 0.5, 4, 10), 0, 0, 0);
+  put(new THREE.SphereGeometry(0.12, 10, 8), 0, 0.46, 0.02);
+  for (const s of [-1, 1]) {
+    put(new THREE.CapsuleGeometry(0.055, 0.5, 4, 8), s * 0.24, 0.12, 0, 0, s * (0.9 + rnd() * 0.8));
+    put(new THREE.CapsuleGeometry(0.07, 0.62, 4, 8), s * 0.1, -0.6, 0, rnd() * 0.5 - 0.25, s * 0.15);
+  }
+}
+
+/**
+ * A flooded lab's contents (sealed behind the glass): benches and shelves under water, chairs on their side, the
+ * drowned floating, papers adrift, the water up to `wl` over the floor, a cold teal glow from inside.
+ */
+export function floodedLab(c, [x0, z0, x1, z1], wl, face) {
+  const { K, U, rnd } = c;
+  const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+  const w = x1 - x0;
+  // face: the side its window is on ('n': z0, 's': z1); a bench down the middle, a shelf and a freezer at the back
+  const north = face === 'n';
+  const win = north ? z0 : z1;
+  bench(c, [cx - w * 0.3, cz - 0.35, cx + w * 0.3, cz + 0.35], { riser: rnd() < 0.5, gear: 3 });
+  shelf(c, [x0 + 0.3, north ? z1 - 0.5 : z0, x0 + 2.2, north ? z1 : z0 + 0.5], { fill: 'bottles' });
+  if (rnd() < 0.7) freezer(c, [x1 - 1.4, north ? z1 - 0.9 : z0, x1 - 0.2, north ? z1 : z0 + 0.9], face);
+  for (let i = 0; i < 3; i++) chair(c, cx + (rnd() - 0.5) * w * 0.6, cz + (rnd() - 0.5) * 1.6, rnd() * 6, rnd() < 0.6);
+  // the drowned
+  const nb = 1 + Math.floor(rnd() * 2.2);
+  for (let i = 0; i < nb; i++) drowned(c, cx + (rnd() - 0.5) * (w - 2), 0.6 + rnd() * (wl - 1.2), cz + (rnd() - 0.5) * 1.2, rnd() * 6, 0.6 + rnd() * 1.4);
+  // papers adrift
+  for (let i = 0; i < 10; i++) K.cube(U.paperWet, x0 + 0.4 + rnd() * (w - 0.8), 0.3 + rnd() * (wl - 0.4), z0 + 0.4 + rnd() * (z1 - z0 - 0.8), 0.21, 0.004, 0.29, rnd() * 3);
+  // the water: a murky volume and its surface
+  K.box(U.water, x0 + 0.02, 0.02, z0 + 0.02, x1 - 0.02, wl, z1 - 0.02);
+  K.box(U.waterTop, x0 + 0.02, wl - 0.005, z0 + 0.02, x1 - 0.02, wl, z1 - 0.02, { faces: ['py', 'ny'] });
+  // the cold glow through it (it spills out of the window into the corridor)
+  c.light(cx, wl * 0.55, cz, 0.9, 2.6, [0.25, 0.85, 0.8], null, 8);
+  c.light(cx, wl * 0.55, win + (north ? 0.3 : -0.3), 0.5, 2.0, [0.25, 0.85, 0.8], null, 6);
+}
+
+/** a puddle on the floor at (x, z), r m across (a dark mirror) */
+export function puddle(c, x, z, r) {
+  const { K, M, rnd } = c;
+  const g = new THREE.CircleGeometry(r, 18);
+  const pos = g.attributes.position;
+  for (let i = 1; i < pos.count; i++) {
+    const k = 0.7 + rnd() * 0.5;
+    pos.setX(i, pos.getX(i) * k);
+    pos.setY(i, pos.getY(i) * (0.6 + rnd() * 0.5));
+  }
+  g.rotateX(-Math.PI / 2);
+  K.add(M.puddle, g, x, 0.004, z, [0, rnd() * 6, 0]);
+}
+
+/** a rack of pipes up a wall from the floor to height h at (x, z), `n` pipes spaced along the wall (alongX) */
+export function pipeRiser(c, x, z, h, n = 3, alongX = true) {
+  const { K, M } = c;
+  const mats = [M.steel, M.rust, M.steelDark, M.rust];
+  for (let i = 0; i < n; i++) {
+    const o = (i - (n - 1) / 2) * 0.32;
+    K.cyl(mats[i % mats.length], x + (alongX ? o : 0), 0, z + (alongX ? 0 : o), 0.1 + (i % 2) * 0.04, 0.1 + (i % 2) * 0.04, h, 12);
+    for (let y = 1.2; y < h; y += 2.2) K.cyl(M.dark, x + (alongX ? o : 0), y, z + (alongX ? 0 : o), 0.17, 0.17, 0.1, 12);
+  }
+}

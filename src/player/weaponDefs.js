@@ -58,7 +58,7 @@ export const WEAPONS = {
   },
   spas12: {
     id: 'spas12', name: 'SPAS-12', slot: 0, model: 'spas12', mode: 'pump', rpm: 110, boltTime: 0.5, cycleAt: 0.14, cycleSound: 'shotgun_pump',
-    damage: 41, pellets: 9, penetration: 0, falloff: [13, 38, 0.45],
+    damage: 37, pellets: 9, penetration: 0, falloff: [12, 37, 0.42],
     spreadHip: 4.0, spreadAds: 2.4, spreadMove: 1.0, spreadAir: 2, spreadPerShot: 0.6, spreadMax: 1.2,
     recoilV: 2.8, recoilH: 0.6, recoilRecover: 6, kick: 3.1, shake: 0.27,
     mag: 8, reserve: 40, maxReserve: 64, reloadType: 'shell', reloadStart: 0.3, shellTime: 0.42, reloadEnd: 0.45,
@@ -87,7 +87,7 @@ export const WEAPONS = {
   },
   mg42: {
     // belt-fed "buzzsaw": a 150-round belt at 1,150 rpm that hits hard, kicks harder, and takes its time to reload
-    // (the feed cover, the ammo box, the belt, the cocking handle: viewmodel.js beltReload)
+    // (the feed cover, the belt from the box built onto the feed, the cocking handle: viewmodel.js beltReload)
     id: 'mg42', name: 'MG 42', slot: 0, model: 'mg42', mode: 'auto', rpm: 1150,
     damage: 38, pellets: 1, penetration: 2, falloff: [50, 120, 0.7],
     spreadHip: 2.8, spreadAds: 0.35, spreadMove: 2.0, spreadAir: 4.2, spreadPerShot: 0.2, spreadMax: 3.4,
@@ -119,7 +119,7 @@ export const WEAPONS = {
   },
   mozambique: {
     id: 'mozambique', name: 'SA-3 MOZAMBIQUE', slot: 1, model: 'mozambique', mode: 'semi', rpm: 280,
-    damage: 39, pellets: 3, penetration: 0, falloff: [11, 32, 0.5],
+    damage: 36, pellets: 3, penetration: 0, falloff: [10.5, 31, 0.47],
     spreadHip: 2.2, spreadAds: 1.1, spreadMove: 1.0, spreadAir: 2.5, spreadPerShot: 0.6, spreadMax: 2.0,
     recoilV: 1.6, recoilH: 0.45, recoilRecover: 8, kick: 1.8, shake: 0.13,
     mag: 6, reserve: 36, maxReserve: 60, reload: 1.8, reloadEmpty: 2.1, reloadType: 'mag',
@@ -128,7 +128,7 @@ export const WEAPONS = {
   },
   m4super90: {
     id: 'm4super90', name: 'M4 SUPER 90', slot: 0, model: 'm4super90', mode: 'semi', rpm: 260,
-    damage: 26, pellets: 9, penetration: 0, falloff: [10, 32, 0.4],
+    damage: 23, pellets: 9, penetration: 0, falloff: [9, 31, 0.37],
     spreadHip: 4.2, spreadAds: 2.8, spreadMove: 1.0, spreadAir: 2, spreadPerShot: 0.5, spreadMax: 1.5,
     recoilV: 2.3, recoilH: 0.6, recoilRecover: 6, kick: 2.7, shake: 0.21,
     mag: 7, reserve: 42, maxReserve: 70, reloadType: 'shell', reloadStart: 0.35, shellTime: 0.46, reloadEnd: 0.35,
@@ -227,15 +227,17 @@ export const WEAPONS = {
   },
   healnade: {
     // store (EQUIPMENT, with a MEDIC upgrade track): where it lands it pops a cloud of green medical mist (game.js
-    // healCloud) that heals everyone of the fireteam in it; at the top level it also gets the downed back up
+    // healCloud) that heals everyone of the fireteam in it and slowly gets a downed teammate in it back up. Anyone in
+    // the cloud deals less damage (debuff): it's for patching up, not a place to hold
     id: 'healnade', name: 'HEAL GRENADE', slot: 3, model: 'healnade', mode: 'grenade',
     fuse: 1.4, throwSpeed: 13, moveMul: 1.05,
     hip: [0.15, -0.16, -0.34], hipRot: [0.2, 0.2, -0.15], drawTime: 0.3,
-    // per MEDIC level: cloud radius m, HP / armor per s, how long s, whether it revives the downed in it
+    debuff: 0.6, // your damage x this while you stand in a cloud (game.js hitscan / meleeAttack)
+    // per MEDIC level: cloud radius m, HP / armor per s, how long s, s in the cloud to get a downed teammate up
     levels: [
-      { radius: 4.5, hps: 12, aps: 0, dur: 7, revive: false },
-      { radius: 5.5, hps: 16, aps: 4, dur: 9, revive: false },
-      { radius: 6.5, hps: 20, aps: 6, dur: 11, revive: true },
+      { radius: 4.5, hps: 6, aps: 0, dur: 8, reviveT: 6.5 },
+      { radius: 5.5, hps: 8, aps: 2, dur: 10, reviveT: 5 },
+      { radius: 6.5, hps: 10, aps: 3, dur: 12, reviveT: 3.5 },
     ],
   },
   barricade: {
@@ -270,7 +272,7 @@ export const WEAPONS = {
   },
   goldenPunisher: {
     id: 'goldenPunisher', name: 'GOLDEN PUNISHER', slot: 0, model: 'goldenPunisher', mode: 'auto', rpm: 340,
-    damage: 27, pellets: 10, penetration: 0, falloff: [11, 36, 0.45],
+    damage: 25, pellets: 10, penetration: 0, falloff: [10.5, 35, 0.42],
     spreadHip: 3.6, spreadAds: 2.6, spreadMove: 0.8, spreadAir: 2, spreadPerShot: 0.35, spreadMax: 1.6,
     recoilV: 1.8, recoilH: 0.55, recoilRecover: 6, kick: 2.3, shake: 0.16,
     mag: 12, reserve: 48, maxReserve: 72, reloadType: 'shell', reloadStart: 0.35, shellTime: 0.36, reloadEnd: 0.4,

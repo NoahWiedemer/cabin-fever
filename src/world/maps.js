@@ -44,18 +44,37 @@ MAPS.hive = {
   id: 'hive',
   name: 'THE HIVE',
   place: 'SUBLEVEL 4',
-  desc: 'NOX Biosystems, sublevel 4: a giant specimen tank in the atrium, long corridors, labs, an infirmary, offices, the specimen hall and the containment cells. Nadja works behind glass in her clean room.',
+  desc: 'NOX Biosystems, sublevels 4 and 5: the atrium with its giant specimen tank and gallery, long corridors, labs, offices, the cafeteria, the specimen hall, the flooded wing and the pump hall. Toxic gas comes and goes. Nadja works in her lab behind the vault door.',
   image: 'maps/hive.webp', // the atrium's specimen tank (1024 x 576)
-  fogRects: [[-60, -60, 60, 60]], // (all inside: only the distance haze)
+  fogRects: [[-60, -60, 60, 72]], // (all inside: only the distance haze)
   labRect: null,
   story: false,
   loading: 'Descending into the Hive',
-  unlocks: [{ round: 4, name: 'NORTH WING' }, { round: 10, name: 'OUTER RING' }],
+  unlocks: [{ round: 4, name: 'NORTH WING' }, { round: 7, name: 'SUBLEVEL 5' }, { round: 10, name: 'OUTER RING' }],
   modeDesc: { cabinfever: 'Part two: Nadja’s lab in the Hive, NOX Biosystems’ complex deep underground. Hold the atrium through 15 waves; the safe zone with Nadja and the armory opens between them. The story comes later.' },
   modeTagline: { cabinfever: 'Part two: hold the Hive for fifteen waves.' },
-  shopWhere: 'in the safe zone',
+  shopWhere: 'in Nadja’s lab',
 };
-export const MAP_LIST = [MAPS.farm, MAPS.appenweier, MAPS.hive];
+// Desert Thunder: Combat Arms' first Fireteam map, remade (world/desert.js). Mogadishu at noon: a hostage rescue that
+// turns into a hunt for the intel, in four sectors, against the Sand Hog militia instead of the infected; its own mode,
+// the mission (game/desertMission.js), not waves
+MAPS.desert = {
+  id: 'desert',
+  name: 'DESERT THUNDER',
+  place: 'MOGADISHU',
+  desc: 'Mogadishu at noon: narrow streets, the temple, the road up to the old town, the square. The Sand Hog militia holds a captured intelligence officer.',
+  image: 'maps/desert.webp', // the temple's courtyard at noon (1024 x 576)
+  fogRects: [[9000, 9000, 9001, 9001]], // (nothing indoors keeps the haze out: one rect far away)
+  fogBase: 0.0026, // the dusty noon haze (core/fogShader.js), far thinner than the farm's night
+  labRect: null,
+  story: false,
+  loading: 'Flying into Mogadishu',
+  modes: ['mission'], // (game/modes.js modeAllowed)
+  unlocks: [{ round: 1, name: 'INSERTION ROUTE' }, { round: 2, name: 'THE TEMPLE' }, { round: 3, name: 'THE ROAD' }, { round: 4, name: 'THE TOWN' }],
+  modeDesc: { mission: 'Operation Desert Thunder: fly into Mogadishu, fight through four sectors of the Sand Hog militia, reach the captured officer in the temple before they execute him and recover the intel he found. Riflemen, snipers in the windows, RPGs, the black-clad royal guard and an armoured car on the road.' },
+  modeTagline: { mission: 'Four sectors, one hostage, no second chances.' },
+};
+export const MAP_LIST = [MAPS.farm, MAPS.appenweier, MAPS.hive, MAPS.desert];
 
 const SS_MAP = 'cabinfever.map.next'; // (sessionStorage) the map the reload after a switching deploy loads
 const LS_OLD = 'cabinfever.map.v1'; // (localStorage, no longer used: the last pick used to stick, and the menu showed it)
@@ -115,6 +134,10 @@ export async function buildMap(map, progress) {
     const [{ buildHive }, { SPECIMEN_URLS }, { preloadGLBs }] = await Promise.all([import('./hive.js'), import('./hiveTank.js'), import('../core/assets.js')]);
     await preloadGLBs(SPECIMEN_URLS);
     return buildHive(progress);
+  }
+  if (map.id === 'desert') {
+    const { buildDesert } = await import('./desert.js');
+    return buildDesert(progress);
   }
   return buildLevel();
 }

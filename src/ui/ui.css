@@ -1668,6 +1668,30 @@
 .cf-gadget.used .cf-gd-t b {
   color: #9aa4ab;
 }
+/* the fireteam's orders (key T): over the shockwave chip, or in its place */
+.cf-orders {
+  position: absolute;
+  left: calc(var(--u) * 20);
+  bottom: calc(var(--u) * 162);
+  display: flex;
+  align-items: center;
+  gap: calc(var(--u) * 10);
+  padding: calc(var(--u) * 4) calc(var(--u) * 10);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: linear-gradient(90deg, rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.2));
+  z-index: 5;
+  transition: border-color 0.3s, background 0.3s;
+}
+.cf-orders.high {
+  bottom: calc(var(--u) * 122);
+}
+.cf-orders.follow {
+  border-color: rgba(120, 230, 140, 0.55);
+  background: linear-gradient(90deg, rgba(20, 70, 35, 0.55), rgba(0, 0, 0, 0.25));
+}
+.cf-orders.follow .cf-gd-t small {
+  color: #9fe6ae;
+}
 .cf-gren.cf-can {
   margin-left: calc(var(--u) * -12);
   border-color: rgba(255, 110, 70, 0.38);

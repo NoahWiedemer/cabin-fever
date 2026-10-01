@@ -19,7 +19,7 @@
 //   a thinner mud cap (-0.8..-0.5) closes the yard again with the same UVs, collider and shade.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { SURF, FLAG_NAVIGNORE } from './collision.js';
+import { SURF, FLAG_NAVIGNORE, FLAG_NOBULLET, FLAG_STAIR } from './collision.js';
 import { hash3 } from './levelBuilder.js';
 
 export const LAB = {
@@ -46,6 +46,9 @@ const GC = HC;
 const HF = -6.0; // hall floor
 const HZ = 19.0; // hall far wall
 const X0 = -11.9, X1 = 2.3; // side walls
+// walkable (the Hive): the far door on the west wall is a way on, the gallery's east end (the lockers) a way in
+const FAR = { z0: 16.6, z1: 18.2, h: 2.48 };
+const EAST = { z0: 4.35, z1: 5.95, h: 2.1 };
 const T = FB + 0.92; // Nadja's counter top
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 
@@ -885,7 +888,14 @@ export function bottleShape(r, h) {
  * B: LevelBuilder (the basement-side door / window go into its static batch), world: CollisionWorld,
  * lamps: the level's lamp list (the counter spot is appended). Returns the lab runtime.
  */
-export function buildLab(B, world, lamps) {
+export function buildLab(B, world, lamps, opts = {}) {
+  // opts (world/hive.js has this lab of part one, from inside): off — the whole lab moved by it (else in place behind
+  // the basement); walkable — you walk round in it (colliders, the faces only its inside sees, the far door open as the
+  // way on and a door where the gallery's lockers were); island — Nadja's counter moved off the window by it, to stand
+  // free in the hall; doorOpen — the vault door stands open; lampLevel — the counter spot's nav level
+  const off = opts.off ?? null, walk = !!opts.walkable;
+  const ox = off?.x ?? 0, oy = off?.y ?? 0, oz = off?.z ?? 0;
+  const W = off ? { add: (x0, y0, z0, x1, y1, z1, s, f, t) => world.add(x0 + ox, y0 + oy, z0 + oz, x1 + ox, y1 + oy, z1 + oz, s, f, t) } : world;
   const group = new THREE.Group();
   group.name = 'lab';
   const dyn = new THREE.Group(); // moving props (Nadja's glassware, pipette, clipboard, bubbles...)
@@ -947,11 +957,28 @@ export function buildLab(B, world, lamps) {
   K.box(M.yellow, X0, FB, GZ - 0.07, X1, FB + 0.004, GZ, { faces: ['py'] }); // edge nosing
   K.box(M.floor, X0, HF - 0.2, GZ, X1, HF, HZ, { faces: ['py'], seg: 0.8, mpr: 2 });
   K.box(M.ceil, X0, HC, WZ, X1, HC + 0.1, HZ, { faces: ['ny'], seg: 0.8, mpr: 2.4 });
-  K.box(M.wall, X0 - 0.3, HF, GZ, X0, HC, HZ, { faces: ['px'], seg: 0.8, mpr: 2.4 });
+  if (walk) {
+    K.box(M.wall, X0 - 0.3, HF, GZ, X0, HC, FAR.z0, { faces: ['px'], seg: 0.8, mpr: 2.4 });
+    K.box(M.wall, X0 - 0.3, HF, FAR.z1, X0, HC, HZ, { faces: ['px'], seg: 0.8, mpr: 2.4 });
+    K.box(M.wall, X0 - 0.3, HF + FAR.h, FAR.z0, X0, HC, FAR.z1, { faces: ['px'], seg: 0.8, mpr: 2.4 });
+    K.box(M.wall, X1, FB, WZ, X1 + 0.3, GC, EAST.z0, { faces: ['nx'], seg: 0.6, mpr: 2.4 });
+    K.box(M.wall, X1, FB, EAST.z1, X1 + 0.3, GC, GZ, { faces: ['nx'], seg: 0.6, mpr: 2.4 });
+    K.box(M.wall, X1, FB + EAST.h, EAST.z0, X1 + 0.3, GC, EAST.z1, { faces: ['nx'], seg: 0.6, mpr: 2.4 });
+    // the gallery's front over the hall, the vault wall's lab side (panels round the door and the window)
+    K.box(M.wall, X0, HF, GZ - 0.3, X1, FB - 0.25, GZ, { faces: ['pz'], seg: 0.8, mpr: 2.4 });
+    K.box(M.dark, X0, FB - 0.25, GZ - 0.02, X1, FB, GZ, { faces: ['pz'] });
+    const dd = LAB.door, ww = LAB.window, vz = WZ + 0.004;
+    for (const [x0, y0, x1, y1] of [[X0, FB, ww.x0, GC], [ww.x1, FB, dd.x0, GC], [dd.x1, FB, X1, GC], [ww.x0, FB, ww.x1, ww.y0], [dd.x0, dd.y1, dd.x1, GC]]) {
+      if (x1 - x0 > 0.01 && y1 - y0 > 0.01) K.box(M.wall, x0, y0, vz - 0.004, x1, y1, vz, { faces: ['pz'], seg: 0.6, mpr: 2.4 });
+    }
+    K.box(M.dark, X0, FB, vz, X1, FB + 0.12, vz + 0.02, { faces: ['pz', 'py'] });
+  } else {
+    K.box(M.wall, X0 - 0.3, HF, GZ, X0, HC, HZ, { faces: ['px'], seg: 0.8, mpr: 2.4 });
+    K.box(M.wall, X1, FB, WZ, X1 + 0.3, GC, GZ, { faces: ['nx'], seg: 0.6, mpr: 2.4 });
+  }
   K.box(M.wall, X1, HF, GZ, X1 + 0.3, HC, HZ, { faces: ['nx'], seg: 0.8, mpr: 2.4 });
   K.box(M.wall, X0, HF, HZ, X1, HC, HZ + 0.3, { faces: ['nz'], seg: 0.8, mpr: 2.4 });
   K.box(M.wall, X0 - 0.3, FB, WZ, X0, GC, GZ, { faces: ['px'], seg: 0.6, mpr: 2.4 });
-  K.box(M.wall, X1, FB, WZ, X1 + 0.3, GC, GZ, { faces: ['nx'], seg: 0.6, mpr: 2.4 });
   // skirting along the hall walls
   K.box(M.dark, X0, HF, GZ, X0 + 0.02, HF + 0.12, HZ, { faces: ['px', 'py'] });
   K.box(M.dark, X1 - 0.02, HF, GZ, X1, HF + 0.12, HZ, { faces: ['nx', 'py'] });
@@ -982,9 +1009,11 @@ export function buildLab(B, world, lamps) {
     const sx0 = 1.15, sx1 = 2.25, n = 16, run = 0.3, rise = (FB - HF) / n;
     for (let i = 0; i < n; i++) {
       const y = FB - (i + 1) * rise, z = GZ + i * run;
-      K.box(M.dark, sx0, y - 0.03, z, sx1, y, z + run + 0.02, { faces: ['py', 'nz', 'px', 'nx'] });
+      K.box(M.dark, sx0, y - 0.03, z, sx1, y, z + run + 0.02, { faces: walk ? ['py', 'ny', 'nz', 'px', 'nx'] : ['py', 'nz', 'px', 'nx'] });
       K.box(M.yellow, sx0, y, z, sx1, y + 0.003, z + 0.04, { faces: ['py'] });
+      if (walk) W.add(sx0, HF, z, sx1, y, z + run, SURF.metal, FLAG_STAIR);
     }
+    if (walk) W.add(sx0 - 0.1, HF, GZ, sx0 - 0.02, FB + 1.0, GZ + n * run, SURF.metal, FLAG_NOBULLET | FLAG_STAIR); // (the handrail)
     const len = Math.hypot(n * run, FB - HF), ang = Math.atan2(FB - HF, n * run);
     for (const x of [sx0 - 0.02, sx1 + 0.02]) K.add(M.dark, new THREE.BoxGeometry(0.03, 0.26, len), x, (FB + HF) / 2 - 0.12, GZ + (n * run) / 2, [ang, 0, 0]);
     // handrail on the open side
@@ -1020,14 +1049,20 @@ export function buildLab(B, world, lamps) {
       }
     }
   }
-  // lockers + bench at the gallery's east end (the airlock side of the vault door)
-  for (let i = 0; i < 3; i++) {
-    const z = 4.35 + i * 0.46;
-    K.box(M.white, 1.82, FB + 0.08, z, X1, FB + 1.9, z + 0.44, { faces: ['nx', 'py', 'nz', 'pz'] });
-    K.box(M.dark, 1.815, FB + 1.55, z + 0.1, 1.82, FB + 1.75, z + 0.34, { faces: ['nx'] });
-    K.cube(M.steel, 1.8, FB + 1.05, z + 0.36, 0.02, 0.14, 0.02);
+  // lockers + bench at the gallery's east end (the airlock side of the vault door); walkable: a door there instead
+  if (walk) {
+    for (const [a, b] of [[EAST.z0 - 0.08, EAST.z0], [EAST.z1, EAST.z1 + 0.08]]) K.box(M.steel, X1 - 0.04, FB, a, X1 + 0.3, FB + EAST.h, b);
+    K.box(M.steel, X1 - 0.04, FB + EAST.h, EAST.z0 - 0.08, X1 + 0.3, FB + EAST.h + 0.08, EAST.z1 + 0.08);
+    K.box(M.hazard, X1 - 0.6, FB + 0.001, EAST.z0, X1, FB + 0.004, EAST.z1, { faces: ['py'] });
+  } else {
+    for (let i = 0; i < 3; i++) {
+      const z = 4.35 + i * 0.46;
+      K.box(M.white, 1.82, FB + 0.08, z, X1, FB + 1.9, z + 0.44, { faces: ['nx', 'py', 'nz', 'pz'] });
+      K.box(M.dark, 1.815, FB + 1.55, z + 0.1, 1.82, FB + 1.75, z + 0.34, { faces: ['nx'] });
+      K.cube(M.steel, 1.8, FB + 1.05, z + 0.36, 0.02, 0.14, 0.02);
+    }
+    K.box(M.dark, 1.82, FB, 4.35, X1, FB + 0.08, 5.73, { faces: ['nx', 'py'] });
   }
-  K.box(M.dark, 1.82, FB, 4.35, X1, FB + 0.08, 5.73, { faces: ['nx', 'py'] });
   K.box(M.steel, 0.2, FB + 0.42, 5.9, 1.4, FB + 0.46, 6.25);
   for (const x of [0.28, 1.32]) K.cube(M.dark, x, FB + 0.21, 6.07, 0.05, 0.42, 0.3);
   // biohazard bin behind the counter
@@ -1048,7 +1083,30 @@ export function buildLab(B, world, lamps) {
   for (const [y, r, m] of [[GC - 0.12, 0.035, M.blue], [GC - 0.2, 0.03, M.green]]) K.rod(m, V(X0, y, 6.35), V(X1, y, 6.35), r, 10);
 
   // ------------------------------------------------ Nadja's counter and her things (buildNadjaStation)
-  const station = buildNadjaStation(K, M, U, dyn, signTex, liquids);
+  // (island: built on its own, moved into the hall to stand free; a plain workbench keeps her old place at the window)
+  let station;
+  const isl = opts.island ?? null;
+  if (isl) {
+    const Ks = new Kit();
+    station = offsetStation(buildNadjaStation(Ks, M, U, dyn, signTex, liquids, { island: true }), Ks.parts, isl);
+    for (const [mat, geos] of Ks.parts) for (const g of geos) K.put(mat, g);
+    Ks.parts.clear();
+    K.box(M.white, -6.3, FB + 0.1, 4.25, -2.9, FB + 0.86, 4.88, { faces: ['pz', 'nx', 'px'] });
+    K.box(M.dark, -6.28, FB, 4.3, -2.92, FB + 0.1, 4.82, { faces: ['pz'] });
+    K.box(M.top, -6.32, FB + 0.86, 4.2, -2.88, T, 4.92);
+    for (let i = 0; i < 4; i++) K.box(M.dark, -5.87 + i * 0.85 - 0.4, FB + 0.12, 4.881, -5.87 + i * 0.85 + 0.4, FB + 0.84, 4.884, { faces: ['pz'] });
+    for (let k = 0; k < 6; k++) {
+      const x = -6.0 + k * 0.52 + rnd() * 0.1, z = 4.4 + rnd() * 0.3, h = 0.12 + rnd() * 0.1, r = 0.03 + rnd() * 0.02;
+      K.add(rnd() < 0.5 ? M.amber : U.glass, bottleShape(r, h), x, T, z);
+      K.cyl(M.black, x, T + h, z, r * 0.42, r * 0.42, 0.02, 10);
+    }
+    K.cube(M.white, -3.4, T + 0.12, 4.55, 0.36, 0.24, 0.3); // (a dead centrifuge)
+    if (walk) {
+      W.add(-6.32, FB, 4.2, -2.88, T, 4.92, SURF.metal);
+      W.add(-6.32 + isl.x, FB + isl.y, 4.2 + isl.z, -2.88 + isl.x, T + isl.y, 4.92 + isl.z, SURF.metal);
+      W.add(-5.75 + isl.x, FB + isl.y, 4.92 + isl.z, -3.45 + isl.x, FB + isl.y + 1.75, 5.45 + isl.z, SURF.flesh, FLAG_NOBULLET | FLAG_NAVIGNORE, 'labNadja');
+    }
+  } else station = buildNadjaStation(K, M, U, dyn, signTex, liquids);
 
   // ------------------------------------------------ hall: vats along the far wall
   const vatZ = 16.9;
@@ -1252,14 +1310,19 @@ export function buildLab(B, world, lamps) {
   K.plane(M.signs, 3.2, 0.5, X0 + 0.005, -2.3, 9.4, [0, Math.PI / 2, 0], SIGN.stencil);
   K.plane(M.signs, 1.4, 0.875, X1 - 0.005, -2.3, 17.6, [0, -Math.PI / 2, 0], SIGN.b2);
   K.plane(M.signs, 0.42, 0.42, X0 + 0.005, -3.4, 7.7, [0, Math.PI / 2, 0], SIGN.bio);
-  // far door on the west wall with a lit corridor behind its windows
+  // far door on the west wall with a lit corridor behind its windows (walkable: open, the way on)
   {
-    const z0 = 16.6, z1 = 18.2, zc = (z0 + z1) / 2;
-    K.box(M.steel, X0, HF, z0 - 0.08, X0 + 0.06, HF + 2.48, z1 + 0.08, { faces: ['px'] });
-    for (const [a, b] of [[z0, zc - 0.01], [zc + 0.01, z1]]) {
-      K.box(M.white, X0 + 0.06, HF, a, X0 + 0.08, HF + 2.4, b, { faces: ['px'] });
-      K.box(U.panel, X0 + 0.081, HF + 1.5, (a + b) / 2 - 0.13, X0 + 0.082, HF + 1.95, (a + b) / 2 + 0.13, { faces: ['px'] });
-      K.cube(M.steel, X0 + 0.11, HF + 1.05, zc + (a < zc ? -0.12 : 0.12), 0.03, 0.03, 0.2);
+    const z0 = FAR.z0, z1 = FAR.z1, zc = (z0 + z1) / 2;
+    if (walk) {
+      for (const [a, b] of [[z0 - 0.08, z0], [z1, z1 + 0.08]]) K.box(M.steel, X0 - 0.3, HF, a, X0 + 0.06, HF + FAR.h, b);
+      K.box(M.steel, X0 - 0.3, HF + FAR.h, z0 - 0.08, X0 + 0.06, HF + FAR.h + 0.08, z1 + 0.08);
+    } else {
+      K.box(M.steel, X0, HF, z0 - 0.08, X0 + 0.06, HF + 2.48, z1 + 0.08, { faces: ['px'] });
+      for (const [a, b] of [[z0, zc - 0.01], [zc + 0.01, z1]]) {
+        K.box(M.white, X0 + 0.06, HF, a, X0 + 0.08, HF + 2.4, b, { faces: ['px'] });
+        K.box(U.panel, X0 + 0.081, HF + 1.5, (a + b) / 2 - 0.13, X0 + 0.082, HF + 1.95, (a + b) / 2 + 0.13, { faces: ['px'] });
+        K.cube(M.steel, X0 + 0.11, HF + 1.05, zc + (a < zc ? -0.12 : 0.12), 0.03, 0.03, 0.2);
+      }
     }
     K.plane(M.signs, 0.9, 0.225, X0 + 0.01, HF + 2.72, zc, [0, Math.PI / 2, 0], SIGN.corridor);
     K.add(U.red, new THREE.SphereGeometry(0.06, 10, 8, 0, Math.PI * 2, 0, Math.PI / 2), X0 + 0.1, HF + 3.0, z1 + 0.25);
@@ -1295,13 +1358,58 @@ export function buildLab(B, world, lamps) {
   }
 
 
+  // walkable: the colliders (the farm's lab is only ever seen through the glass)
+  if (walk) {
+    const C0 = SURF.concrete;
+    W.add(X0 - 0.3, HF - 0.4, WZ, X1 + 0.3, FB, GZ, C0); // (the gallery stands on solid ground)
+    W.add(X0 - 0.3, HF - 0.4, GZ, X1 + 0.3, HF, HZ + 0.3, C0);
+    W.add(X0 - 0.3, HC, WZ, X1 + 0.3, HC + 0.4, HZ + 0.3, C0);
+    W.add(X0 - 0.3, FB, WZ, X0, HC, GZ, C0);
+    W.add(X0 - 0.3, HF, GZ, X0, HC, FAR.z0, C0);
+    W.add(X0 - 0.3, HF, FAR.z1, X0, HC, HZ, C0);
+    W.add(X0 - 0.3, HF + FAR.h, FAR.z0, X0, HC, FAR.z1, C0);
+    W.add(X1, FB, WZ, X1 + 0.3, HC, EAST.z0, C0);
+    W.add(X1, FB, EAST.z1, X1 + 0.3, HC, GZ, C0);
+    W.add(X1, FB + EAST.h, EAST.z0, X1 + 0.3, HC, EAST.z1, C0);
+    W.add(X1, HF, GZ, X1 + 0.3, HC, HZ, C0);
+    W.add(X0, HF, HZ, X1, HC, HZ + 0.3, C0);
+    W.add(X0 + 0.05, FB, GZ - 0.1, 1.05, FB + 1.1, GZ, SURF.metal, FLAG_NOBULLET); // the gallery's railing
+    const P = (x0, y0, z0, x1, y1, z1, s = SURF.metal) => W.add(x0, y0, z0, x1, y1, z1, s);
+    P(X0, FB, 4.35, X0 + 0.45, FB + 1.5, 5.3); // gas cylinders
+    P(X0, FB, 5.45, X0 + 0.45, FB + 2.0, 6.45); // the tall shelf
+    P(0.2, FB, 5.9, 1.4, FB + 0.46, 6.25, SURF.wood); // the bench
+    P(-7.52, FB, 6.0, -7.08, FB + 0.65, 6.36); // the bin
+    for (const x of [-8.6, -4.9, -1.2]) {
+      P(x - 1.05, HF, vatZ - 1.05, x + 1.05, HF + 4.6, vatZ + 1.05);
+      P(x - 0.08, HF, vatZ - 1.4, x + 0.08, HF + 0.45, vatZ - 1.0);
+    }
+    P(tank.x - 0.8, HF, tank.z - 0.8, tank.x + 0.8, HF + 3.45, tank.z + 0.8, SURF.glass);
+    P(tank.x + 0.78, HF, tank.z - 0.6, tank.x + 1.32, HF + 1.1, tank.z - 0.1);
+    P(-6.92, HF, 12.88, -2.68, HF + 2.0, 13.82);
+    P(-1.92, HF, 13.28, 0.82, HF + 0.92, 14.22);
+    P(X0, HF, 12.26, X0 + 0.87, HF + 2.45, 15.24);
+    P(X1 - 0.83, HF, 11.9, X1, HF + 1.95, 13.55);
+    P(X1 - 0.5, HF, 14.3, X1, HF + 2.1, 18.7);
+    P(0.36, HF, 11.82, 0.52, HF + 2.35, 11.98);
+    for (const [x, z] of [[-2.2, 12.6], [1.2, 14.8]]) P(x - 0.21, HF, z - 0.18, x + 0.21, HF + 0.65, z + 0.18);
+  }
+  // moved: the geometry and the bake's lights and occluders (the basement side is built where the caller puts S)
+  if (off) {
+    for (const geos of K.parts.values()) for (const g of geos) g.translate(ox, oy, oz);
+    for (const L of lights) {
+      L.x += ox;
+      L.y += oy;
+      L.z += oz;
+    }
+    for (const o of occluders) for (let k = 0; k < 6; k++) o[k] += k % 3 === 0 ? ox : k % 3 === 1 ? oy : oz;
+  }
   K.build(group, makeBaker(lights, occluders));
 
   // ------------------------------------------------ the yard over the hall: a mud cap over the slab's hole
   // Same material / bucket, UVs, surface and collider top as the slab; `shade` cancels the box's hashed
   // tint so it matches the slab row it replaces ([-75, 75] x [4, 75]). Under the house (z < 7.9) the
   // floor covers the hole.
-  {
+  if (!off) {
     const [x0, x1, , z1] = LAB.mudHole, z0 = 7.9;
     const tint = (x, y, z) => 0.9 + 0.12 * hash3(x, y, z);
     B.box(x0, -0.8, z0, x1, -0.5, z1, { mat: 'mud', surface: SURF.mud, grime: 0, skip: ['ny'], castShadow: false, shade: tint(-75, -1.5, 4) / tint(x0, -0.8, z0) });
@@ -1466,45 +1574,73 @@ export function buildLab(B, world, lamps) {
 
   // colliders: panes (glass: bullets chip it), frames and door (metal)
   const NI = FLAG_NAVIGNORE;
-  for (const [a, b] of panes) world.add(a, w.y0, gz0, b, w.y1, WZ, SURF.glass, NI, 'labGlass');
-  world.add(w.x0 - wf, w.y1, wz0, w.x1 + wf, w.y1 + wf, WZ, SURF.metal, NI, 'labFrame');
-  world.add(w.x0 - wf, w.y0 - wf, wz0, w.x1 + wf, w.y0, WZ, SURF.metal, NI, 'labFrame');
-  world.add(w.x0 - wf, w.y0, wz0, w.x0 + 0.03, w.y1, gz0, SURF.metal, NI, 'labFrame');
-  world.add(w.x1 - 0.03, w.y0, wz0, w.x1 + wf, w.y1, gz0, SURF.metal, NI, 'labFrame');
+  for (const [a, b] of panes) W.add(a, w.y0, gz0, b, w.y1, WZ, SURF.glass, NI, 'labGlass');
+  W.add(w.x0 - wf, w.y1, wz0, w.x1 + wf, w.y1 + wf, WZ, SURF.metal, NI, 'labFrame');
+  W.add(w.x0 - wf, w.y0 - wf, wz0, w.x1 + wf, w.y0, WZ, SURF.metal, NI, 'labFrame');
+  W.add(w.x0 - wf, w.y0, wz0, w.x0 + 0.03, w.y1, gz0, SURF.metal, NI, 'labFrame');
+  W.add(w.x1 - 0.03, w.y0, wz0, w.x1 + wf, w.y1, gz0, SURF.metal, NI, 'labFrame');
   for (const [a, b] of panes) {
-    world.add(a, w.y0, BZ, b, w.y0 + 0.03, gz0, SURF.metal, NI, 'labFrame');
-    world.add(a, w.y1 - 0.03, BZ, b, w.y1, gz0, SURF.metal, NI, 'labFrame');
+    W.add(a, w.y0, BZ, b, w.y0 + 0.03, gz0, SURF.metal, NI, 'labFrame');
+    W.add(a, w.y1 - 0.03, BZ, b, w.y1, gz0, SURF.metal, NI, 'labFrame');
   }
-  world.add(d.x0 - 0.32, FB, fz0, d.x1 + 0.32, d.y1 + 0.32, WZ, SURF.metal, 0, 'labDoor');
+  const doorBox = W.add(d.x0 - 0.32, FB, fz0, d.x1 + 0.32, d.y1 + 0.32, WZ, SURF.metal, 0, 'labDoor');
+  if (opts.doorOpen) {
+    // (open: the frame round the way through, the leaf swung back against the basement's side)
+    doorBox.enabled = false;
+    W.add(d.x0 - 0.32, FB, fz0, d.x0, d.y1 + 0.32, BZ, SURF.metal, NI, 'labFrame');
+    W.add(d.x1, FB, fz0, d.x1 + 0.32, d.y1 + 0.32, BZ, SURF.metal, NI, 'labFrame');
+    W.add(d.x0, d.y1, fz0, d.x1, d.y1 + 0.32, BZ, SURF.metal, NI, 'labFrame');
+    W.add(d.x0 - 0.45, FB, fz0 - 1.6, d.x0 - 0.02, d.y1, fz0 - 0.05, SURF.metal, 0, 'labDoor');
+  }
 
   // ------------------------------------------------ lamps: one real spot over the counter
   // Pooled like the house lamps (lighting.js); aimed 40° away from the glass so its cone never reaches
   // the basement floor through the wall, and without the hanging-lamp glow / cone / motes.
   const aimA = 0.7;
   const spot = { pos: V(-4.6, GC - 0.15, 4.72), aim: V(0, -Math.cos(aimA), Math.sin(aimA)).multiplyScalar(3), level: 0, color: 0xe6f0ff, intensity: 5, angle: 0.72, distance: 7, flicker: 0, spot: true, fx: false, mains: false }; // own emergency power (the generator doesn't cut it)
+  if (isl) {
+    // (over her island in the hall, straight down)
+    spot.pos.set(-4.6 + isl.x, HC - 0.2, 4.9 + isl.z);
+    spot.aim.set(0, -3, 0.4);
+    spot.intensity = 9;
+    spot.angle = 0.85;
+  }
+  if (off) spot.pos.add(off);
+  if (opts.lampLevel != null) spot.level = opts.lampLevel;
   lamps.push(spot);
 
   // ------------------------------------------------ runtime
-  const work = {
+  let work = {
     ...station,
     light: V(-4.6, GC - 0.05, 5.3),
     glass: V((w.x0 + w.x1) / 2, -1.55, BZ),
   };
+  if (off) {
+    // (moved: her things and every point of her work, the basement side is the caller's)
+    work = { ...offsetStation(work, new Map(), off), light: work.light.add(off), glass: work.glass.add(off) };
+    specimen.position.add(off);
+  }
   let tech = null;
   let active = true; // drawn at load so the shaders compile; update() decides from then on
   let t = 0, blinkT = 0;
   const _m4 = new THREE.Matrix4(), _pp = new THREE.Vector3(), _ss = new THREE.Vector3(), _qq = new THREE.Quaternion();
   const _cam = new THREE.Vector3();
   /** the camera is down in the basement (or low in the cellar stairwell) */
-  const camInBasement = (c) => c.y < -0.2 && c.x > -17.5 && c.x < 2.6 && c.z > -8.3 && c.z < 3.9;
+  const camInBasement = (c) => c.y - oy < -0.2 && c.x - ox > -17.5 && c.x - ox < 2.6 && c.z - oz > -8.3 && c.z - oz < 3.9;
   let lock = 'locked'; // keypad LED: 'locked' (slow red blink) | 'hacking' (amber) | 'jammed' (fast red) | 'open' (green)
   let doorT = 0, doorGoal = 0, wheelT = 0;
+  if (opts.doorOpen) {
+    doorT = doorGoal = wheelT = 1;
+    lock = 'open';
+    doorPivot.rotation.y = 1.72;
+    wheelSpin.rotation.z = -Math.PI * 3;
+  }
   const lab = {
     group,
     work,
     /** the vault door leaf (level.js puts it in the dynamic group) and the hacking module's spot */
-    door: { pivot: doorPivot, center: V(lcx, FB + 1.1, fz0), front: V(lcx, FB, 3.2) },
-    hackMount: { pos: V(kx, ky - 0.36, BZ - 0.075), keypad: V(kx, ky, BZ - 0.05) },
+    door: { pivot: doorPivot, box: doorBox, center: V(lcx + ox, FB + 1.1 + oy, fz0 + oz), front: V(lcx + ox, FB + oy, 3.2 + oz) },
+    hackMount: { pos: V(kx + ox, ky - 0.36 + oy, BZ - 0.075 + oz), keypad: V(kx + ox, ky + oy, BZ - 0.05 + oz) },
     /** the camera is in the lab itself (a cutscene): draw it anyway */
     forceVisible: false,
     setLock(s) {
@@ -1566,12 +1702,12 @@ export function buildLab(B, world, lamps) {
           b.r = rnd() * 0.5;
         }
         const wob = Math.sin(t * 3 + i) * 0.02;
-        _pp.set(tank.x + Math.cos(b.a) * b.r + wob, HF + 0.5 + b.y, tank.z + Math.sin(b.a) * b.r);
+        _pp.set(tank.x + ox + Math.cos(b.a) * b.r + wob, HF + oy + 0.5 + b.y, tank.z + oz + Math.sin(b.a) * b.r);
         _ss.setScalar(b.s);
         bubbles.setMatrixAt(i, _m4.compose(_pp, _qq, _ss));
       }
       bubbles.instanceMatrix.needsUpdate = true;
-      specimen.position.y = HF + 1.62 + Math.sin(t * 0.45) * 0.035;
+      specimen.position.y = HF + oy + 1.62 + Math.sin(t * 0.45) * 0.035;
       specimen.rotation.y = 0.5 + Math.sin(t * 0.13) * 0.12;
       specimen.rotation.z = Math.sin(t * 0.31) * 0.03;
       if (tech) {
@@ -1591,11 +1727,11 @@ export function buildLab(B, world, lamps) {
  * part of labTech's `work` contract (the caller adds `light` and `glass`); world/hive.js builds it here and moves
  * it (offsetStation).
  */
-export function buildNadjaStation(K, M, U, dyn, signTex, liquids) {
-  // ------------------------------------------------ Nadja's counter
+export function buildNadjaStation(K, M, U, dyn, signTex, liquids, opts = {}) {
+  // ------------------------------------------------ Nadja's counter (island: it stands free, its back shows too)
   const cx0 = -6.3, cx1 = -2.9;
-  K.box(M.white, cx0, FB + 0.1, 4.25, cx1, FB + 0.86, 4.88, { faces: ['pz', 'nx', 'px'] });
-  K.box(M.dark, cx0 + 0.02, FB, 4.3, cx1 - 0.02, FB + 0.1, 4.82, { faces: ['pz'] });
+  K.box(M.white, cx0, FB + 0.1, 4.25, cx1, FB + 0.86, 4.88, { faces: opts.island ? ['pz', 'nz', 'nx', 'px'] : ['pz', 'nx', 'px'] });
+  K.box(M.dark, cx0 + 0.02, FB, 4.3, cx1 - 0.02, FB + 0.1, 4.82, { faces: opts.island ? ['pz', 'nz'] : ['pz'] });
   K.box(M.top, cx0 - 0.02, FB + 0.86, 4.2, cx1 + 0.02, T, 4.92);
   for (let i = 0; i < 4; i++) {
     const x = cx0 + 0.43 + i * 0.85;

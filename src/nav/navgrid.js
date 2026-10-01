@@ -488,6 +488,7 @@ export class NavGrid {
       if (ps) {
         for (const p of ps) {
           if (!p.enabled) continue;
+          if (p.oneway && p.ia === i) continue; // (a drop: down from a to b only, so the field spreads b → a)
           j = p.ia === i ? p.ib : p.ia;
           nd = d + p.cost / this.cell;
           if (nd < dist[j]) {
@@ -537,6 +538,7 @@ export class NavGrid {
     if (!ps) return null;
     for (const p of ps) {
       if (!p.enabled) continue;
+      if (p.oneway && p.ib === i) continue; // (nobody climbs back up a drop)
       const j = p.ia === i ? p.ib : p.ia;
       if (dist[j] + p.cost / this.cell < best + 0.01) return p;
     }
@@ -699,6 +701,51 @@ export class NavGrid {
         return this.steer(level, x, z, out, arr, steerOpts);
       },
       recompute: () => this.compute(sources, arr, costOf()),
+    };
+  }
+
+  /**
+   * A field of its own that is rebuilt in the background like the default one (beginCompute), for a source that
+   * keeps moving (game.js: the fireteam following the player). begin(sources) starts a new one, step(budget)
+   * relaxes up to `budget` cells and swaps it in when it's done; steer() reads the last complete one (none yet: null).
+   */
+  makeBgField() {
+    const N = this.N;
+    const st = { dist: null, work: new Float32Array(N), spare: null, hi: new Int32Array(N * 2), hk: new Float32Array(N * 2), size: 0, active: false, cost: null };
+    const steerOpts = { cost: null, need: 1 };
+    return {
+      get ready() {
+        return !!st.dist;
+      },
+      get computing() {
+        return st.active;
+      },
+      get dist() {
+        return st.dist;
+      },
+      begin: (sources) => {
+        st.cost = this.fieldCost || (this._zero ??= new Float32Array(N));
+        st.active = true;
+        this._withHeap(st, () => {
+          this.heapSize = 0;
+          this._seed(sources, st.work, null, null);
+        });
+      },
+      step: (budget = Infinity) => {
+        if (!st.active) return false;
+        const done = this._withHeap(st, () => this._relax(st.work, null, st.cost, Infinity, budget));
+        if (!done) return false;
+        const old = st.dist;
+        st.dist = st.work;
+        st.work = old ?? new Float32Array(N);
+        st.active = false;
+        return true;
+      },
+      steer: (level, x, z, out, o = null) => {
+        if (!st.dist) return null;
+        steerOpts.need = o?.need ?? 1;
+        return this.steer(level, x, z, out, st.dist, steerOpts);
+      },
     };
   }
 }

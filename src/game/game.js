@@ -45,6 +45,7 @@ import { Breach } from '../world/breach.js';
 import { installShadowProxies } from '../world/shadowProxy.js';
 import { Shaft } from '../world/shaft.js';
 import { MercSquad } from '../actors/merc.js';
+import { InsurgentForce } from '../actors/insurgent.js';
 import * as Progress from './progress.js';
 import { Rogue } from './rogue.js';
 import { Ladders } from '../actors/ladders.js';
@@ -73,6 +74,7 @@ const LOOT_GUNS = ['p90', 'r201', 'spas12', 'devotion', 'sigma', 'g36c', 'ak47']
 // store sells it, one load and no reloads, marked on the map)
 const LAUNCHER_LOOT = { round: 7, chance: 0.22 };
 const NAV_SLICE = 9000; // a big map: nav cells relaxed a frame for the infected's field (about 2 ms)
+const FOLLOW_SLICE = 7000; // ... and for the fireteam's field toward you while it follows you (key T)
 const F_TAP = 0.25; // F released faster than this is a tap (flashlight / open the gun shop)
 const READY_HOLD = 1.2; // hold F this long in the buy phase to ready up
 // weapon mastery (game/progress.js) counts the real weapons only (not a Boomer's blast, not a barrel)
@@ -158,7 +160,7 @@ export class Game {
 
     await step(0.64, 'Wiring the lights');
     this.quality = QUALITY[this.settings.quality] || QUALITY.high;
-    this.lighting = new Lighting(scene, this.level.lamps, this.quality, this.level.indoor ?? null);
+    this.lighting = new Lighting(scene, this.level.lamps, this.quality, this.level.indoor ?? null, this.level.daylight ?? null);
     this.lighting.world = this.world; // flashlight auto-dim raycast
     this.lighting.moonFollow = !!this.level.bigMap; // (the moon's shadow box slides with the camera)
     this.lighting.onThunder = (intensity, delay) => {
@@ -167,10 +169,23 @@ export class Game {
     };
     scene.environment = makeEnvMap(this.gr.renderer);
     scene.environmentIntensity = 0.35;
+    const day = this.level.daylight;
+    if (day) {
+      // noon (world/desert.js): the haze's colour behind the sky dome, a brighter reflection, the grade set for daylight
+      scene.background = new THREE.Color(day.fog);
+      this.fog.color.set(day.fog);
+      scene.environmentIntensity = day.env ?? 0.7;
+      const g = this.gr.grade;
+      g.set('uExposure', day.exposure ?? 1);
+      g.set('uSaturation', day.saturation ?? 1);
+      g.set('uContrast', day.contrast ?? 1.08);
+      g.set('uVignette', day.vignette ?? 0.45);
+    }
 
     await step(0.7, 'Summoning the storm');
     this.weather = new Weather(scene, this.level);
     this.audio.underground = !!this.level.indoor; // (core/audio.js startAmbience: the air handlers instead of the weather)
+    this.audio.desert = !!this.level.daylight; // (the desert town: wind, far-off gunfire and dogs instead of the storm and the moans)
 
     await step(0.76, 'Computing navigation');
     this.nav = new NavGrid(this.world, this.level.portals, this.level.navBlocks, this.level.navOpts ?? {});
@@ -181,7 +196,8 @@ export class Game {
     await preloadGLBs(GLB_URLS, (f) => progress?.(0.78 + f * 0.04, 'Loading models'));
     if (this.level.landmarks !== false) addLandmarks(scene); // (the farm's chapel on the horizon)
     // the map's own shop (level.shop.custom: Appenweier's garage), else the farm's cellar shop
-    this.gunshop = this.level.shop?.custom ? this.level.shop.custom(scene, this) : buildGunShop(scene, this.level, this.world);
+    // (level.shop false: none at all, Desert Thunder's mission)
+    this.gunshop = this.level.shop === false ? null : this.level.shop?.custom ? this.level.shop.custom(scene, this) : buildGunShop(scene, this.level, this.world);
     this.lab = this.level.lab; // behind the basement's armored glass (world/lab.js): Nadja at her counter
     this.lab?.spawnTech(createLabTech);
     this.barricades = new Barricades(this, scene);
@@ -218,6 +234,10 @@ export class Game {
     this.playerBody.spawn(new THREE.Vector3(0, -50, 0), 0); // (fills in its animation state: the scenes only pose it)
     this.playerBody.hide();
     this.mercs = new MercSquad(this); // the NOX cleanup squad (actors/merc.js; the event: game/events.js)
+    // the Sand Hog militia (actors/insurgent.js): only on a map that runs a mission (Desert Thunder)
+    this.insurgents = this.level.campaign ? new InsurgentForce(this) : null;
+    // everything that shoots back (the bots' targets, mines, the shockwave): the NOX squad and the militia
+    this.hostiles = [...this.mercs.list, ...(this.insurgents?.list ?? [])];
     this.progress = Progress; // the career: xp, rank, weapon mastery, skins (game/progress.js)
     this.rogue = new Rogue(this); // the Gauntlet's cards, perks and curses (game/rogue.js)
     scene.add(this.playerBody.root);
@@ -226,6 +246,7 @@ export class Game {
     this.mission = new Mission(this); // the story: intro, Nadja, the hacking mission, the finale
     this.events = new RandomEvents(this); // rare: airstrike, blood moon, a helicopter crash, a blackout
 
+    this.level.attach?.(this); // (a map's runtime that needs the game: world/hive.js gas, vents, doors)
     await step(0.92, 'Spilling blood');
     this._decorate();
     this.hud?.setMapOutline(this.level.radarSegments);
@@ -244,6 +265,8 @@ export class Game {
     for (const list of Object.values(this.zombies.pool)) for (const z of list) reveal(z.root);
     for (const b of this.bots) reveal(b.root);
     reveal(this.playerBody.root);
+    for (const m of this.insurgents?.list ?? []) reveal(m.root); // (Desert Thunder's militia, their own guns)
+    for (const o of this.level.prewarm?.() ?? []) reveal(o); // (a map's hidden things: world/desert.js the wreck, the charge)
     for (const m of Object.values(this.viewmodel.models)) reveal(m.root);
     try {
       this.gr.renderer.compile(scene, this.camera);
@@ -273,7 +296,7 @@ export class Game {
 
   /** the story's helicopter (world/helicopter.js), built on first use */
   chopper() {
-    return (this._chopper ??= new Chopper(this.scene, this.audio));
+    return (this._chopper ??= new Chopper(this.scene, this.audio, this.level.chopper ?? {})); // (a map may paint it: world/desert.js)
   }
 
   chopperIfBuilt() {
@@ -284,6 +307,38 @@ export class Game {
   onCinemaEnd(id, skipped) {
     if (!this.running) return;
     this.mission?.onCinemaEnd(id, skipped);
+    this.level.campaign?.onCinemaEnd?.(id, skipped); // (Desert Thunder's scenes: game/desertMission.js)
+  }
+
+  /** key T: the fireteam holds its posts ↔ follows you round (teammate.js _follow) */
+  toggleOrders() {
+    if (this.team.length < 2) return;
+    this.botOrders = this.botOrders === 'follow' ? 'hold' : 'follow';
+    const follow = this.botOrders === 'follow';
+    for (const b of this.bots) {
+      b.post = null; // (holding again: each picks a post near you)
+      b.field = null;
+      b.portalTo = null;
+      b.settled = false;
+      b.clearT = 0;
+    }
+    this._followAt = null;
+    this.hud.banner(follow ? 'FIRETEAM · ON ME' : 'FIRETEAM · HOLD', follow ? 'They stay a few metres off you wherever you go' : 'Back to the posts round you', 1.8, 'normal');
+    this.audio.play(follow ? 'radio_on' : 'radio_off', { volume: 0.7 });
+  }
+
+  /** the follow field: toward you, begun anew once you've moved 1.5 m (or changed floor) and the last one is in */
+  _updateFollow() {
+    const p = this.player;
+    if (!p.alive) return;
+    this.followField ??= this.nav.makeBgField();
+    const f = this.followField, lv = levelOf(p.pos.y + 0.3);
+    const at = this._followAt;
+    if (!f.computing && (!at || at.level !== lv || Math.hypot(at.x - p.pos.x, at.z - p.pos.z) > 1.5)) {
+      this._followAt = { level: lv, x: p.pos.x, z: p.pos.z };
+      f.begin([this._followAt]);
+    }
+    f.step(FOLLOW_SLICE);
   }
 
   navFieldFor(post) {
@@ -397,6 +452,8 @@ export class Game {
     this.spawnT = 0;
     for (const z of [...(this.healZones ?? [])]) this._endHeal(z);
     this.healZones = []; // heal grenade clouds (healCloud)
+    this.botOrders = 'hold'; // the fireteam's orders (key T): 'hold' their posts or 'follow' you
+    this._followAt = null;
     this._upperWarned = false; // (_climbedIn: the first one upstairs gets a banner)
     this.intermissionT = 6;
     this.running = true;
@@ -484,6 +541,13 @@ export class Game {
     if (this.endless) this.hud.banner(`ENDLESS · ${this.map.id === 'farm' ? 'CABIN FEVER' : this.map.name}`, 'No extraction is coming. Hold out as long as you can', 3.2, 'normal');
     if (this.rogue.on) this.intermissionT = 8; // the Gauntlet: the opening pick, then the countdown
     this.mission.begin();
+    // a map with a mission of its own (Desert Thunder: game/desertMission.js): sectors and objectives, not waves; the
+    // fireteam moves with you
+    this.insurgents?.reset();
+    if (this.level.campaign) {
+      this.botOrders = 'follow';
+      this.level.campaign.start(this);
+    }
   }
 
   /** k-th bot's start spot: the defense posts after the player's; past those, a clear spot next to one */
@@ -549,6 +613,8 @@ export class Game {
     this.zombies.clear();
     this.stalker?.reset();
     this.mercs?.reset();
+    this.insurgents?.reset();
+    this.level.campaign?.reset?.(this);
     this.projectiles.clear();
     this.pickups.clear();
     for (const b of this.bots) b.hide();
@@ -627,6 +693,7 @@ export class Game {
     this.events?.onRoundStart(this.round); // very rarely: an airstrike, a blood moon, a crash, a blackout
     this.rogue.onRoundStart(this.round); // the Gauntlet: the curses for this round come due
     this.mission?.onRoundStart(this.round);
+    this.level.onRoundStart?.(this, this.round); // (a map's own: world/hive.js gas, the sides the horde comes from)
     this.spawnT = 1.5;
     this.hud.setCountdown(null);
     let sub = this.round === 2 ? 'Boomers and hard-hatted Workers join the horde' : this.round === 3 ? 'Mutant dogs are hunting in packs' : this.round === 4 ? 'Biters hunt in packs · mash V to shake one off your back' : this.round === 5 ? 'Strikers have joined the horde' : this.round === 11 ? 'Crushers incoming — watch for the acid' : this.round === this.maxRounds ? 'Final wave — beat them back' : 'The infected are coming';
@@ -663,6 +730,7 @@ export class Game {
     this.stalker?.onRoundEnd(); // not part of the wave: an attack breaks off, the scares go on into the buy phase
     this.revives?.onRoundEnd(); // the fallen get up anyway (below)
     this.events?.onRoundEnd();
+    this.level.onRoundEnd?.(this);
     this.rogue.onRoundEnd(this.round, this.state === 'victory'); // the Gauntlet: the next draft
     if (this.state === 'victory') {
       if (this.mission.story) {
@@ -799,7 +867,8 @@ export class Game {
     this.gameOverT = 0;
     this.audio.play(victory ? 'victory' : 'defeat', { volume: 1 });
     const rogue = this.rogue.on;
-    const sub = victory ? (rogue ? 'Fifteen waves, and you are still standing' : this.mission.story ? 'The reagent reached Nadja' : `Fifteen waves, and ${this.map.id === 'appenweier' ? 'Appenweier' : 'the farm'} still stands`) : this.endless || rogue ? `Your fireteam fell in round ${this.round}` : 'Your fireteam was overrun';
+    const own = this.level.campaign?.finishText?.(victory); // (Desert Thunder: the mission's own words)
+    const sub = own ?? (victory ? (rogue ? 'Fifteen waves, and you are still standing' : this.mission.story ? 'The reagent reached Nadja' : `Fifteen waves, and ${this.map.id === 'appenweier' ? 'Appenweier' : 'the farm'} still stands`) : this.endless || rogue ? `Your fireteam fell in round ${this.round}` : 'Your fireteam was overrun');
     this.hud.banner(victory ? (rogue ? 'GAUNTLET CLEARED' : 'MISSION COMPLETE') : 'MISSION FAILED', sub, 4, victory ? 'success' : 'danger');
     if (victory) this._career(Progress.win());
     const career = Progress.runEnd(); // the after-action report: xp, rank, mastery, unlocks
@@ -824,6 +893,12 @@ export class Game {
       if (z) this._climbedIn(z);
       return;
     }
+    // a map's own way in (world/hive.js: a vent bursting open somewhere near the fireteam)
+    const own = this.level.spawnAt?.(this, type);
+    if (own) {
+      this.zombies.spawn(type, this._spawnSpot(own, type, 0.5), r, hpMult, spd);
+      return;
+    }
     // choose a spawn point far from the player, in the fog
     // (level.spawnBand [near, far] m from the nearest survivor, closer or farther counts against it; only where
     // there is a way to you, and rather not where the player is looking)
@@ -834,9 +909,11 @@ export class Game {
     const fl = Math.hypot(_look.x, _look.z) || 1, fx = _look.x / fl, fz = _look.z / fl;
     const cosHalf = Math.cos(Math.atan(Math.tan((cam.fov * Math.PI) / 360) * cam.aspect) + 0.2); // (half the view, wider)
     let best = null, bs = -Infinity;
-    for (let i = 0; i < (band ? 14 : 5); i++) {
+    for (let i = 0, tries = 0; i < (band ? 14 : 5) && tries < 60; tries++) {
       const p = pick(pts);
-      if (band && !(this.nav.distanceAt(1, p.x, p.z) < 1e6)) continue;
+      // (only where there is a way to someone: on the point's own floor; behind a closed door there's none)
+      if (band && !(this.nav.distanceAt(levelOf(p.y + 0.3), p.x, p.z) < 1e6)) continue;
+      i++;
       let d = Infinity;
       for (const m of this.team) if (m.alive) d = Math.min(d, p.distanceTo(m.pos));
       let s = band ? (d < band[0] ? d - band[0] * 3 : d > band[1] ? band[1] - (d - band[1]) * 2 : band[1]) + Math.random() * 14 : Math.min(d, 40) + Math.random() * 6;
@@ -849,16 +926,48 @@ export class Game {
         best = p;
       }
     }
-    best = this.breach?.spawnPoint(pts) ?? best ?? pick(pts); // a breached wall: part of the horde comes from that side
-    let pos = best.clone().add(new THREE.Vector3(rand(-2.5, 2.5), 0.05, rand(-2.5, 2.5)));
-    // a big map: the scatter must not land behind a fence or in a wall (else the point itself)
-    if (band && !(this.nav.distanceAt(1, pos.x, pos.z) < 1e6)) pos = best.clone().add(new THREE.Vector3(0, 0.05, 0));
-    this.breach?.onSpawn(this.zombies.spawn(type, pos, r, hpMult, spd)); // (the round's wall-breaching Boomer)
+    best = this.breach?.spawnPoint(pts) ?? best; // a breached wall: part of the horde comes from that side
+    if (!best) {
+      // nowhere with a way to anyone right now: this one comes a moment later
+      if (band) {
+        this.toSpawn.unshift(type);
+        this.spawnT = 0.6;
+        return;
+      }
+      best = pick(pts);
+    }
+    this.breach?.onSpawn(this.zombies.spawn(type, this._spawnSpot(best, type, 2.5), r, hpMult, spd)); // (the round's wall-breaching Boomer)
     // the rest of a dog / Biter pack queued right behind comes in with its leader
     while ((type === 'dog' || type === 'biter') && this.toSpawn[0] === type && this.zombies.aliveCount < this.maxAlive) {
       this.toSpawn.shift();
-      this.zombies.spawn(type, best.clone().add(new THREE.Vector3(rand(-2, 2), 0.05, rand(-2, 2))), r, hpMult, spd);
+      this.zombies.spawn(type, this._spawnSpot(best, type, 2), r, hpMult, spd);
     }
+  }
+
+  /**
+   * _spawnOne: a free spot for a `type` near the spawn point p, scattered up to `spread` m: walkable ground with a way
+   * to someone, its body clear of walls and furniture (in a wall it could never get out). Else p itself (the points
+   * are laid out clear).
+   */
+  _spawnSpot(p, type, spread) {
+    const rr = type === 'crusher' ? 0.62 : 0.42;
+    const lv = levelOf(p.y + 0.3);
+    for (let k = 0; k < 7; k++) {
+      const x = p.x + rand(-spread, spread), z = p.z + rand(-spread, spread);
+      if (this._spawnClear(x, p.y, z, rr, lv)) return new THREE.Vector3(x, p.y + 0.05, z);
+    }
+    return new THREE.Vector3(p.x, p.y + 0.05, p.z);
+  }
+
+  _spawnClear(x, y, z, rr, lv) {
+    if (!(this.nav.distanceAt(lv, x, z) < 1e6)) return false;
+    let blocked = false;
+    this.world.query(x - rr, z - rr, x + rr, z + rr, (b) => {
+      if (!b.enabled || b.maxY <= y + 0.3 || b.minY >= y + 1.7) return;
+      const cx = clamp(x, b.minX, b.maxX), cz = clamp(z, b.minZ, b.maxZ);
+      if ((x - cx) * (x - cx) + (z - cz) * (z - cz) < rr * rr) return (blocked = true);
+    });
+    return !blocked;
   }
 
   /** _spawnOne: a spot upstairs for this one (UPPER), if nobody is up there and the stairs are open, else null */
@@ -894,11 +1003,16 @@ export class Game {
     if (kHit) wallT = kHit.t;
     const wallBox = wall ? wall.box : null;
     const wn = wall ? _n.set(wall.nx, wall.ny, wall.nz).clone() : null;
-    // the NOX squad (actors/merc.js): the nearest of them on the ray; infected behind them are out of reach
-    const mh = this.mercs?.raycast(origin, dir, wallT) ?? null;
+    // the NOX squad or the militia (actors/merc.js, actors/insurgent.js): the nearest of them on the ray; infected behind
+    // them are out of reach. A shot wakes the militia round the one who fired
+    const mh = this._hostileRay(origin, dir, wallT);
+    if (this.insurgents && shooter && this.time - (this._heardAt ?? -1) > 0.25) {
+      this._heardAt = this.time;
+      this.insurgents.hear(shooter.pos ?? origin, 38);
+    }
     const hits = this.zombies.raycastAll(origin, dir, mh ? mh.t : wallT);
     let pen = def.penetration ?? 0;
-    let mul = shooter?.dmgMul ?? 1; // bots' store-bought damage upgrades
+    let mul = (shooter?.dmgMul ?? 1) * (shooter?.healDebuffT > 0 ? WEAPONS.healnade.debuff : 1); // bots' store-bought damage upgrades; less in a heal cloud
     const headMul = shooter?.isPlayer ? this.rogue.headMul : 1; // the Gauntlet's HEADHUNTER
     let endT = wallT;
     let stoppedByZombie = false;
@@ -907,7 +1021,9 @@ export class Game {
       const [f0, f1, fmin] = def.falloff || [30, 80, 0.6];
       const fall = h.t <= f0 ? 1 : h.t >= f1 ? fmin : 1 - (1 - fmin) * ((h.t - f0) / (f1 - f0));
       // (the Crusher's skull is armoured; buckshot: a type's `buckshot` share, the Crusher's hide tears under it)
-      const dmg = def.damage * fall * (h.zombie.type.partMult?.[h.part] ?? PART_MULT[h.part] ?? 1) * mul * (h.part === 'head' ? headMul : 1) * (def.pellets > 1 ? h.zombie.type.buckshot ?? 1 : 1);
+      // (a sniper round goes through the Crusher's skull armour: its sniperHead instead of the armoured partMult)
+      const partM = def.ammoKind === 'sniper' && h.part === 'head' && h.zombie.type.sniperHead ? h.zombie.type.sniperHead : h.zombie.type.partMult?.[h.part] ?? PART_MULT[h.part] ?? 1;
+      const dmg = def.damage * fall * partM * mul * (h.part === 'head' ? headMul : 1) * (def.pellets > 1 ? h.zombie.type.buckshot ?? 1 : 1);
       const pt = new THREE.Vector3().copy(origin).addScaledVector(dir, h.t);
       // a hard hat (the Worker): some headshots glance off it with a spark and a ping, and the round is spent
       if (h.part === 'head' && h.zombie.type.helmet && Math.random() < h.zombie.type.helmet) {
@@ -956,6 +1072,8 @@ export class Game {
     } else if (!stoppedByZombie && wall) {
       this.fx.impact(end, wn, wallBox.surface, { silent: opts.pellet > 1 || opts.bot && Math.random() < 0.6, box: wallBox });
       if (wallBox.tag === 'labGlass') this.lab?.onGlassHit(end);
+      // the armoured car's open engine bay (world/apc.js): rounds in there count
+      else if (wallBox.tag === 'apcEngine') this.apc?.hitEngine(def.damage * mul * (def.pellets > 1 ? 0.5 : 1), end, shooter);
     }
     if (opts.tracerFrom) {
       const snipe = def.ammoKind === 'sniper';
@@ -992,8 +1110,8 @@ export class Game {
 
   /**
    * A heal grenade popped (game/projectiles.js): a cloud of green medical mist on the floor under it. `L` = its
-   * level's { radius, hps, aps, dur, revive } (weaponDefs.js healnade.levels): the fireteam in it heals, and the
-   * top level gets the downed in it back up (game/revive.js reviveIn).
+   * level's { radius, hps, aps, dur, reviveT } (weaponDefs.js healnade.levels): the fireteam in it heals (and deals
+   * less damage), and a downed teammate in it slowly gets back up (game/revive.js healIn).
    */
   healCloud(pos, L, by) {
     const p = pos.clone();
@@ -1022,6 +1140,7 @@ export class Game {
   }
 
   _updateHeal(dt) {
+    for (const m of this.team) if (m.healDebuffT > 0) m.healDebuffT -= dt; // (a heal cloud's damage debuff wears off)
     const zones = this.healZones;
     if (!zones?.length) return;
     for (let i = zones.length - 1; i >= 0; i--) {
@@ -1047,7 +1166,9 @@ export class Game {
           this.fx.sparks.emit(z.pos.x + Math.cos(a) * r, z.pos.y + rand(0.1, 0.8), z.pos.z + Math.sin(a) * r, 0, rand(0.5, 1.2), 0, { life: rand(0.5, 1), length: 0.02, color: [0.8, 3.2, 1.4], width: 0.012, gravity: -0.4, drag: 1 });
         }
       }
-      // heal four times a second: everyone of the fireteam standing in it (the upper floor of a house doesn't count)
+      // heal four times a second: everyone of the fireteam standing in it (the upper floor of a house doesn't count);
+      // they deal less damage while in it (healDebuffT, the hitscan and melee read it), and a downed teammate in it
+      // gets up once it has been in the cloud for L.reviveT s (game/revive.js healIn)
       z.tickT -= dt;
       if (z.tickT <= 0 && fade > 0) {
         z.tickT = 0.25;
@@ -1056,9 +1177,10 @@ export class Game {
           const hp0 = m.hp;
           m.hp = Math.min(m.maxHp ?? 100, m.hp + L.hps * 0.25);
           if (L.aps && (m.ap ?? 0) < 100) m.ap = Math.min(100, (m.ap ?? 0) + L.aps * 0.25); // (plates beyond 100 stay theirs)
+          m.healDebuffT = 0.4;
           if (m.isPlayer && m.hp > hp0) this.hud.healFx?.();
         }
-        if (L.revive) this.revives?.reviveIn(z.pos, L.radius, z.by);
+        this.revives?.healIn(z.pos, L.radius, 0.25, L.reviveT, z.by);
       }
       if (z.t >= L.dur) this._endHeal(z);
     }
@@ -1098,11 +1220,19 @@ export class Game {
     } else if (shooter?.stats) shooter.stats.score += Math.round((res.dealt ?? 0) * 0.5);
   }
 
+  /** the nearest of the NOX squad or the militia on the ray o + t d before maxT ({ t, part, merc }), or null */
+  _hostileRay(o, d, maxT) {
+    const a = this.mercs?.raycast(o, d, maxT) ?? null;
+    const b = this.insurgents?.raycast(o, d, a ? a.t : maxT) ?? null;
+    return b ?? a;
+  }
+
   /** One crisp hit tick per shot: pellets / penetrations / blast victims in the same frame don't stack. */
   _hitTick(head = false) {
     if (this.time - (this._tickAt ?? -1) < 0.03) return;
     this._tickAt = this.time;
-    this.audio.play('hitmarker', { volume: 0.5, pitch: head ? 1.2 : 1 });
+    this.audio.play('hitmarker', { volume: 0.55, pitch: head ? 1.15 : 1 });
+    if (head) this.audio.play('hit_head', { volume: 0.4 });
   }
 
   /**
@@ -1111,6 +1241,7 @@ export class Game {
    * [shove m/s, stagger s] for whatever survives the blow).
    */
   meleeAttack(player, damage, range, heavy, def = null) {
+    if (player.healDebuffT > 0) damage *= WEAPONS.healnade.debuff; // (in a heal cloud: see _updateHeal)
     const cam = player.camera;
     const fwd = cam.getWorldDirection(new THREE.Vector3());
     const eye = cam.position;
@@ -1126,8 +1257,9 @@ export class Game {
     }
     inArc.sort((a, b) => a.d - b.d);
     const best = inArc[0]?.z ?? null, bd = inArc[0]?.d ?? Infinity;
-    // one of the NOX squad nearer than any infected: the blade is for it (a shield from the front turns it)
-    const mt = this.mercs?.meleeTarget(eye, fwd, range);
+    // one of the NOX squad or the militia nearer than any infected: the blade is for it (a shield from the front turns it)
+    const mt1 = this.mercs?.meleeTarget(eye, fwd, range), mt2 = this.insurgents?.meleeTarget(eye, fwd, range);
+    const mt = mt1 && (!mt2 || mt1.dist <= mt2.dist) ? mt1 : mt2;
     if (mt && mt.dist < bd) {
       const pt = mt.merc.pos.clone().add(new THREE.Vector3(0, 1.15, 0)).addScaledVector(fwd, -0.25);
       if (mt.blocked) {
@@ -1254,8 +1386,9 @@ export class Game {
     }
     // a Biter clinging to your back is torn off (actors/biter.js)
     for (const z of this.zombies.list) if (z.alive && z.latchHost === p) z._release?.('shaken', dir.set(Math.sin(p.yaw + Math.PI), 0.4, Math.cos(p.yaw + Math.PI)));
-    // the NOX squad: thrown back, off their aim for a moment (actors/merc.js)
-    for (const m of this.mercs?.list ?? []) {
+    // the NOX squad, the militia: thrown back, off their aim for a moment (actors/merc.js, actors/insurgent.js)
+    for (const m of this.hostiles) {
+      if (m.post) continue; // (the militia's snipers and gunners in their nests)
       if (!m.alive || !m.inPlay || !m.root.visible) continue;
       const d = m.pos.distanceTo(c);
       if (d > S.radius) continue;
@@ -1384,6 +1517,8 @@ export class Game {
     this.barricades?.explosion(pos, radius, damage, source, opts);
     this.breach?.explosion(pos, radius, damage, source, opts);
     this.mercs?.explosion(pos, radius, damage, source, opts);
+    this.insurgents?.explosion(pos, radius, damage, source, opts);
+    this.apc?.explosion?.(pos, radius, damage, source, opts);
     // camera shake by distance
     const dp = this.player.pos.distanceTo(pos);
     this.shake.add(clamp(1.2 - dp / 22, 0, 1) * (opts.scale ?? 1));
@@ -1494,6 +1629,7 @@ export class Game {
       const label = headshot ? 'HEADSHOT' : this.combo > 1 ? `COMBO x${this.combo}` : '';
       this.hud.popScore(pts, label);
       this.audio.play('killconfirm', { volume: 0.6, pitch: headshot ? 1.06 : 1 });
+      if (headshot) this.audio.play('hit_head', { volume: 0.5 });
       this._tickAt = this.time; // the confirm replaces this frame's hit tick
       this.hud.addKill({ killer: 'You', victim, weapon: WEAPONS[weapon]?.name ?? weapon.toUpperCase(), headshot });
       this._career(Progress.kill({ type: z.typeName, weapon: masteryWeapon(info.tool ?? weapon), headshot }));
@@ -1565,13 +1701,14 @@ export class Game {
     const revivable = this.revives?.onDeath(player);
     this.weapons._stopLoops?.();
     const others = this.team.some((m) => m !== player && m.alive);
-    this.hud.banner('YOU ARE DOWN', others ? (revivable ? 'A teammate can revive you for 15 s' : 'You will respawn at the end of the round') : '', 3, 'danger');
-    this.hud.addKill({ killer: source?.type?.name ? 'Infected ' + source.type.name : 'Toxic Gas', victim: 'You', weapon: '', headshot: false });
+    const back = this.level.campaign ? 'You will be back at the next checkpoint' : 'You will respawn at the end of the round';
+    this.hud.banner('YOU ARE DOWN', others ? (revivable ? 'A teammate can revive you for 15 s' : back) : '', 3, 'danger');
+    this.hud.addKill({ killer: source?.isHostile ? source.name : source?.type?.name ? 'Infected ' + source.type.name : 'Toxic Gas', victim: 'You', weapon: '', headshot: false });
   }
 
   onTeammateDied(bot, source) {
     this.revives?.onDeath(bot);
-    this.hud.addKill({ killer: source?.type?.name ? 'Infected ' + source.type.name : '—', victim: bot.name, weapon: '', headshot: false });
+    this.hud.addKill({ killer: source?.isHostile ? source.name : source?.type?.name ? 'Infected ' + source.type.name : '—', victim: bot.name, weapon: '', headshot: false });
     this.audio.play('player_hurt', { position: bot.pos, volume: 0.8, pitch: 0.8 });
   }
 
@@ -1640,8 +1777,10 @@ export class Game {
       this._finish(false);
     }
 
-    // round flow
-    if (this.state === 'intermission') {
+    // round flow (a map with a mission of its own runs that instead: game/desertMission.js)
+    if (this.level.campaign) {
+      if (!gameOver) this.level.campaign.update(dt);
+    } else if (this.state === 'intermission') {
       if (!this.rogue.drafting && !(this.rogue.draftT > 0)) this.intermissionT -= dt; // (the Gauntlet's opening pick first)
       this.hud.setCountdown(Math.ceil(this.intermissionT));
       if (Math.ceil(this.intermissionT) !== Math.ceil(this.intermissionT + dt) && this.intermissionT < 5 && this.intermissionT > 0) this.audio.play('countdown_tick', { volume: 0.5 });
@@ -1665,6 +1804,7 @@ export class Game {
       this._updateF(dt, input);
       if (input.locked && input.hit('KeyX')) this.shockwave(); // the shockwave emitter (pocket gear)
     }
+    if (input.locked && input.hit('KeyT') && !this.cinema?.active) this.toggleOrders();
     // pipe bombs: the horde in range keeps coming (see lureStart)
     for (const e of this.lures) if ((e.t -= dt) <= 0) {
       e.t = 0.5;
@@ -1698,9 +1838,11 @@ export class Game {
     this.maskFx = damp(this.maskFx ?? 0, masked ? 1 : 0, 6, dt);
     this.audio.setGasLevel(player.inGas);
 
-    // teammates
+    // teammates (following you: a field of their own toward you, rebuilt in the background as you move)
+    if (this.botOrders === 'follow') this._updateFollow();
     for (const b of this.bots) if (b.root.visible) b.update(dt);
     this.mercs?.update(dt); // the NOX squad: its drop and its fight
+    this.insurgents?.update(dt); // the militia (Desert Thunder)
     this.rogue.update(dt); // the Gauntlet: drafts, the Stalker's MARKED curse
 
     // nav field
@@ -1822,15 +1964,17 @@ export class Game {
     // extraction at dawn after the final round
     this.dawn = this.state === 'victory' ? Math.min(1, (this.dawn ?? 0) + dt / 7) : 0;
     const dw = this.dawn;
-    fogCol.setRGB(0.07 + this.lighting.lightning * 0.35, 0.095 + this.lighting.lightning * 0.38, 0.09 + this.lighting.lightning * 0.45);
-    if (dw > 0 && !this.level.indoor) {
+    const day = this.level.daylight;
+    if (day) fogCol.set(day.fog);
+    else fogCol.setRGB(0.07 + this.lighting.lightning * 0.35, 0.095 + this.lighting.lightning * 0.38, 0.09 + this.lighting.lightning * 0.45);
+    if (dw > 0 && !this.level.indoor && !day) {
       fogCol.lerp(_dawnFog, dw);
       this.lighting.moonBase = 0.55 + dw * 2.2;
       this.lighting.moon.color.lerp(_dawnSun, dw);
     }
     this.events?.tintFog(fogCol);
     this.fog.near = this.time;
-    this.fog.far = (0.05 + (cine ? 0 : player.inGas) * 0.12) * (1 - dw * 0.5) * (cine ? 0.6 : 1);
+    this.fog.far = day ? (day.fogOut ?? 0.003) : (0.05 + (cine ? 0 : player.inGas) * 0.12) * (1 - dw * 0.5) * (cine ? 0.6 : 1);
     this.weather.update(dt, this.camera.position, this.lighting.lightning, fogCol, dw);
     if (this.fires && !cine) this._updateFires(dt);
     this.fx.update(dt, cine ? null : (cloud, cdt) => {
@@ -1843,7 +1987,7 @@ export class Game {
     this.indoor = damp(this.indoor ?? 1, sheltered, 3, dt);
     this.lighting.indoor = this.indoor;
     this.audio.setIndoor(this.indoor);
-    this.audio.setRain?.(this.level.indoor ? 0 : this.weather.rainK); // the showers come and go (world/weather.js)
+    this.audio.setRain?.(this.level.indoor || day ? 0 : this.weather.rainK); // the showers come and go (world/weather.js)
     this.audio.setLowHealth(player.alive ? clamp(1 - player.hp / 35, 0, 1) : 0);
 
     // post fx
@@ -1894,12 +2038,14 @@ export class Game {
     hud.update(
       {
         difficulty: this.diff.label,
-        modeLabel: this.endless ? 'ENDLESS' : this.rogue.on ? 'GAUNTLET' : 'FIRETEAM',
+        modeLabel: this.endless ? 'ENDLESS' : this.rogue.on ? 'GAUNTLET' : this.level.campaign ? 'MISSION' : 'FIRETEAM',
         score: this.score,
-        timeLeft: this.timed ? Math.max(0, this.timeLeft) : null,
+        timeLeft: this.level.campaign ? this.level.campaign.clock : this.timed ? Math.max(0, this.timeLeft) : null,
         round: Math.max(this.round, 1),
         maxRounds: this.endless ? null : this.maxRounds,
-        enemiesLeft: this.toSpawn.length + this.zombies.aliveCount + (this.mercs?.aliveCount ?? 0),
+        roundLabel: this.level.campaign ? 'SECTOR' : 'ROUND',
+        enemiesLabel: this.level.campaign ? 'HOSTILES' : 'INFECTED',
+        enemiesLeft: this.toSpawn.length + this.zombies.aliveCount + (this.mercs?.aliveCount ?? 0) + (this.insurgents?.aliveCount ?? 0),
         hp: Math.ceil(player.hp),
         maxHp: player.maxHp ?? 100,
         ap: Math.ceil(player.ap),
@@ -1917,15 +2063,16 @@ export class Game {
         mines: w.mines,
         pipebombs: w.pipebombs,
         gadget: this.gear.has('shockwave') ? { ready: this.pulseReady } : null, // the shockwave emitter (key X)
+        orders: this.team.length > 1 ? this.botOrders : null, // the fireteam's orders (key T)
         molotovs: w.molotovs,
         barricades: w.barricades,
         gascans: w.gascans,
         generator: this.power?.hudInfo() ?? null,
-        cash: this.rogue.on ? null : this.economy.cash(player),
+        cash: this.rogue.on || this.level.shop === false ? null : this.economy.cash(player), // (no store: no money to show)
         showAmmo: info.showAmmo && w.def.mode !== 'grenade',
         reloading: info.reloading,
         crosshair: w.crosshair(this.camera),
-        radar: { x: player.pos.x, z: player.pos.z, yaw: player.yaw, enemies, allies, pickups: this.pickups.radarList().concat(this.power?.radarList() ?? [], this.revives?.radarList() ?? [], this.mission?.radarList() ?? []), threats: this.mercs?.radarList() ?? [], level: player.level },
+        radar: { x: player.pos.x, z: player.pos.z, yaw: player.yaw, enemies, allies, pickups: this.pickups.radarList().concat(this.power?.radarList() ?? [], this.revives?.radarList() ?? [], this.mission?.radarList() ?? [], this.level.radarList?.() ?? []), threats: (this.mercs?.radarList() ?? []).concat(this.insurgents?.radarList() ?? []), level: player.level },
       },
       dt
     );
@@ -1946,20 +2093,20 @@ export class Game {
     const buy = this.state === 'shop';
     hud.setBuyPhase?.(buy && !this.shopOpen ? { next: this.round + 1, gunshop: !!this.gunshop, where: this.map.shopWhere, rogue: this.rogue.on } : null);
     const readyHold = buy && this.fHold != null && this.fHold > 0.15;
-    const pw = this.power, rv = this.revives, ms = this.mission;
-    const hold = rv?.hold != null ? rv : pw?.hold != null ? pw : ms?.hold != null ? ms : this.barricades;
+    const pw = this.power, rv = this.revives, ms = this.mission, cp = this.level.campaign; // (cp: Desert Thunder's holds: the intel, the charge)
+    const hold = rv?.hold != null ? rv : pw?.hold != null ? pw : ms?.hold != null ? ms : cp?.hold != null ? cp : this.barricades;
     hud.setHold?.(readyHold ? this.fHold / READY_HOLD : hold?.hold ?? null, readyHold ? null : hold?.holdLabel);
     const canShop = this.canShop();
-    hud.setInteract?.(canShop && this.gunshop ? 'Press [F] to open the GUN SHOP' : rv?.prompt ?? pw?.prompt ?? ms?.prompt ?? this.barricades?.prompt ?? null);
+    hud.setInteract?.(canShop && this.gunshop ? 'Press [F] to open the GUN SHOP' : rv?.prompt ?? pw?.prompt ?? ms?.prompt ?? cp?.prompt ?? this.barricades?.prompt ?? (player.healDebuffT > 0 ? `In the heal cloud · your damage −${Math.round((1 - WEAPONS.healnade.debuff) * 100)} %` : null));
     hud.setRevive?.(rv?.hudInfo() ?? null);
     let wp = null;
-    // a downed teammate first, then the story's objective, then the gun shop in the buy phase, else the
-    // generator / a gas can while the power is out
+    // a downed teammate first, then the story's objective, the map's (the Hive: Nadja's request), then the gun shop
+    // in the buy phase, else the generator / a gas can while the power is out
     let ent = null, wpLabel = null;
-    const rw = rv?.waypoint(player), mw = ms?.waypoint(player);
-    if (rw || mw) {
-      ent = (rw ?? mw).pos;
-      wpLabel = (rw ?? mw).label;
+    const rw = rv?.waypoint(player), mw = ms?.waypoint(player), lw = this.level.waypoint?.(player);
+    if (rw || mw || lw) {
+      ent = (rw ?? mw ?? lw).pos;
+      wpLabel = (rw ?? mw ?? lw).label;
     } else if (buy && !this.shopOpen && !this.rogue.on && this.gunshop?.entrance && !canShop && this.gunshop.entrance.distanceTo(player.pos) > 2.5) {
       ent = this.gunshop.entrance;
       wpLabel = 'GUN SHOP';

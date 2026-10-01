@@ -652,7 +652,8 @@ export class WeaponSystem {
     const T = this.reloadDur;
     const f = this.stateT / T;
     if (d.beltReload) {
-      // the MG 42: cover open, box off, box on, belt in, cover shut, cocking handle (viewmodel.js 'belt')
+      // the MG 42 (its box stays on): cover open, the belt's end pulled from the box and laid in the tray, cover shut,
+      // cocking handle (viewmodel.js 'belt')
       const at = (key, when, name, o = { volume: 0.85 }) => {
         if (!this.phaseDone[key] && f > when) {
           this.phaseDone[key] = true;
@@ -660,9 +661,8 @@ export class WeaponSystem {
         }
       };
       at('cover', 0.1, 'mg_cover_open');
-      at('out', 0.22, 'mg_box_off');
-      at('in', 0.5, 'mg_box_on');
-      at('belt', 0.57, 'mg_belt');
+      at('pull', 0.3, 'mg_belt');
+      at('belt', 0.52, 'mg_belt', { volume: 0.75, pitch: 0.85 });
       at('shut', 0.69, 'mg_cover_close', { volume: 1 });
       at('bolt', 0.81, 'm4_bolt', { volume: 0.9, pitch: 0.78 });
     } else if (d.id !== 'm9') {
